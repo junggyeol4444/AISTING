@@ -1,20 +1,19 @@
-name: AISTING hourly development checks
+name: AISTING validation (manual and on push)
 
 on:
-  schedule:
-    - cron: '30 * * * *'
+  push:
+  pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
-  issues: write
 
 concurrency:
-  group: hourly-aisting-development
-  cancel-in-progress: false
+  group: aisting-tests-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  validate-and-queue:
+  validate:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -28,9 +27,3 @@ jobs:
         run: |
           python tools.py validate
           python -m unittest discover -s tests -v
-      - name: Write development summary
-        run: python scripts/hourly_status.py >> "$GITHUB_STEP_SUMMARY"
-      - name: Ensure next development issue
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: python scripts/hourly_issue.py
