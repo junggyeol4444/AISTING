@@ -15,11 +15,13 @@ from .conversation_memory import ConversationMemory
 from .desktop_chat import run_local_chat
 from .reply_voice import ReplyVoicePlayer, should_auto_read
 from .windows_tts import Voice
+from .avatar_animation import SpeechActivity
 
 
 class LocalChatTab(ttk.Frame):
-    def __init__(self, master: tk.Misc) -> None:
+    def __init__(self, master: tk.Misc, *, activity: SpeechActivity | None = None) -> None:
         super().__init__(master)
+        self._activity = activity if activity is not None else SpeechActivity()
         self._results: queue.SimpleQueue[tuple[str, object]] = queue.SimpleQueue()
         self._busy = False
         self._model_name = tk.StringVar()
@@ -159,6 +161,7 @@ class LocalChatTab(ttk.Frame):
                         )
                     self._refresh_voice_buttons()
                 elif kind in ("speech_done", "speech_error"):
+                    self._activity.finish("chat_reply")
                     self._tts_busy = False
                     self._tts_find.configure(state="normal")
                     self._tts_stop.configure(state="disabled")
@@ -212,6 +215,7 @@ class LocalChatTab(ttk.Frame):
         if self._tts_busy:
             return
         self._tts_busy = True
+        self._activity.start("chat_reply")
         self._tts_find.configure(state="disabled")
         self._tts_stop.configure(state="normal")
         self._refresh_voice_buttons()
