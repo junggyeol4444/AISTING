@@ -13,8 +13,8 @@ ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/"src"))
 
 from ai_broadcaster.obs_readonly import (
-    ObsError, ObsSnapshot, _authentication, _request,
-    get_obs_snapshot,
+    ObsError, ObsSnapshot, SceneItem, _authentication, _request,
+    get_obs_snapshot, avatar_capture_diagnostic,
 )
 
 
@@ -33,10 +33,11 @@ def server_frame(obj):
 class FakeObsSocket:
     def __init__(self, *, password=None, scenes=None, live=False,
                  malformed_status=False, invalid_upgrade=False,
-                 wrong_auth=False):
+                 wrong_auth=False, items_by_scene=None):
         self.required_password=password
         self.scenes=scenes if scenes is not None else ["대기 화면","게임 화면"]
         self.live=live
+        self.items_by_scene=items_by_scene or {}
         self.malformed_status=malformed_status
         self.invalid_upgrade=invalid_upgrade
         self.wrong_auth=wrong_auth
@@ -106,6 +107,11 @@ class FakeObsSocket:
             payload={"scenes":[{"sceneName":s} for s in self.scenes]}
         elif request=="GetStreamStatus":
             payload={"outputActive": "yes" if self.malformed_status else self.live}
+        elif request=="GetSceneItemList":
+            selected=d.get("requestData",{}).get("sceneName")
+            if selected not in self.scenes:
+                raise AssertionError("Non-existent OBS scene requested")
+            payload={"sceneItems":self.items_by_scene.get(selected,[])}
         else:
             raise AssertionError("Non read-only OBS request received")
         self.pending+=server_frame({
@@ -236,3 +242,115 @@ class TestObsClient(unittest.TestCase):
         self.assertIn("show=\"*\"",app)
         self.assertNotIn("save_settings(",app)
         self.assertNotIn("StartStream",app)
+
+
+class TestObsSceneInspection(unittest.TestCase):
+    def connect(self, server, **kwargs):
+        with patch("ai_broadcaster.obs_readonly.socket.create_connection",return_value=server) as mocked:
+            value=get_obs_snapshot(**kwargs)
+            self.assertEqual(mocked.call_args.args[0],("127.0.0.1",kwargs.get("port",4455)))
+            return value
+
+    @staticmethod
+    def sample(enabled=True, name="AISTING 창", kind="window_capture", item_id=3):
+        return {"sourceName":name,"inputKind":kind,
+                "sceneItemEnabled":enabled,"sceneItemId":item_id}
+
+    def test_scene_items_requested_only_on_explicit_inspection(self):
+        fake=FakeObsSocket(items_by_scene={"게임 화면":[self.sample()]})
+        self.connect(fake)
+        self.assertEqual([x for k,x in fake.calls if k=="request"],
+                         ["GetVersion","GetSceneList","GetStreamStatus"])
+
+    def test_selected_scene_lists_sources(self):
+        fake=FakeObsSocket(items_by_scene={"게임 화면":[
+            self.sample(),self.sample(False,"카메라","dshow_input",4)
+        ]})
+        result=self.connect(fake,scene_name="게임 화면")
+        self.assertEqual(result.inspected_scene,"게임 화면")
+        self.assertEqual(result.scene_items,(
+            SceneItem("AISTING 창","window_capture",True,3),
+            SceneItem("카메라","dshow_input",False,4),
+        ))
+        self.assertEqual([x for k,x in fake.calls if k=="request"],
+            ["GetVersion","GetSceneList","GetStreamStatus","GetSceneItemList"])
+        frame=next(x for k,x in fake.calls
+                   if k=="message" and x.get("d",{}).get("requestType")=="GetSceneItemList")
+        self.assertEqual(frame["d"]["requestData"],{"sceneName":"게임 화면"})
+
+    def test_missing_scene_rejected_without_source_request(self):
+        fake=FakeObsSocket()
+        with patch("ai_broadcaster.obs_readonly.socket.create_connection",return_value=fake):
+            with self.assertRaisesRegex(ObsError,"장면 목록"):
+                get_obs_snapshot(scene_name="없는 장면")
+        self.assertNotIn("GetSceneItemList",[v for k,v in fake.calls if k=="request"])
+
+    def test_bad_scene_name_fails_before_connect(self):
+        with patch("ai_broadcaster.obs_readonly.socket.create_connection") as mocked:
+            for value in ("","  ", "x"*257,True,8):
+                with self.subTest(value=str(value)[:20]),self.assertRaises(ValueError):
+                    get_obs_snapshot(scene_name=value)
+            mocked.assert_not_called()
+
+    def test_malformed_source_list_rejected(self):
+        malformed=[
+            {"sourceName":"A","sceneItemEnabled":True,"sceneItemId":"1","inputKind":"window_capture"},
+            {"sourceName":"A","sceneItemEnabled":"yes","sceneItemId":1,"inputKind":"window_capture"},
+            {"sourceName":"A","sceneItemEnabled":True,"sceneItemId":1,"inputKind":{}},
+            {"sourceName":"","sceneItemEnabled":True,"sceneItemId":1,"inputKind":"window_capture"},
+            "not a mapping",
+        ]
+        for item in malformed:
+            with self.subTest(item=item):
+                fake=FakeObsSocket(items_by_scene={"게임 화면":[item]})
+                with patch("ai_broadcaster.obs_readonly.socket.create_connection",return_value=fake):
+                    with self.assertRaises(ObsError):get_obs_snapshot(scene_name="게임 화면")
+
+    def test_source_count_bounded(self):
+        fake=FakeObsSocket(items_by_scene={"게임 화면":[self.sample(item_id=i) for i in range(501)]})
+        with patch("ai_broadcaster.obs_readonly.socket.create_connection",return_value=fake):
+            with self.assertRaises(ObsError):get_obs_snapshot(scene_name="게임 화면")
+
+    def test_inspected_empty_scene_returns_no_candidate(self):
+        snap=self.connect(FakeObsSocket(),scene_name="게임 화면")
+        self.assertIn("찾지 못했습니다",avatar_capture_diagnostic(snap))
+
+    def test_uninspected_scene_never_claims_capture_ready(self):
+        snap=self.connect(FakeObsSocket())
+        self.assertIn("선택",avatar_capture_diagnostic(snap))
+
+    def test_aisting_named_capture_is_only_candidate(self):
+        fake=FakeObsSocket(items_by_scene={"게임 화면":[self.sample(name="AISTING window")]})
+        diag=avatar_capture_diagnostic(self.connect(fake,scene_name="게임 화면"))
+        self.assertIn("후보",diag)
+        self.assertIn("직접 확인",diag)
+        self.assertNotIn("캡처 성공",diag)
+
+    def test_non_aisting_capture_is_unverified(self):
+        fake=FakeObsSocket(items_by_scene={"게임 화면":[self.sample(name="Browser")]})
+        diag=avatar_capture_diagnostic(self.connect(fake,scene_name="게임 화면"))
+        self.assertIn("미확인",diag)
+
+    def test_disabled_aisting_window_not_a_candidate(self):
+        fake=FakeObsSocket(items_by_scene={"게임 화면":[self.sample(enabled=False)]})
+        diag=avatar_capture_diagnostic(self.connect(fake,scene_name="게임 화면"))
+        self.assertIn("찾지 못했습니다",diag)
+
+    def test_scene_capture_read_only_allowlist(self):
+        fake=FakeObsSocket()
+        for name in ("CreateInput","SetSceneItemEnabled","StartStream","StopStream",
+                     "SetCurrentProgramScene","CreateSceneItem"):
+            with self.subTest(name=name),self.assertRaises(ObsError):
+                _request(fake,name,4,scene_name="게임 화면")
+        self.assertEqual(fake.calls,[])
+        for name in ("GetVersion","GetStreamStatus"):
+            with self.assertRaises(ObsError):
+                _request(fake,name,2,scene_name="게임 화면")
+        self.assertEqual(fake.calls,[])
+
+    def test_gui_selection_and_check_explicit(self):
+        ui=(ROOT/"src/ai_broadcaster/desktop_obs_tab.py").read_text(encoding="utf-8")
+        self.assertIn("command=self._inspect_scene",ui)
+        self.assertIn('scene_name=scene_name',ui)
+        self.assertIn("avatar_capture_diagnostic(item)",ui)
+        self.assertNotIn('command=self._set_scene',ui)
