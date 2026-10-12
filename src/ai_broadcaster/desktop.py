@@ -9,6 +9,8 @@ from .desktop_state import (
 from .operator_settings import load_settings, save_settings, default_settings
 from .desktop_chat_tab import LocalChatTab
 from .desktop_voice_tab import VoicePreviewTab
+from .avatar_animation import SpeechActivity
+from .avatar_preview import AvatarPreviewPanel
 
 class AistingApp(tk.Tk):
     def __init__(self):
@@ -36,16 +38,28 @@ class AistingApp(tk.Tk):
         ttk.Label(main, text="Windows 프로그램 · 로컬 PC에서 실행 · 무료 서비스만 사용").pack(anchor="w", pady=(3, 14))
         pages = ttk.Notebook(main)
         pages.pack(fill="both", expand=True)
-        basic, person, chat, voice_preview, status = (ttk.Frame(pages, padding=13) for _ in range(5))
+        basic, person, chat, voice_preview, avatar, status = (
+            ttk.Frame(pages, padding=13) for _ in range(6)
+        )
         pages.add(basic, text="방송 설정")
         pages.add(person, text="캐릭터 · 목소리")
         pages.add(chat, text="AI 대화 테스트")
         pages.add(voice_preview, text="무료 음성 미리 듣기")
+        pages.add(avatar, text="2D 아바타")
         pages.add(status, text="진행 현황")
         self._create_basic(basic)
         self._create_person(person)
-        LocalChatTab(chat).pack(fill="both", expand=True)
-        VoicePreviewTab(voice_preview).pack(fill="both", expand=True)
+        self._speech_activity = SpeechActivity()
+        LocalChatTab(chat, activity=self._speech_activity).pack(fill="both", expand=True)
+        VoicePreviewTab(voice_preview, activity=self._speech_activity).pack(fill="both", expand=True)
+        AvatarPreviewPanel(
+            avatar,
+            activity=self._speech_activity,
+            get_name=lambda: (
+                self.fields["name"].get() if self.mode.get() == "직접 만들기"
+                else default_settings()["persona"]["name"]
+            ),
+        ).pack(fill="both", expand=True)
         self._create_status(status)
         footer = ttk.Frame(main)
         footer.pack(fill="x", pady=(13, 0))
@@ -116,7 +130,8 @@ class AistingApp(tk.Tk):
             "완료: 무료 로컬 AI 대화 테스트 탭 + SQLite 기억",
             "미완료: 로컬 AI 모델 실제 설치와 응답 검증",
             "테스트용 Windows 한국어 음성 미리 듣기 추가",
-            "미완료: 방송용 TTS·아바타 렌더링 및 OBS 송출",
+            "2D 샘플 아바타와 음성 재생 중 입 움직임 연동",
+            "미완료: 정밀 립싱크·실제 Live2D 모델·OBS 송출",
             "미완료: 방송 플랫폼 계정 연결과 방송 시작",
             "예약 작업: 중지 유지",
         ):

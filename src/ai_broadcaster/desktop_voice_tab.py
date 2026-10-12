@@ -7,11 +7,13 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from .windows_tts import Voice, WindowsSpeechPreview
+from .avatar_animation import SpeechActivity
 
 
 class VoicePreviewTab(ttk.Frame):
-    def __init__(self, master: tk.Misc) -> None:
+    def __init__(self, master: tk.Misc, *, activity: SpeechActivity | None = None) -> None:
         super().__init__(master)
+        self._activity = activity if activity is not None else SpeechActivity()
         self._backend = WindowsSpeechPreview()
         self._events: queue.SimpleQueue[tuple[str, object]] = queue.SimpleQueue()
         self._voices: dict[str, Voice] = {}
@@ -99,6 +101,7 @@ class VoicePreviewTab(ttk.Frame):
             messagebox.showwarning("입력 확인", "미리 듣기 문장은 1~600글자로 입력해 주세요.", parent=self)
             return
         self._speaking = True
+        self._activity.start("voice_preview")
         self._play_button.configure(state="disabled")
         self._load_button.configure(state="disabled")
         self._stop_button.configure(state="normal")
@@ -145,6 +148,7 @@ class VoicePreviewTab(ttk.Frame):
                         )
                         self._play_button.configure(state="normal" if options else "disabled")
                 elif kind in ("playback_error", "playback_done"):
+                    self._activity.finish("voice_preview")
                     self._speaking = False
                     self._load_button.configure(state="normal")
                     self._play_button.configure(state="normal" if self._voices else "disabled")
