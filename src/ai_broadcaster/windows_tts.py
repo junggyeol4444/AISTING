@@ -53,7 +53,7 @@ try {
 _SPEAK_SCRIPT = r"""
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
-$reader = New-Object System.IO.StreamReader(
+$reader = [System.IO.StreamReader]::new(
     [Console]::OpenStandardInput(), [System.Text.Encoding]::UTF8
 )
 try {
