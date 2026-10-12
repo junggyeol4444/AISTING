@@ -1,7 +1,7 @@
 """OBS Studio v5 WebSocket READ-ONLY client using Python's standard library.
 
 Connections only to 127.0.0.1; methods restricted to version, scene list and
-stream status. Never starts/stops streams, changes scenes or stores passwords.
+stream status and selected scene items. Never changes OBS or stores passwords.
 User must click '연결 상태 확인' in Windows EXE to invoke this.
 """
 from __future__ import annotations
@@ -20,8 +20,16 @@ class ObsError(RuntimeError):
     """OBS 연결/인증/프로토콜 오류."""
 
 
-ALLOWED_REQUESTS = frozenset({"GetVersion", "GetSceneList", "GetStreamStatus"})
+ALLOWED_REQUESTS = frozenset({"GetVersion", "GetSceneList", "GetStreamStatus", "GetSceneItemList"})
 MAX_FRAME = 1_000_000
+
+
+@dataclass(frozen=True)
+class SceneItem:
+    source_name: str
+    input_kind: str | None
+    enabled: bool
+    item_id: int
 
 
 @dataclass(frozen=True)
@@ -30,6 +38,25 @@ class ObsSnapshot:
     websocket_version: str
     scenes: tuple[str, ...]
     streaming: bool
+    inspected_scene: str | None = None
+    scene_items: tuple[SceneItem, ...] = ()
+
+
+def avatar_capture_diagnostic(snapshot: ObsSnapshot) -> str:
+    """Only identify candidates: OBS input settings and actual captured window not checked."""
+    if not isinstance(snapshot, ObsSnapshot):
+        raise TypeError("OBS 상태가 필요합니다.")
+    if snapshot.inspected_scene is None:
+        return "장면을 선택한 뒤 '장면 소스 확인'을 누르세요."
+    active_windows = [
+        source for source in snapshot.scene_items
+        if source.enabled and source.input_kind == "window_capture"
+    ]
+    if any("aisting" in source.source_name.casefold() for source in active_windows):
+        return "AISTING 이름의 활성 창 캡처 후보 발견 · 실제 화면 연결은 OBS에서 직접 확인"
+    if active_windows:
+        return "활성 창 캡처 소스가 있지만 AISTING 창 연결 여부는 미확인"
+    return "이 장면에서 활성 창 캡처 소스를 찾지 못했습니다. OBS에서 직접 추가해 주세요."
 
 
 def _read_exact(sock: socket.socket, amount: int) -> bytes:
@@ -150,13 +177,29 @@ def _authentication(password: str, challenge: str, salt: str) -> str:
     return base64.b64encode(hashlib.sha256(secret+challenge.encode("utf-8")).digest()).decode("ascii")
 
 
-def _request(sock: socket.socket, name: str, seq: int) -> dict:
+def _request(
+    sock: socket.socket, name: str, seq: int, *,
+    scene_name: str | None = None,
+) -> dict:
     if name not in ALLOWED_REQUESTS:
         raise ObsError("OBS 읽기 전용 모드에서 허용되지 않은 요청입니다.")
+    if type(seq) is not int or seq < 0:
+        raise ObsError("OBS 요청 번호 오류")
+    if name == "GetSceneItemList":
+        if not isinstance(scene_name, str) or not 1 <= len(scene_name) <= 256 or not scene_name.strip():
+            raise ObsError("장면 이름이 올바르지 않습니다.")
+        request_data = {"sceneName": scene_name}
+    elif scene_name is not None:
+        raise ObsError("해당 조회에는 장면 이름을 지정할 수 없습니다.")
+    else:
+        request_data = None
     rid = f"aisting-read-{seq}"
+    request = {"requestType": name, "requestId": rid}
+    if request_data is not None:
+        request["requestData"] = request_data
     _send_frame(sock,json.dumps({
-        "op":6,"d":{"requestType":name,"requestId":rid}
-    },separators=(",",":")).encode("utf-8"))
+        "op":6,"d":request
+    },ensure_ascii=False,separators=(",",":")).encode("utf-8"))
     # OBS may emit events after Identify; skip bounded unrelated events only.
     for _ in range(20):
         data = _read_json(sock)
@@ -175,7 +218,10 @@ def _request(sock: socket.socket, name: str, seq: int) -> dict:
     raise ObsError("OBS에서 요청 응답을 확인할 수 없습니다.")
 
 
-def get_obs_snapshot(*, port: int = 4455, password: str = "", timeout: float = 5.0) -> ObsSnapshot:
+def get_obs_snapshot(
+    *, port: int = 4455, password: str = "", timeout: float = 5.0,
+    scene_name: str | None = None,
+) -> ObsSnapshot:
     """Operator-triggered loopback-only OBS status snapshot; no write operations."""
     if type(port) is not int or not 1 <= port <= 65535:
         raise ValueError("OBS 포트는 1~65535 범위입니다.")
@@ -183,6 +229,10 @@ def get_obs_snapshot(*, port: int = 4455, password: str = "", timeout: float = 5
         raise ValueError("OBS 암호가 너무 깁니다.")
     if type(timeout) not in (int,float) or not 0 < timeout <= 20:
         raise ValueError("OBS 연결 제한 시간은 0~20초 범위입니다.")
+    if scene_name is not None and (
+        not isinstance(scene_name, str) or not 1 <= len(scene_name) <= 256 or not scene_name.strip()
+    ):
+        raise ValueError("장면 이름은 1~256글자로 선택해야 합니다.")
     try:
         with socket.create_connection(("127.0.0.1",port),timeout=timeout) as sock:
             sock.settimeout(timeout)
@@ -222,6 +272,27 @@ def get_obs_snapshot(*, port: int = 4455, password: str = "", timeout: float = 5
             ws_version=ver.get("obsWebSocketVersion")
             if not isinstance(obs_version,str) or not isinstance(ws_version,str):
                 raise ObsError("OBS 버전 확인 실패")
-            return ObsSnapshot(obs_version,ws_version,tuple(names),streaming)
+            if scene_name is None:
+                return ObsSnapshot(obs_version,ws_version,tuple(names),streaming)
+            if scene_name not in names:
+                raise ObsError("선택한 OBS 장면이 현재 장면 목록에 없습니다.")
+            scene_data=_request(sock,"GetSceneItemList",4,scene_name=scene_name)
+            raw_items=scene_data.get("sceneItems")
+            if not isinstance(raw_items,list) or len(raw_items)>500:
+                raise ObsError("OBS 장면 소스 목록 형식 오류")
+            items=[]
+            for raw in raw_items:
+                if not isinstance(raw,dict):
+                    raise ObsError("OBS 장면 소스 데이터 오류")
+                name=raw.get("sourceName")
+                kind=raw.get("inputKind")
+                enabled=raw.get("sceneItemEnabled")
+                item_id=raw.get("sceneItemId")
+                if (not isinstance(name,str) or not 1<=len(name)<=256
+                    or (kind is not None and (not isinstance(kind,str) or len(kind)>128))
+                    or type(enabled) is not bool or type(item_id) is not int or item_id<0):
+                    raise ObsError("OBS 장면 소스 필드 오류")
+                items.append(SceneItem(name,kind,enabled,item_id))
+            return ObsSnapshot(obs_version,ws_version,tuple(names),streaming,scene_name,tuple(items))
     except (OSError,TimeoutError) as exc:
         raise ObsError("내 PC의 OBS(127.0.0.1)와 연결할 수 없습니다. OBS WebSocket 설정을 확인해 주세요.") from exc
