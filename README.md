@@ -54,3 +54,7 @@ python scripts/demo_chat_pipeline.py
 - \`docs/STATUS.md\` — 구현/미구현/예약 현황
 - \`src/ai_broadcaster/session.py\` — 모의 방송 상태 머신
 - \`src/ai_broadcaster/platform_config.py\` — 플랫폼 승인 제어
+
+## 새 기능: 무료 로컬 AI 응답 어댑터
+
+`src/ai_broadcaster/local_llm.py`는 **설치된 로컬 Ollama만 사용**하는 응답 생성기입니다. 설치나 실행은 운영자 승인 전까지 하지 않으며, 모의 HTTP 테스트만 자동으로 진행합니다. `docs/LOCAL_LLM.md` 참조.
