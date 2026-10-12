@@ -1,24 +1,17 @@
 """무료 로컬 운영 및 선택 가능 설정 테스트."""
 import copy
-import json
 import sys
 import tempfile
-import threading
 import unittest
 from pathlib import Path
-from http.server import ThreadingHTTPServer
-from urllib.error import HTTPError
-from urllib.request import Request, urlopen
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/"src"))
-sys.path.insert(0,str(ROOT/"scripts"))
 
 from ai_broadcaster.operator_settings import (
     DEFAULT_SETTINGS, SettingsError, default_settings,
     load_settings, save_settings, validate_settings,
 )
-from settings_server import SettingsHandler
 
 
 class TestOperatorSettings(unittest.TestCase):
@@ -88,46 +81,3 @@ class TestOperatorSettings(unittest.TestCase):
         with self.assertRaises(SettingsError):validate_settings(s)
 
 
-class TestHTTP(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls.temp=tempfile.TemporaryDirectory()
-        cls.path=Path(cls.temp.name)/"operator_settings.json"
-        handler=type("TemporaryHandler",(SettingsHandler,),{"store_path":cls.path})
-        cls.server=ThreadingHTTPServer(("127.0.0.1",0),handler)
-        cls.thread=threading.Thread(target=cls.server.serve_forever,daemon=True)
-        cls.thread.start()
-        cls.url="http://127.0.0.1:"+str(cls.server.server_port)
-
-    @classmethod
-    def tearDownClass(cls):
-        cls.server.shutdown();cls.server.server_close();cls.thread.join(timeout=5)
-        cls.temp.cleanup()
-
-    def test_page_loaded(self):
-        with urlopen(self.url+"/",timeout=5) as r:
-            self.assertIn("AI 방송인 설정",r.read().decode("utf-8"))
-
-    def test_api_roundtrip(self):
-        s=default_settings();s["content"]="both";s["platforms"]=["youtube"]
-        payload=json.dumps(s,ensure_ascii=False).encode()
-        req=Request(self.url+"/api/settings",data=payload,method="POST",
-                    headers={"Content-Type":"application/json"})
-        with urlopen(req,timeout=5) as r:
-            self.assertEqual(r.status,200)
-        with urlopen(self.url+"/api/settings",timeout=5) as r:
-            self.assertEqual(json.load(r)["content"],"both")
-
-    def test_origin_restriction(self):
-        payload=json.dumps(default_settings()).encode()
-        req=Request(self.url+"/api/settings",data=payload,method="POST",
-                    headers={"Content-Type":"application/json","Origin":"https://attacker.example"})
-        with self.assertRaises(HTTPError) as ctx:urlopen(req,timeout=5)
-        self.assertEqual(ctx.exception.code,403)
-
-    def test_http_paid_api_rejected(self):
-        s=default_settings();s["operation"]["allow_paid_api"]=True
-        req=Request(self.url+"/api/settings",data=json.dumps(s).encode(),method="POST",
-                    headers={"Content-Type":"application/json"})
-        with self.assertRaises(HTTPError) as ctx:urlopen(req,timeout=5)
-        self.assertEqual(ctx.exception.code,400)

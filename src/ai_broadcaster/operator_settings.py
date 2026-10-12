@@ -13,7 +13,17 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_FILE = ROOT / "data" / "operator_settings.json"
+
+
+def default_settings_path() -> Path:
+    """Windows EXE의 임시 폴더가 아닌 사용자 데이터 폴더에 저장."""
+    if os.name == "nt":
+        base = os.environ.get("LOCALAPPDATA")
+        return (Path(base) if base else Path.home() / "AppData" / "Local") / "AISTING" / "operator_settings.json"
+    return ROOT / "data" / "operator_settings.json"
+
+
+DEFAULT_FILE = default_settings_path()
 
 PLATFORMS = ("chzzk", "youtube", "twitch")
 CONTENTS = ("undecided", "chat", "game", "both")

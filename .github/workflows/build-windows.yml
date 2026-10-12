@@ -1,0 +1,45 @@
+name: AISTING Windows EXE build
+
+# 예약 없음: PR, main 반영, 수동 실행일 때만 시작
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-exe:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          architecture: x64
+      - name: Validate project
+        run: |
+          python tools.py validate
+          python -m unittest discover -s tests -v
+          python -c "import tkinter; print('tkinter available')"
+      - name: Install free PyInstaller builder
+        run: python -m pip install "pyinstaller>=6,<7"
+      - name: Package standalone native Windows GUI
+        run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name AISTING --paths src scripts/desktop_app.py
+      - name: Check executable
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "dist/AISTING.exe")) { throw "AISTING.exe not found" }
+          if ((Get-Item "dist/AISTING.exe").Length -lt 1000000) { throw "Unexpectedly small EXE" }
+      - name: Upload downloadable EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: AISTING-Windows-EXE
+          path: dist/AISTING.exe
+          if-no-files-found: error
+          retention-days: 30
