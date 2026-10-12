@@ -90,6 +90,15 @@ class TestConversationMemory(unittest.TestCase):
         self.memory.clear()
         self.assertEqual(self.memory.count(), 0)
 
+    def test_connection_closed_allows_file_delete_on_windows(self):
+        self.memory.append(ChatMessage("1", "user", "hi"), "hello")
+        self.memory.recent()
+        self.memory.count()
+        self.memory.clear()
+        # 열린 sqlite 파일 핸들이 남았다면 Windows에서 PermissionError.
+        self.path.unlink()
+        self.assertFalse(self.path.exists())
+
     def test_invalid_limit(self):
         for limit in (-1, 101, True):
             with self.subTest(limit=limit), self.assertRaises(ValueError):

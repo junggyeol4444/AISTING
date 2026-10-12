@@ -5,8 +5,10 @@
 from __future__ import annotations
 
 import sqlite3
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Iterator
 
 from .operator_settings import DEFAULT_FILE
 from .session import ChatMessage
@@ -38,8 +40,15 @@ class ConversationMemory:
                 "reply TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
             )
 
-    def _connection(self) -> sqlite3.Connection:
-        return sqlite3.connect(self.path, timeout=5.0)
+    @contextmanager
+    def _connection(self) -> Iterator[sqlite3.Connection]:
+        """트랜잭션 종료에 더해 DB 핸들도 반드시 닫는다 (Windows 파일 잠금 방지)."""
+        db = sqlite3.connect(self.path, timeout=5.0)
+        try:
+            with db:
+                yield db
+        finally:
+            db.close()
 
     def append(self, message: ChatMessage, reply: str) -> None:
         if not isinstance(message, ChatMessage):
