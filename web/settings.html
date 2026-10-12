@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AISTING | 내 AI 방송인 설정</title>
+<style>
+:root{font-family:system-ui,-apple-system,"Malgun Gothic",sans-serif;color-scheme:dark;background:#10121b;color:#f5f5f8}
+*{box-sizing:border-box}body{margin:0}main{max-width:760px;margin:auto;padding:36px 18px 72px}
+h1{font-size:2rem;margin:0 0 8px}h2{font-size:1.05rem;margin:0 0 12px}p{color:#adb3c6;line-height:1.6}
+.sub{font-size:.9rem}section{background:#1b2030;border:1px solid #303750;border-radius:16px;padding:20px;margin-top:16px}
+.option{display:flex;align-items:center;gap:10px;padding:8px 0}
+label{cursor:pointer}input[type="checkbox"],input[type="radio"]{accent-color:#8faaff;width:18px;height:18px}
+select,input[type="text"]{background:#111625;color:white;border:1px solid #4c5675;border-radius:8px;padding:12px;width:100%;font:inherit}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.grid label{display:block;color:#d7deed;font-size:.92rem}.grid input{margin-top:6px}
+.pill{display:inline-block;border:1px solid #4b607c;border-radius:30px;padding:7px 10px;margin:3px;font-size:.85rem}
+button{background:#9bb7ff;color:#121827;border:0;border-radius:9px;padding:13px 20px;font:inherit;font-weight:700;cursor:pointer}
+button:disabled{opacity:.6;cursor:wait}
+#status{color:#b6ffd2;min-height:1.6em;font-weight:600}#status.error{color:#ffc2c2}
+.hidden{display:none}footer{margin-top:20px}
+@media(max-width:600px){.grid{grid-template-columns:1fr}main{padding:24px 12px}}
+</style>
+</head>
+<body><main>
+<h1>AI 방송인 설정</h1>
+<p>고른 내용은 내 PC에만 저장해. <strong>설정 저장이 방송 송출, 결제, API 연결을 시작하지는 않아.</strong></p>
+<form id="settingsForm">
+<section>
+<h2>1. 방송 플랫폼 — 원하는 곳을 복수 선택</h2>
+<label class="option"><input type="checkbox" name="platform" value="chzzk"> 치지직</label>
+<label class="option"><input type="checkbox" name="platform" value="youtube"> 유튜브</label>
+<label class="option"><input type="checkbox" name="platform" value="twitch"> 트위치</label>
+<p class="sub">선택하지 않으면 '나중에 결정' 상태로 저장돼. 아직 방송은 시작되지 않아.</p>
+</section>
+<section>
+<h2>2. 방송 콘텐츠</h2>
+<select id="content">
+<option value="undecided">나중에 선택</option>
+<option value="chat">수다 중심</option>
+<option value="game">게임 중심</option>
+<option value="both">수다 + 게임</option>
+</select>
+</section>
+<section>
+<h2>3. AI 캐릭터</h2>
+<select id="personaMode">
+<option value="default">기본 캐릭터 사용 (아이스팅)</option>
+<option value="custom">내가 직접 설정</option>
+</select>
+<p class="sub">기본값은 예시야. 캐릭터가 자연스러운지 최종 판단은 운영자가 해.</p>
+<div class="grid" id="personaFields">
+<label>캐릭터 이름<input id="personaName" type="text" maxlength="100" required></label>
+<label>성별/설정<input id="personaGender" type="text" maxlength="100" required></label>
+<label>성격 특징<input id="personaTraits" type="text" maxlength="100" required></label>
+<label>말투<input id="personaSpeech" type="text" maxlength="100" required></label>
+</div>
+</section>
+<section>
+<h2>4. 목소리</h2>
+<select id="voice">
+<option value="undecided">나중에 선택</option>
+<option value="local_basic">무료 로컬 기본 음성 (엔진 추후 결정)</option>
+<option value="own_recording">내 목소리 사용</option>
+<option value="licensed_recording">허락받은 목소리 사용</option>
+</select>
+<p class="sub">음성 복제나 음성 파일 수집은 여기서 하지 않아. 사용 권리 확인 후 따로 승인해야 해.</p>
+</section>
+<section>
+<h2>5. 아바타</h2>
+<select id="avatar">
+<option value="undecided">나중에 선택</option>
+<option value="2d">2D 캐릭터</option>
+<option value="3d">3D 캐릭터</option>
+</select>
+<p class="sub">유료 모델·프로그램 구매는 하지 않아. 무료로 사용 가능한 자료만 검토해.</p>
+</section>
+<section>
+<h2>6~7. 확정된 운영 정책</h2>
+<div class="pill">내 PC에서 실행</div>
+<div class="pill">유료 API 사용 안 함</div>
+<div class="pill">구독·유료 에셋 구매 안 함</div>
+<div class="pill">무단 방송 송출 안 함</div>
+<p class="sub">PC의 전기료·기존 장비 비용은 별개야. 무료 환경에서도 모델 성능은 PC 사양에 따라 달라져.</p>
+</section>
+<footer><button type="submit" id="save" disabled>설정 저장</button><p id="status" role="status" aria-live="polite">PC 설정을 읽는 중…</p></footer>
+</form>
+</main>
+<script>
+"use strict";
+const form=document.getElementById("settingsForm");
+const status=document.getElementById("status");
+const save=document.getElementById("save");
+const fields=["personaName","personaGender","personaTraits","personaSpeech"].map(id=>document.getElementById(id));
+let operation=null;
+function setStatus(message,error=false){status.textContent=message;status.classList.toggle("error",error);}
+function updatePersona(){const custom=document.getElementById("personaMode").value==="custom";fields.forEach(el=>{el.disabled=!custom;});}
+document.getElementById("personaMode").addEventListener("change",updatePersona);
+async function init(){
+ try{
+  const res=await fetch("/api/settings",{cache:"no-store"});
+  if(!res.ok)throw Error("설정 불러오기 실패");
+  const s=await res.json();
+  operation=s.operation;
+  document.querySelectorAll('input[name="platform"]').forEach(el=>el.checked=s.platforms.includes(el.value));
+  document.getElementById("content").value=s.content;
+  document.getElementById("personaMode").value=s.persona.mode;
+  const ids=["personaName","personaGender","personaTraits","personaSpeech"];
+  const keys=["name","gender","traits","speech_style"];
+  ids.forEach((id,i)=>document.getElementById(id).value=s.persona[keys[i]]);
+  document.getElementById("voice").value=s.voice;
+  document.getElementById("avatar").value=s.avatar;
+  updatePersona();save.disabled=false;setStatus("설정을 불러왔어. 원하는 항목을 선택하고 저장해.");
+ }catch(e){setStatus("설정을 읽지 못했어: "+e.message,true);}
+}
+form.addEventListener("submit",async ev=>{
+ ev.preventDefault();
+ if(!operation)return;
+ save.disabled=true;setStatus("저장 중…");
+ const platforms=[...document.querySelectorAll('input[name="platform"]:checked')].map(x=>x.value);
+ const persona={
+  mode:document.getElementById("personaMode").value,
+  name:document.getElementById("personaName").value.trim(),
+  gender:document.getElementById("personaGender").value.trim(),
+  traits:document.getElementById("personaTraits").value.trim(),
+  speech_style:document.getElementById("personaSpeech").value.trim()
+ };
+ try{
+  const res=await fetch("/api/settings",{
+   method:"POST",headers:{"Content-Type":"application/json"},
+   body:JSON.stringify({platforms,content:document.getElementById("content").value,
+                       persona,voice:document.getElementById("voice").value,
+                       avatar:document.getElementById("avatar").value,operation})
+  });
+  const data=await res.json();
+  if(!res.ok)throw Error(data.error||"저장 실패");
+  setStatus("내 PC에 저장했어. 방송 송출이나 결제는 시작되지 않았어.");
+ }catch(e){setStatus("저장 실패: "+e.message,true);}
+ finally{save.disabled=false;}
+});
+init();
+</script>
+</body></html>
