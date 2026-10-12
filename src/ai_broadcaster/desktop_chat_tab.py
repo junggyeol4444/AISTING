@@ -128,8 +128,9 @@ class LocalChatTab(ttk.Frame):
         try:
             while True:
                 kind, payload = self._results.get_nowait()
-                self._busy = False
-                self._send.configure(state="normal")
+                if kind in ("ok", "error"):
+                    self._busy = False
+                    self._send.configure(state="normal")
                 if kind == "ok":
                     self._append("AI: " + payload.reply)
                     self._last_reply = payload.reply
