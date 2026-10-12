@@ -12,3 +12,5 @@
 
 검증: \`python -m unittest discover -s tests -v\`
 설정 화면 설명: \`docs/OPERATOR_SETTINGS.md\`
+
+- 추가 기반 개발: 로컬 Ollama 호환 한국어 AI 응답 어댑터, PC 내부 주소 제한, 오류 시 채팅 보존 및 가짜 서버 테스트. **실제 모델 설치/실행 및 연동 테스트는 미진행**.
