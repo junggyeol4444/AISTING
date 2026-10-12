@@ -19,8 +19,8 @@ class VoicePreviewTab(ttk.Frame):
         self._speaking = False
         self._selected = tk.StringVar()
         self._status = tk.StringVar(value="설치된 한국어 음성 목록을 확인해 주세요.")
-        self._rate = tk.IntVar(value=0)
-        self._volume = tk.IntVar(value=85)
+        self._rate = tk.DoubleVar(value=0)
+        self._volume = tk.DoubleVar(value=85)
 
         ttk.Label(
             self,

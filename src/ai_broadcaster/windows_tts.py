@@ -35,7 +35,7 @@ class Voice:
 # Windows PowerShell (.NET Framework System.Speech). 다운로드/유료 API 없음.
 _LIST_SCRIPT = r"""
 $ErrorActionPreference = 'Stop'
-[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 Add-Type -AssemblyName System.Speech
 $speech = New-Object System.Speech.Synthesis.SpeechSynthesizer
 try {
@@ -52,7 +52,7 @@ try {
 
 _SPEAK_SCRIPT = r"""
 $ErrorActionPreference = 'Stop'
-[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 $reader = New-Object System.IO.StreamReader(
     [Console]::OpenStandardInput(), [System.Text.Encoding]::UTF8
 )
