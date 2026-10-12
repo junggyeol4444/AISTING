@@ -39,6 +39,7 @@ class ChatPipeline:
         self.generator = generator
         self.output = output
         self._prepared: ProcessedChat | None = None
+        self.post_delivery_errors: list[Exception] = []
 
     def process_next(self) -> ProcessedChat | None:
         message = self.queue.peek_chat()
@@ -56,6 +57,13 @@ class ChatPipeline:
         self.queue.acknowledge_chat(message)
         result = self._prepared
         self._prepared = None
+        # 메모리 저장 실패 때문에 이미 출력한 대답을 다시 출력하지 않는다.
+        callback = getattr(self.generator, "on_delivered", None)
+        if callable(callback):
+            try:
+                callback(result.original, result.reply)
+            except Exception as error:
+                self.post_delivery_errors.append(error)
         return result
 
     def drain(self) -> list[ProcessedChat]:

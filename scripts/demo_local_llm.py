@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from ai_broadcaster.chat_pipeline import ChatPipeline
+from ai_broadcaster.conversation_memory import ConversationMemory
 from ai_broadcaster.local_llm import LocalModelConfig, LocalModelError, LocalOllamaReplyGenerator
 from ai_broadcaster.operator_settings import load_settings
 from ai_broadcaster.session import ChatMessage, SessionController
@@ -23,7 +24,7 @@ def main(argv: list[str]) -> int:
         print("사용법: python scripts/demo_local_llm.py <이미 설치된 모델 이름>")
         return 2
     try:
-        generator = LocalOllamaReplyGenerator(LocalModelConfig(argv[1]), load_settings())
+        generator = LocalOllamaReplyGenerator(LocalModelConfig(argv[1]), load_settings(), memory=ConversationMemory())
     except (ValueError, TypeError) as exc:
         print(f"모델 설정 오류: {exc}")
         return 2
@@ -43,6 +44,9 @@ def main(argv: list[str]) -> int:
         queue.receive_chat(ChatMessage(str(count), "운영자", line))
         try:
             pipeline.drain()
+            if pipeline.post_delivery_errors:
+                print("기록 저장 오류:", pipeline.post_delivery_errors[-1])
+                pipeline.post_delivery_errors.clear()
         except (LocalModelError, ValueError) as exc:
             print(f"로컬 모델 오류: {exc}. 처리하지 못한 채팅은 대기열에 남습니다.")
 

@@ -14,6 +14,7 @@ from urllib.request import HTTPHandler, HTTPRedirectHandler, ProxyHandler, Reque
 
 from .session import ChatMessage
 from .operator_settings import validate_settings
+from .conversation_memory import ConversationMemory
 
 
 class LocalModelError(RuntimeError):
@@ -34,6 +35,7 @@ class LocalModelConfig:
     port: int = 11434
     timeout_seconds: float = 30.0
     max_reply_chars: int = 6000
+    max_context_exchanges: int = 8
 
     def __post_init__(self) -> None:
         if not isinstance(self.model, str) or not re.fullmatch(
@@ -47,6 +49,8 @@ class LocalModelConfig:
             raise ValueError("응답 제한 시간은 0~120초 범위로 지정합니다.")
         if type(self.max_reply_chars) is not int or not 1 <= self.max_reply_chars <= 20000:
             raise ValueError("응답 길이 제한이 잘못됐습니다.")
+        if type(self.max_context_exchanges) is not int or not 0 <= self.max_context_exchanges <= 40:
+            raise ValueError("최근 대화 수는 0~40이어야 합니다.")
 
     @property
     def endpoint(self) -> str:
@@ -70,25 +74,32 @@ def persona_prompt(settings: dict[str, Any]) -> str:
 class LocalOllamaReplyGenerator:
     """ChatPipeline ReplyGenerator 규약을 구현하는 로컬 전용 연결."""
 
-    def __init__(self, config: LocalModelConfig, settings: dict[str, Any]) -> None:
+    def __init__(
+        self, config: LocalModelConfig, settings: dict[str, Any],
+        memory: ConversationMemory | None = None,
+    ) -> None:
         if not isinstance(config, LocalModelConfig):
             raise TypeError("LocalModelConfig가 필요합니다.")
+        if memory is not None and not isinstance(memory, ConversationMemory):
+            raise TypeError("ConversationMemory가 필요합니다.")
         self.config = config
         self.system = persona_prompt(settings)
+        self.memory = memory
         # 프록시와 리다이렉트 사용을 차단하여 localhost 외 유출을 피함.
         self._opener = build_opener(ProxyHandler({}), HTTPHandler(), _NoRedirect())
 
     def generate(self, message: ChatMessage) -> str:
         if not isinstance(message, ChatMessage):
             raise TypeError("ChatMessage가 필요합니다.")
-        payload = {
-            "model": self.config.model,
-            "stream": False,
-            "messages": [
-                {"role": "system", "content": self.system},
-                {"role": "user", "content": f"{message.sender}: {message.text}"},
-            ],
-        }
+        messages = [{"role": "system", "content": self.system}]
+        if self.memory is not None:
+            for exchange in self.memory.recent(self.config.max_context_exchanges):
+                messages.append({
+                    "role": "user", "content": f"{exchange.sender}: {exchange.user_text}",
+                })
+                messages.append({"role": "assistant", "content": exchange.reply})
+        messages.append({"role": "user", "content": f"{message.sender}: {message.text}"})
+        payload = {"model": self.config.model, "stream": False, "messages": messages}
         request = Request(
             self.config.endpoint,
             data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
@@ -114,3 +125,8 @@ class LocalOllamaReplyGenerator:
         if len(reply) > self.config.max_reply_chars:
             raise LocalModelError("로컬 AI 응답 길이 제한을 넘었습니다.")
         return reply
+
+    def on_delivered(self, message: ChatMessage, reply: str) -> None:
+        """실제로 출력한 뒤에만 SQLite에 대화 내용을 보관한다."""
+        if self.memory is not None:
+            self.memory.append(message, reply)

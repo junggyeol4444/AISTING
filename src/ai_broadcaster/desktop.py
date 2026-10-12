@@ -7,6 +7,7 @@ from .desktop_state import (
     AVATAR_LABELS, label_for, from_screen,
 )
 from .operator_settings import load_settings, save_settings, default_settings
+from .desktop_chat_tab import LocalChatTab
 
 class AistingApp(tk.Tk):
     def __init__(self):
@@ -34,12 +35,14 @@ class AistingApp(tk.Tk):
         ttk.Label(main, text="Windows 프로그램 · 로컬 PC에서 실행 · 무료 서비스만 사용").pack(anchor="w", pady=(3, 14))
         pages = ttk.Notebook(main)
         pages.pack(fill="both", expand=True)
-        basic, person, status = (ttk.Frame(pages, padding=13) for _ in range(3))
+        basic, person, chat, status = (ttk.Frame(pages, padding=13) for _ in range(4))
         pages.add(basic, text="방송 설정")
         pages.add(person, text="캐릭터 · 목소리")
+        pages.add(chat, text="AI 대화 테스트")
         pages.add(status, text="진행 현황")
         self._create_basic(basic)
         self._create_person(person)
+        LocalChatTab(chat).pack(fill="both", expand=True)
         self._create_status(status)
         footer = ttk.Frame(main)
         footer.pack(fill="x", pady=(13, 0))
@@ -107,7 +110,7 @@ class AistingApp(tk.Tk):
         group = self._group(tab, "현재 EXE에 구현된 기능")
         for line in (
             "완료: Windows용 프로그램 창과 설정 저장",
-            "완료: 모의 채팅 큐 및 무료 로컬 AI 연결 코드",
+            "완료: 무료 로컬 AI 대화 테스트 탭 + SQLite 기억",
             "미완료: 로컬 AI 모델 실제 설치와 응답 검증",
             "미완료: 음성 합성, 아바타 렌더링 및 OBS 송출",
             "미완료: 방송 플랫폼 계정 연결과 방송 시작",
