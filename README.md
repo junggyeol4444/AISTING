@@ -40,3 +40,11 @@ python scripts/demo_session.py
 - `src/ai_broadcaster/session.py` — 모의 방송 상태 및 채팅 큐.
 - `src/ai_broadcaster/platform_config.py` — 플랫폼 승인을 강제하는 설정.
 - `docs/SESSION_ENGINE.md` — 엔진의 구현 범위와 한계.
+
+## 모의 채팅 응답 확인
+
+```sh
+python scripts/demo_chat_pipeline.py
+```
+
+이 명령은 테스트용 문자열로 **채팅 → 응답 → 텍스트 출력** 흐름을 검증합니다. 실제 LLM이나 음성 합성 호출은 없습니다.

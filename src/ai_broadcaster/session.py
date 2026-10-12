@@ -96,12 +96,23 @@ class SessionController:
             raise TypeError("message must be ChatMessage")
         self._pending_chats.append(message)
 
-    def next_chat(self) -> ChatMessage | None:
-        """Return oldest message; caller controls LLM/TTS response delivery."""
-        if not self._pending_chats:
-            return None
+    def peek_chat(self) -> ChatMessage | None:
+        """Inspect the oldest pending message without consuming it."""
+        return self._pending_chats[0] if self._pending_chats else None
+
+    def acknowledge_chat(self, expected_message: ChatMessage) -> None:
+        """Consume only a message that was successfully processed."""
+        if not self._pending_chats or self._pending_chats[0] != expected_message:
+            raise RuntimeError("chat acknowledgement does not match queue head")
+        self._pending_chats.popleft()
         self._processed += 1
-        return self._pending_chats.popleft()
+
+    def next_chat(self) -> ChatMessage | None:
+        """Low-level queue pop for tests/manual handling; prefer ack for replies."""
+        message = self.peek_chat()
+        if message is not None:
+            self.acknowledge_chat(message)
+        return message
 
     def tick(self, at_seconds: float) -> SessionEvent | None:
         if self.state == SessionState.OFFLINE:
