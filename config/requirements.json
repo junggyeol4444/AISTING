@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "project_name": "AI 방송인",
+  "goal": "운영자가 유지보수 중심으로 관리하는 자율 AI 버추얼 방송인",
+  "source_document": "docs/ORIGINAL_PLAN.txt",
+  "defaults": {
+    "respond_to_all_chats": true,
+    "forced_response_delay": false,
+    "preemptively_skip_chats": false,
+    "operator_judges_naturalness": true,
+    "proactive_speech_when_chat_absent": true
+  },
+  "modules": [
+    "LLM 두뇌·페르소나",
+    "한국어 TTS",
+    "아바타·립싱크",
+    "채팅 수집",
+    "OBS 제어",
+    "방송 스케줄러",
+    "종료 판단",
+    "방송 공지",
+    "장기기억",
+    "로그·재시작"
+  ],
+  "planned_base": "Open-LLM-VTuber (기획안 권장, 설치 전 최신 호환성 검토)",
+  "operator_decisions": {
+    "broadcast_platform": null,
+    "content_concept": null,
+    "persona": null,
+    "voice_source_and_consent": null,
+    "avatar_type_and_asset": null,
+    "hosting_option": null,
+    "llm_provider_and_budget": null
+  },
+  "control": {
+    "install_without_operator_approval": false,
+    "charge_without_operator_approval": false,
+    "publish_without_operator_approval": false,
+    "broadcast_enabled_by_default": false,
+    "clone_voice_without_permission": false,
+    "operator_decisions_require_approval": true
+  },
+  "development_policy": {
+    "chat_instruction": "사용자가 채팅으로 개발을 지시하면 그때 진행",
+    "scheduled_work": "GitHub Actions: 매시간 30분에 검증 및 다음 단계 Issue 갱신. 이 워크플로 자체는 AI 코드 생성기가 아님",
+    "pc_setup": "사용자가 PC를 켰다고 알리면 필요 프로그램, 설치, 비용과 계정 준비를 한 번에 설명하고 승인 후 진행",
+    "step_continuation": "이미 검증된 단계는 GitHub 기록으로 추적; 운영자 승인 필요한 사항은 보류"
+  }
+}

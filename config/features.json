@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "source": "docs/ORIGINAL_PLAN.txt",
+  "notes": "기획안의 핵심 기능, 선택 기능, 운영자 승인 경계를 구분한다. 운영자가 승인하지 않은 외부 연동은 실행하지 않는다.",
+  "required": [
+    {
+      "id": "conversation",
+      "name": "LLM 대화와 페르소나",
+      "acceptance": "지정된 한국어 페르소나로 대화한다"
+    },
+    {
+      "id": "chat",
+      "name": "실시간 채팅 전체 반응",
+      "acceptance": "기본적으로 모든 메시지에 반응하며 인위적 딜레이/기본 선별 없음"
+    },
+    {
+      "id": "tts",
+      "name": "권리 확보된 한국어 음성 TTS",
+      "acceptance": "승인된 음성으로 대사를 출력한다"
+    },
+    {
+      "id": "avatar",
+      "name": "아바타 표시와 립싱크",
+      "acceptance": "음성 출력과 입 움직임이 연결된다"
+    },
+    {
+      "id": "broadcast",
+      "name": "OBS 방송 송출 제어",
+      "acceptance": "운영자가 허가한 플랫폼에 수동/자동 송출 테스트 통과"
+    },
+    {
+      "id": "lifecycle",
+      "name": "방송 시작과 자연스러운 종료 자동화",
+      "acceptance": "스케줄 시작부터 규칙 기반 종료와 마무리까지 검증"
+    },
+    {
+      "id": "notices",
+      "name": "방송 시작·종료 공지",
+      "acceptance": "승인된 채널에만 공지 게시"
+    },
+    {
+      "id": "memory",
+      "name": "방송 로그와 장기기억",
+      "acceptance": "지난 방송 정보를 기록하고 조회"
+    },
+    {
+      "id": "operations",
+      "name": "자동 재시작·오류·비용 관리",
+      "acceptance": "오류와 비용을 추적하고 운영자 통제 가능"
+    }
+  ],
+  "optional": [
+    {
+      "id": "game",
+      "name": "게임 자동 플레이",
+      "condition": "핵심 방송이 안정화되고 운영자가 원할 때"
+    },
+    {
+      "id": "screen_vision",
+      "name": "게임 화면 인식",
+      "condition": "게임 기능 선택 시"
+    },
+    {
+      "id": "voice_conversion",
+      "name": "RVC 2차 음성 변조",
+      "condition": "운영자 선택 시"
+    },
+    {
+      "id": "random_schedule",
+      "name": "방송 시작·종료 시간 랜덤 변주",
+      "condition": "운영자 선택 시"
+    },
+    {
+      "id": "low_chat_end",
+      "name": "시청자 채팅 저조에 따른 종료",
+      "condition": "운영자 선택 시"
+    }
+  ],
+  "no_default_actions": [
+    "PC 프로그램 설치",
+    "외부 계정·API 연결",
+    "유료 결제",
+    "실제 방송 시작",
+    "외부 공지 게시",
+    "실존인물 무단 음성 복제"
+  ],
+  "requires_operator_decision": [
+    "방송 플랫폼",
+    "방송 콘셉트",
+    "페르소나",
+    "목소리 자료·동의",
+    "아바타",
+    "PC 또는 서버",
+    "LLM 서비스 및 예산"
+  ]
+}

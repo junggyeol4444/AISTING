@@ -1,0 +1,716 @@
+{
+  "schema_version": 1,
+  "total_steps": 100,
+  "steps": [
+    {
+      "number": 1,
+      "phase": "기획 및 개발 기준 확정",
+      "title": "기획안의 개발 목표 확인",
+      "status": "completed",
+      "evidence": [
+        "docs/REQUIREMENTS.md",
+        "docs/ORIGINAL_PLAN.txt",
+        "config/requirements.json",
+        "docs/ROADMAP_100.md",
+        "tests/test_requirements.py"
+      ]
+    },
+    {
+      "number": 2,
+      "phase": "기획 및 개발 기준 확정",
+      "title": "반드시 구현할 핵심 기능 정리",
+      "status": "completed",
+      "evidence": [
+        "docs/FEATURE_SCOPE.md",
+        "config/features.json",
+        "tests/test_features.py"
+      ]
+    },
+    {
+      "number": 3,
+      "phase": "기획 및 개발 기준 확정",
+      "title": "방송 플랫폼 결정",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 4,
+      "phase": "기획 및 개발 기준 확정",
+      "title": "방송 콘텐츠 방향 결정",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 5,
+      "phase": "기획 및 개발 기준 확정",
+      "title": "AI 방송인 캐릭터 기본 설정",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 6,
+      "phase": "기획 및 개발 기준 확정",
+      "title": "성격과 말투 초안 작성",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 7,
+      "phase": "기획 및 개발 기준 확정",
+      "title": "사용할 목소리의 확보 방식 결정",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 8,
+      "phase": "기획 및 개발 기준 확정",
+      "title": "아바타 형태 결정",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 9,
+      "phase": "기획 및 개발 기준 확정",
+      "title": "PC 운영 방식 결정",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 10,
+      "phase": "기획 및 개발 기준 확정",
+      "title": "전체 개발 기준 최종 승인",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 11,
+      "phase": "PC 환경 및 개발 준비",
+      "title": "PC 운영체제 확인",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 12,
+      "phase": "PC 환경 및 개발 준비",
+      "title": "CPU·RAM·그래픽카드 확인",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 13,
+      "phase": "PC 환경 및 개발 준비",
+      "title": "현재 PC로 가능한 개발 범위 분석",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 14,
+      "phase": "PC 환경 및 개발 준비",
+      "title": "필요한 프로그램과 비용 일괄 안내",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 15,
+      "phase": "PC 환경 및 개발 준비",
+      "title": "프로그램 설치 여부 승인",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 16,
+      "phase": "PC 환경 및 개발 준비",
+      "title": "개발용 폴더와 작업 공간 구성",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 17,
+      "phase": "PC 환경 및 개발 준비",
+      "title": "기본 실행 환경 설정",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 18,
+      "phase": "PC 환경 및 개발 준비",
+      "title": "기획안과 설정 파일 보관",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 19,
+      "phase": "PC 환경 및 개발 준비",
+      "title": "복구 및 백업 체계 준비",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 20,
+      "phase": "PC 환경 및 개발 준비",
+      "title": "개발 환경 실행 검증",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 21,
+      "phase": "AI 두뇌 구축",
+      "title": "방송 코어 기반 프로젝트 준비",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 22,
+      "phase": "AI 두뇌 구축",
+      "title": "기본 코어 실행",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 23,
+      "phase": "AI 두뇌 구축",
+      "title": "AI 모델 연결 방식 설정",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 24,
+      "phase": "AI 두뇌 구축",
+      "title": "AI 연결 테스트",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 25,
+      "phase": "AI 두뇌 구축",
+      "title": "한국어 대화 테스트",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 26,
+      "phase": "AI 두뇌 구축",
+      "title": "대화 맥락 유지 기능 확인",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 27,
+      "phase": "AI 두뇌 구축",
+      "title": "기본 응답 오류 처리",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 28,
+      "phase": "AI 두뇌 구축",
+      "title": "응답 기록 저장",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 29,
+      "phase": "AI 두뇌 구축",
+      "title": "대화 연속성 검증",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 30,
+      "phase": "AI 두뇌 구축",
+      "title": "AI 두뇌 1차 작동 완료",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 31,
+      "phase": "AI 캐릭터 및 행동",
+      "title": "캐릭터 페르소나 입력",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 32,
+      "phase": "AI 캐릭터 및 행동",
+      "title": "성격 및 취향 반영",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 33,
+      "phase": "AI 캐릭터 및 행동",
+      "title": "캐릭터 말투 적용",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 34,
+      "phase": "AI 캐릭터 및 행동",
+      "title": "운영자가 지정한 금기 설정",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 35,
+      "phase": "AI 캐릭터 및 행동",
+      "title": "기본 대화 반응 테스트",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 36,
+      "phase": "AI 캐릭터 및 행동",
+      "title": "자연스러운 응답 속도 확인",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 37,
+      "phase": "AI 캐릭터 및 행동",
+      "title": "채팅 전체 반응 원칙 적용",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 38,
+      "phase": "AI 캐릭터 및 행동",
+      "title": "채팅이 없을 때 자발적 발화 구현",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 39,
+      "phase": "AI 캐릭터 및 행동",
+      "title": "운영자 피드백 수정 기능 준비",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 40,
+      "phase": "AI 캐릭터 및 행동",
+      "title": "캐릭터 대화 1차 검증",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 41,
+      "phase": "한국어 목소리 제작",
+      "title": "사용할 음성의 권리 및 동의 확인",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 42,
+      "phase": "한국어 목소리 제작",
+      "title": "승인된 음성 자료 준비",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 43,
+      "phase": "한국어 목소리 제작",
+      "title": "음성 자료 품질 검사",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 44,
+      "phase": "한국어 목소리 제작",
+      "title": "한국어 음성 합성 환경 구성",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 45,
+      "phase": "한국어 목소리 제작",
+      "title": "기본 한국어 음성 출력",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 46,
+      "phase": "한국어 목소리 제작",
+      "title": "선택한 목소리 적용",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 47,
+      "phase": "한국어 목소리 제작",
+      "title": "발음 및 억양 확인",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 48,
+      "phase": "한국어 목소리 제작",
+      "title": "감정 표현 테스트",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 49,
+      "phase": "한국어 목소리 제작",
+      "title": "AI 대사와 음성 출력 연결",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 50,
+      "phase": "한국어 목소리 제작",
+      "title": "목소리 작동 최종 검증",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 51,
+      "phase": "버추얼 아바타",
+      "title": "승인된 아바타 준비",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 52,
+      "phase": "버추얼 아바타",
+      "title": "아바타 실행 환경 설정",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 53,
+      "phase": "버추얼 아바타",
+      "title": "캐릭터 화면 표시",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 54,
+      "phase": "버추얼 아바타",
+      "title": "기본 표정 설정",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 55,
+      "phase": "버추얼 아바타",
+      "title": "음성에 따른 입 움직임 연결",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 56,
+      "phase": "버추얼 아바타",
+      "title": "음성과 입 움직임 동기화",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 57,
+      "phase": "버추얼 아바타",
+      "title": "표정 및 움직임 테스트",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 58,
+      "phase": "버추얼 아바타",
+      "title": "캐릭터 화면 배치",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 59,
+      "phase": "버추얼 아바타",
+      "title": "장시간 아바타 실행 테스트",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 60,
+      "phase": "버추얼 아바타",
+      "title": "캐릭터 전체 작동 확인",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 61,
+      "phase": "실시간 채팅 소통",
+      "title": "방송 플랫폼 채팅 연결",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 62,
+      "phase": "실시간 채팅 소통",
+      "title": "채팅 메시지 실시간 수신",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 63,
+      "phase": "실시간 채팅 소통",
+      "title": "메시지 처리 순서 관리",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 64,
+      "phase": "실시간 채팅 소통",
+      "title": "중복·누락 여부 확인",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 65,
+      "phase": "실시간 채팅 소통",
+      "title": "모든 채팅에 반응하는 기본 구조 구현",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 66,
+      "phase": "실시간 채팅 소통",
+      "title": "인위적 응답 지연 없이 반응 테스트",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 67,
+      "phase": "실시간 채팅 소통",
+      "title": "시청자와 대화 맥락 연결",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 68,
+      "phase": "실시간 채팅 소통",
+      "title": "여러 시청자 대화 처리",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 69,
+      "phase": "실시간 채팅 소통",
+      "title": "채팅 연결 장애 복구 테스트",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 70,
+      "phase": "실시간 채팅 소통",
+      "title": "실시간 채팅 소통 검증",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 71,
+      "phase": "방송 송출 및 종료 자동화",
+      "title": "방송 송출 화면 구성",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 72,
+      "phase": "방송 송출 및 종료 자동화",
+      "title": "아바타 화면 연결",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 73,
+      "phase": "방송 송출 및 종료 자동화",
+      "title": "음성 방송 출력 연결",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 74,
+      "phase": "방송 송출 및 종료 자동화",
+      "title": "음량 및 방송 화면 확인",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 75,
+      "phase": "방송 송출 및 종료 자동화",
+      "title": "방송 송출 설정 연결",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 76,
+      "phase": "방송 송출 및 종료 자동화",
+      "title": "비공개 방송 테스트",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 77,
+      "phase": "방송 송출 및 종료 자동화",
+      "title": "시청자 채팅·음성·화면 통합 테스트",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 78,
+      "phase": "방송 송출 및 종료 자동화",
+      "title": "방송 최소·최대 시간 규칙 구현",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 79,
+      "phase": "방송 송출 및 종료 자동화",
+      "title": "자연스러운 종료 멘트 및 자동 종료",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 80,
+      "phase": "방송 송출 및 종료 자동화",
+      "title": "자동 종료 전체 검증",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 81,
+      "phase": "방송 시작 및 공지 자동화",
+      "title": "방송 시작 일정 관리 기능 구현",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 82,
+      "phase": "방송 시작 및 공지 자동화",
+      "title": "자동 방송 시작 제어",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 83,
+      "phase": "방송 시작 및 공지 자동화",
+      "title": "시작부터 종료까지 자동 진행 테스트",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 84,
+      "phase": "방송 시작 및 공지 자동화",
+      "title": "방송 전 공지 문구 생성",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 85,
+      "phase": "방송 시작 및 공지 자동화",
+      "title": "디스코드 공지 연결",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 86,
+      "phase": "방송 시작 및 공지 자동화",
+      "title": "방송 시작 공지 자동 게시",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 87,
+      "phase": "방송 시작 및 공지 자동화",
+      "title": "네이버 카페 공식 연동 검토·구현",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 88,
+      "phase": "방송 시작 및 공지 자동화",
+      "title": "공지 문구 변주 및 운영자 설정 적용",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 89,
+      "phase": "방송 시작 및 공지 자동화",
+      "title": "방송 종료 공지 및 결과 기록",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 90,
+      "phase": "방송 시작 및 공지 자동화",
+      "title": "방송 자동화 전체 검증",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 91,
+      "phase": "장기기억·안정화·최종 완성",
+      "title": "방송 대화 및 사건 기록 저장",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 92,
+      "phase": "장기기억·안정화·최종 완성",
+      "title": "과거 방송을 기억하는 기능 구현",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 93,
+      "phase": "장기기억·안정화·최종 완성",
+      "title": "기억 검색과 다음 방송 연동",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 94,
+      "phase": "장기기억·안정화·최종 완성",
+      "title": "프로그램 오류 자동 복구",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 95,
+      "phase": "장기기억·안정화·최종 완성",
+      "title": "방송 중 이상 상황 감지 및 안전 제어",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 96,
+      "phase": "장기기억·안정화·최종 완성",
+      "title": "API·서버·음성 등 운영 비용 관리",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 97,
+      "phase": "장기기억·안정화·최종 완성",
+      "title": "장시간 무인 방송 테스트",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 98,
+      "phase": "장기기억·안정화·최종 완성",
+      "title": "여러 차례 방송 반복 안정성 확인",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 99,
+      "phase": "장기기억·안정화·최종 완성",
+      "title": "운영자 점검 및 유지보수 체계 확정",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "number": 100,
+      "phase": "장기기억·안정화·최종 완성",
+      "title": "최종 기능 검수 및 운영자 승인",
+      "status": "pending",
+      "evidence": []
+    }
+  ]
+}
