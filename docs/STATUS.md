@@ -1,9 +1,11 @@
-# 개발 진행 현황 — GitHub 기준
+# 개발 상태 — AISTING
 
-- **완료 2 / 100:** 1단계 목표/기획 기준, 2단계 핵심 기능 목록.
-- **다음 3 / 100:** 방송 플랫폼 선택 — 운영자 결정 필요.
-- 원본 문서: docs/ORIGINAL_PLAN.txt
-- 상태 원본: config/roadmap.json
-- 자동 검증: python tools.py validate; python -m unittest discover -s tests -v
-- GitHub Actions 예약: 매시간 30분에 테스트, 보고서, 다음 단계 Issue 생성 (코드 자동생성은 아님).
-- PC 설치, 실제 방송, 계정 연결, 유료 결제 및 외부 공지: **미진행**.
+- 완료: **1/100 목표·기획 기준 정리**, **2/100 핵심 기능 정의**.
+- **3/100 방송 플랫폼 결정: 운영자 판단 대기**. 자동 완료하지 않음.
+- 별도 코드 개발: 플랫폼 독립형 모의 방송 시작/종료 상태 머신, FIFO 채팅 큐, 외부 송출 승인 차단 및 테스트 추가.
+- 예약 상태: **중지**. ChatGPT 예약은 꺼졌고 GitHub Action의 `schedule`도 제거함.
+- GitHub Actions는 push/PR/수동 실행 때 테스트만 수행하며 예약 실행은 없음.
+- 실제 AI 라이브 방송, TTS, 아바타, OBS 연동: 미구현.
+- 설치, 결제, 운영자 계정 연동, 방송 플랫폼 선택: 미진행.
+
+검증: `python -m unittest discover -s tests -v`
