@@ -45,3 +45,8 @@ AI 대화 테스트 화면에서 답변을 무료 로컬 Windows 한국어 음�
 무료 Tkinter Canvas로 만든 기본 캐릭터 샘플을 2D 아바타 탭에 표시하고,
 PC 음성 출력 중 입을 반복적으로 움직이게 합니다. 정확한 음소 립싱크가 아니며
 정식 Live2D 아바타도 아닙니다. `docs/AVATAR_PREVIEW.md` 참고.
+
+## OBS 기초 연동
+
+'OBS 연결 확인' 탭으로 로컬 OBS WebSocket 5.x를 읽기 전용 확인하고,
+'2D 아바타' 탭의 별도 창으로 OBS 수동 창 캡처를 지원합니다. 자동 장면 전환/방송 송출은 아직 없습니다. `docs/OBS_PREVIEW.md`.
