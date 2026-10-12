@@ -11,6 +11,7 @@ from .desktop_chat_tab import LocalChatTab
 from .desktop_voice_tab import VoicePreviewTab
 from .avatar_animation import SpeechActivity
 from .avatar_preview import AvatarPreviewPanel
+from .desktop_obs_tab import ObsStatusTab
 
 class AistingApp(tk.Tk):
     def __init__(self):
@@ -38,28 +39,32 @@ class AistingApp(tk.Tk):
         ttk.Label(main, text="Windows 프로그램 · 로컬 PC에서 실행 · 무료 서비스만 사용").pack(anchor="w", pady=(3, 14))
         pages = ttk.Notebook(main)
         pages.pack(fill="both", expand=True)
-        basic, person, chat, voice_preview, avatar, status = (
-            ttk.Frame(pages, padding=13) for _ in range(6)
+        basic, person, chat, voice_preview, avatar, obs, status = (
+            ttk.Frame(pages, padding=13) for _ in range(7)
         )
         pages.add(basic, text="방송 설정")
         pages.add(person, text="캐릭터 · 목소리")
         pages.add(chat, text="AI 대화 테스트")
         pages.add(voice_preview, text="무료 음성 미리 듣기")
         pages.add(avatar, text="2D 아바타")
+        pages.add(obs, text="OBS 연결 확인")
         pages.add(status, text="진행 현황")
         self._create_basic(basic)
         self._create_person(person)
         self._speech_activity = SpeechActivity()
+        self._avatar_window = None
         LocalChatTab(chat, activity=self._speech_activity).pack(fill="both", expand=True)
         VoicePreviewTab(voice_preview, activity=self._speech_activity).pack(fill="both", expand=True)
+        self._name_for_avatar = lambda: (
+            self.fields["name"].get() if self.mode.get() == "직접 만들기"
+            else default_settings()["persona"]["name"]
+        )
         AvatarPreviewPanel(
-            avatar,
-            activity=self._speech_activity,
-            get_name=lambda: (
-                self.fields["name"].get() if self.mode.get() == "직접 만들기"
-                else default_settings()["persona"]["name"]
-            ),
+            avatar, activity=self._speech_activity, get_name=self._name_for_avatar,
         ).pack(fill="both", expand=True)
+        ttk.Button(avatar, text="아바타 별도 창 열기 (OBS 창 캡처용)",
+                   command=self._open_avatar_window).pack(pady=(5,8))
+        ObsStatusTab(obs).pack(fill="both", expand=True)
         self._create_status(status)
         footer = ttk.Frame(main)
         footer.pack(fill="x", pady=(13, 0))
@@ -68,6 +73,29 @@ class AistingApp(tk.Tk):
         ttk.Button(footer, text="설정 저장", command=self.save).pack(side="right")
         if load_error:
             messagebox.showwarning("설정 오류", "기존 파일을 읽지 못해 기본값을 표시합니다. 원래 파일은 유지합니다.\n" + load_error, parent=self)
+
+    def _open_avatar_window(self):
+        """사용자가 누르면 독립 OS 창 생성. OBS 창 캡처는 OBS에서 직접 설정."""
+        if self._avatar_window is not None and self._avatar_window.winfo_exists():
+            self._avatar_window.lift()
+            self._avatar_window.focus_force()
+            return
+        win = tk.Toplevel(self)
+        win.title("AISTING - 아바타 별도 창 [OBS 수동 캡처용]")
+        win.geometry("390x520")
+        win.minsize(370,470)
+        win.configure(background="#121a36")
+        AvatarPreviewPanel(
+            win, activity=self._speech_activity,
+            get_name=self._name_for_avatar,
+        ).pack(fill="both",expand=True)
+        self._avatar_window = win
+        win.protocol("WM_DELETE_WINDOW",self._close_avatar_window)
+
+    def _close_avatar_window(self):
+        if self._avatar_window is not None:
+            self._avatar_window.destroy()
+            self._avatar_window = None
 
     def _group(self, tab, title):
         area = ttk.LabelFrame(tab, text=title, padding=12)
@@ -131,7 +159,9 @@ class AistingApp(tk.Tk):
             "미완료: 로컬 AI 모델 실제 설치와 응답 검증",
             "테스트용 Windows 한국어 음성 미리 듣기 추가",
             "2D 샘플 아바타와 음성 재생 중 입 움직임 연동",
-            "미완료: 정밀 립싱크·실제 Live2D 모델·OBS 송출",
+            "OBS 로컬 연결·장면 목록 확인 (읽기 전용)",
+            "별도 아바타 창 수동 OBS 캡처 지원",
+            "미완료: 정밀 립싱크·Live2D 모델·실제 방송 제어",
             "미완료: 방송 플랫폼 계정 연결과 방송 시작",
             "예약 작업: 중지 유지",
         ):
