@@ -274,6 +274,11 @@ def main():
         assert "BOB: RECOVERED" in recovered and "ALICE: HELLO" not in recovered, \
             "Actual Windows GUI did not recover cleanly after invalid user text"
         print("OPERATOR PASS actual native invalid-input dialog and subsequent new reply", flush=True)
+        # Check whether a normal user can even see the 2D avatar launch controls.
+        select_combobox(200, 103, 3)
+        time.sleep(0.5)
+        snap("17_actual_avatar_preview_screen", hwnd)
+        print("OPERATOR inspected avatar preview tab on real Windows EXE", flush=True)
         close_app()
 
         assert settings_file.is_file()
