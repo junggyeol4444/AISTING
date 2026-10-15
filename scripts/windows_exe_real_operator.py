@@ -83,7 +83,8 @@ def click_relative(hwnd, x, y):
 
 
 def main():
-    exe = Path("AISTING.exe").resolve()
+    import pyperclip
+    exe = Path("dist/AISTING.exe").resolve()
     assert exe.exists(), str(exe)
     isolation = Path(os.environ.get("RUNNER_TEMP", ".")) / "aisting_window_operator_e2e"
     isolation.mkdir(parents=True, exist_ok=True)
@@ -94,20 +95,42 @@ def main():
     try:
         w = await_window()
         hwnd = w["hwnd"]
+        time.sleep(2.5)  # Wait until the EXE has populated the Tk notebook and settings.
         print("WINDOW", json.dumps(w, ensure_ascii=False), flush=True)
-        x, y, width, height = snap("01_first_open", hwnd)
+        x, y, width, height = snap("01_first_open_ready", hwnd)
         assert width >= 760 and height >= 625
-        click_relative(hwnd, 180, 84)
+        # Actual mouse clicks, keyboard selection and Ctrl+V; no app-internal method calls.
+        click_relative(hwnd, 50, 210)  # Chzzk
+        click_relative(hwnd, 50, 231)  # YouTube
+        click_relative(hwnd, 245, 363) # Content combobox
+        pyautogui.press("end")
+        pyautogui.press("enter")
+        click_relative(hwnd, 245, 496) # Persona combobox
+        pyautogui.press("end")
+        pyautogui.press("enter")
+        for y_pos, txt in ((524, "WINDOWS-OPERATOR"), (550, "E2E-SPEAKING"), (580, "E2E-CHARACTER")):
+            click_relative(hwnd, 350, y_pos)
+            pyautogui.hotkey("ctrl", "a")
+            pyperclip.copy(txt)
+            pyautogui.hotkey("ctrl", "v")
+        time.sleep(0.7)
+        snap("02_settings_interacted", hwnd)
+        left, top, _, _ = client_area(hwnd)
+        pyautogui.moveTo(left + 650, top + 430)
+        pyautogui.scroll(-10)
+        time.sleep(0.7)
+        snap("03_after_user_mousewheel", hwnd)
+        pyautogui.moveTo(left + 835, top + 350)
+        pyautogui.dragTo(left + 835, top + 610, duration=1.2)
+        time.sleep(0.6)
+        snap("04_settings_scrolled_by_scrollbar", hwnd)
+        click_relative(hwnd, 200, 103)
         pyautogui.press("home")
         pyautogui.press("down")
         pyautogui.press("enter")
-        time.sleep(0.7)
-        snap("02_after_navigation_to_chat", hwnd)
-        click_relative(hwnd, 640, 340)
-        pyautogui.scroll(-9)
-        time.sleep(0.5)
-        snap("03_after_scroll", hwnd)
-        print("OPERATOR PROBE completed: screenshots captured; no claims about button results", flush=True)
+        time.sleep(1)
+        snap("05_rehearsal_tab_via_real_navigation", hwnd)
+        print("OPERATOR PROBE 2: mouse checks, keyboard selects, typed inputs, wheel/scrollbar, navigation. Inspect screenshots for real outcomes.", flush=True)
     finally:
         if hwnd:
             u32.PostMessageW(hwnd, WM_CLOSE, 0, 0)
