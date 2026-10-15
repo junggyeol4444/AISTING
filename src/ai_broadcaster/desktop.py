@@ -172,7 +172,7 @@ from .core_ai_connection import (
 )
 from .development_review import (
     load_review_sources, evaluate_review, approval_path, approval_status,
-    record_approval, revoke_approval,
+    record_approval, revoke_approval, bundled_project_root,
 )
 
 
@@ -5247,7 +5247,7 @@ class AistingApp(tk.Tk):
     def _final_acceptance_inspect(self) -> None:
         try:
             # Only bundled six known project paths; no user file scans or device info.
-            root = Path(__file__).resolve().parents[2]
+            root = bundled_project_root()  # PyInstaller _MEIPASS or source root
             archived, roadmap_pending = inspect_bundled_project(root)
             self._final_acceptance_report = build_final_acceptance(
                 archived, roadmap_pending, self._maintenance.report())
