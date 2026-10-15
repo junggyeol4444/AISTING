@@ -56,27 +56,43 @@ jobs:
           $length = (Get-Item "dist/AISTING.exe").Length
           if ($length -lt 1000000) { throw "Unexpectedly small EXE: $length bytes" }
           Write-Host "AISTING.exe verified ($length bytes)"
-      - name: Attempt Windows executable first-launch GUI smoke
+      - name: Verify first-launch GUI from PyInstaller one-file child process
         shell: pwsh
-        timeout-minutes: 2
-        continue-on-error: true
+        timeout-minutes: 3
         run: |
           $exe = (Resolve-Path "dist/AISTING.exe").Path
-          $proc = Start-Process -FilePath $exe -PassThru
+          $root = Start-Process -FilePath $exe -PassThru
+          $found = $false
           try {
-            $hasWindow = $false
-            for ($i = 0; $i -lt 25; $i++) {
+            for ($i = 0; $i -lt 45; $i++) {
               Start-Sleep -Seconds 1
-              $proc.Refresh()
-              if ($proc.HasExited) { throw "AISTING.exe exited before GUI appeared. Code: $($proc.ExitCode)" }
-              if ($proc.MainWindowHandle -ne 0) { $hasWindow = $true; break }
+              $processes = @(Get-Process -Name "AISTING" -ErrorAction SilentlyContinue)
+              foreach ($candidate in $processes) {
+                $candidate.Refresh()
+                if ($candidate.MainWindowHandle -ne 0) {
+                  $found = $true
+                  Write-Host "Native GUI observed in AISTING PID $($candidate.Id), HWND $($candidate.MainWindowHandle)"
+                  break
+                }
+              }
+              if ($found) { break }
+              $root.Refresh()
+              if ($root.HasExited -and $processes.Count -eq 0) {
+                throw "AISTING.exe and its child processes exited before GUI appeared. Exit $($root.ExitCode)"
+              }
             }
-            if (-not $hasWindow) { throw "Native GUI window not visible in Windows CI session" }
-            Write-Host "Windows native GUI window opened successfully."
+            if (-not $found) {
+              Get-Process -Name "AISTING" -ErrorAction SilentlyContinue |
+                Select-Object Id, ProcessName, MainWindowHandle, MainWindowTitle |
+                Format-Table | Out-String | Write-Host
+              throw "No AISTING native GUI HWND detected; Windows EXE first launch NOT verified"
+            }
           } finally {
-            if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force }
+            Get-Process -Name "AISTING" -ErrorAction SilentlyContinue |
+              Stop-Process -Force -ErrorAction SilentlyContinue
           }
       - name: Upload test-branch Windows EXE
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: AISTING-v105-Windows-EXE-TEST-BRANCH
