@@ -1,50 +1,85 @@
-name: AISTING Windows EXE build
+name: AISTING v105 Windows branch validation
 
-# 예약 없음: PR, main 반영, 수동 실행일 때만 시작
+# Only the testing branch can trigger this Windows build on push.
 on:
-  pull_request:
   push:
-    branches: [main]
+    branches:
+      - test/v105-windows-validation-20261015
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  windows-exe:
+  windows-v105:
     runs-on: windows-latest
-    timeout-minutes: 25
+    timeout-minutes: 45
+    env:
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: "utf-8"
     steps:
-      - name: Checkout repository
+      - name: Checkout isolated test branch
         uses: actions/checkout@v4
-      - name: Set up Python
+      - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           architecture: x64
-      - name: Validate project (fail on the first test error)
-        shell: bash
-        env:
-          PYTHONUTF8: "1"
-          PYTHONIOENCODING: utf-8
+      - name: Verify source files and Python syntax
+        shell: pwsh
         run: |
-          set -euo pipefail
+          python -m compileall -q src tests scripts tools.py
           python tools.py validate
-          python -m unittest discover -s tests -v
-          python -c "import tkinter; print('tkinter available')"
-      - name: Install free PyInstaller builder
-        run: python -m pip install "pyinstaller>=6,<7"
-      - name: Package standalone native Windows GUI
-        run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name AISTING --paths src scripts/desktop_app.py
-      - name: Check executable
+      - name: Run strict SQLite and application unit tests
+        shell: pwsh
+        run: python -W error::ResourceWarning -m unittest discover -s tests -q
+      - name: Verify native Tkinter and full operator rehearsal
+        shell: pwsh
+        run: |
+          python -c "import tkinter; print('Tkinter import passed')"
+          python scripts/gui_operator_journey_smoke.py
+      - name: Run additional isolated Tk GUI regression smokes
+        shell: pwsh
+        timeout-minutes: 15
+        continue-on-error: true
+        run: python scripts/run_gui_regression_offline.py
+      - name: Install packaging dependency in temporary GitHub Windows runner
+        shell: pwsh
+        run: python -m pip install --disable-pip-version-check "pyinstaller>=6,<7"
+      - name: Package the v105 native Windows entry point
+        shell: pwsh
+        run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name AISTING --paths src --add-data "config;config" --add-data "docs;docs" scripts/run_desktop.py
+      - name: Verify generated EXE exists
         shell: pwsh
         run: |
           if (-not (Test-Path "dist/AISTING.exe")) { throw "AISTING.exe not found" }
-          if ((Get-Item "dist/AISTING.exe").Length -lt 1000000) { throw "Unexpectedly small EXE" }
-      - name: Upload downloadable EXE
+          $length = (Get-Item "dist/AISTING.exe").Length
+          if ($length -lt 1000000) { throw "Unexpectedly small EXE: $length bytes" }
+          Write-Host "AISTING.exe verified ($length bytes)"
+      - name: Attempt Windows executable first-launch GUI smoke
+        shell: pwsh
+        timeout-minutes: 2
+        continue-on-error: true
+        run: |
+          $exe = (Resolve-Path "dist/AISTING.exe").Path
+          $proc = Start-Process -FilePath $exe -PassThru
+          try {
+            $hasWindow = $false
+            for ($i = 0; $i -lt 25; $i++) {
+              Start-Sleep -Seconds 1
+              $proc.Refresh()
+              if ($proc.HasExited) { throw "AISTING.exe exited before GUI appeared. Code: $($proc.ExitCode)" }
+              if ($proc.MainWindowHandle -ne 0) { $hasWindow = $true; break }
+            }
+            if (-not $hasWindow) { throw "Native GUI window not visible in Windows CI session" }
+            Write-Host "Windows native GUI window opened successfully."
+          } finally {
+            if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force }
+          }
+      - name: Upload test-branch Windows EXE
         uses: actions/upload-artifact@v4
         with:
-          name: AISTING-Windows-EXE
+          name: AISTING-v105-Windows-EXE-TEST-BRANCH
           path: dist/AISTING.exe
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 14
