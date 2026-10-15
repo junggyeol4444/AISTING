@@ -9,7 +9,7 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-py -3 -m PyInstaller --noconfirm --clean --onefile --windowed --name AISTING --paths src --add-data "config;config" --add-data "docs;docs" scripts\run_desktop.py
+py -3 -m PyInstaller --noconfirm --clean --onefile --windowed --name AISTING --paths src --add-data "config;config" --add-data "docs;docs" --add-data "logs\STAGE100_FINAL_VALIDATION.txt;logs" --add-data "logs\STAGE100_UNITTEST.log;logs" scripts\run_desktop.py
 if errorlevel 1 (
   echo Build failed.
   pause
