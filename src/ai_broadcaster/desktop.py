@@ -271,10 +271,17 @@ class AistingApp(tk.Tk):
         self._tab_nav = tk.StringVar(value="방송인 홈")
         # Keep all original development screens reachable through this opt-in
         # selector; day-to-day actions have their own one-click navigation.
-        for label in ("방송인 홈", "방송 설정", "내 캐릭터", "시청자 채팅 연습", "무료 한국어 음성", "아바타 미리보기"):
+        for target, caption in (
+            ("방송인 홈", "홈"),
+            ("방송 설정", "방송 설정"),
+            ("내 캐릭터", "내 캐릭터"),
+            ("시청자 채팅 연습", "AI 채팅"),
+            ("무료 한국어 음성", "목소리"),
+            ("아바타 미리보기", "아바타"),
+        ):
             ttk.Button(
-                navigation, text=label, style="Operator.Nav.TButton",
-                command=lambda target=label: self._navigate_to(target),
+                navigation, text=caption, style="Operator.Nav.TButton",
+                command=lambda page=target: self._navigate_to(page),
             ).pack(side="left", padx=(0, 5))
         advanced = ttk.Frame(navigation)
         advanced.pack(side="right")
