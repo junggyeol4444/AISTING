@@ -474,6 +474,25 @@ class AistingApp(tk.Tk):
 
         self._tab_nav_widget.bind("<<ComboboxSelected>>", navigate)
         tabs.bind("<<NotebookTabChanged>>", sync_navigation)
+        # Standard keyboard shortcuts complement, not replace, visible buttons.
+        # They never start streaming, install software or access accounts.
+        for key, page in (
+            ("1", "방송 설정"), ("2", "내 캐릭터"), ("3", "시청자 채팅 연습"),
+            ("4", "무료 한국어 음성"), ("5", "아바타 미리보기"),
+        ):
+            self.bind_all(
+                "<Control-Key-" + key + ">",
+                lambda _event, target=page: self._navigate_to(target),
+            )
+        self.bind_all(
+            "<Control-s>",
+            lambda _event: self._save() if self._tab_nav.get() == "방송 설정" else None,
+        )
+        self.bind_all(
+            "<Control-Return>",
+            lambda _event: self._save_character_identity()
+            if self._tab_nav.get() == "내 캐릭터" else None,
+        )
         # Save is always visible, even on a 768-pixel Windows laptop.
         settings_footer = ttk.Frame(settings, padding=(13, 5))
         settings_footer.pack(side="bottom", fill="x")
