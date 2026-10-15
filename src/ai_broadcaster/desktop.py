@@ -638,52 +638,74 @@ class AistingApp(tk.Tk):
         return variable
 
     def _build_settings(self, tab) -> None:
-        box = self._section(tab, "방송 플랫폼 (치지직 · 유튜브 · 트위치 / 복수 선택)")
-        self._platforms = {}
-        for label, code in PLATFORMS.items():
-            flag = tk.BooleanVar(value=code in self.settings["platforms"])
-            ttk.Checkbutton(box, text=label, variable=flag).pack(anchor="w")
-            self._platforms[code] = flag
-        ttk.Label(box, text="방송 플랫폼은 지금 확정하지 않아도 됩니다. 언제든 선택·변경 가능하며, 저장해도 방송을 시작하지 않습니다.",
-                  wraplength=730).pack(anchor="w", pady=(7, 1))
-        content_box = self._section(tab, "방송 콘텐츠 · 운영 중 자유 선택")
-        self._content = self._choice(content_box, CONTENTS, self.settings["content"])
-        self._content_preview = tk.StringVar(value=content_preview(CONTENTS[self._content.get()]))
-        ttk.Label(content_box, textvariable=self._content_preview, wraplength=720).pack(anchor="w", pady=(5, 2))
-        ttk.Label(content_box, text="미선택도 허용 · 언제든 변경·저장 가능 · 선택만으로 방송은 시작되지 않습니다.",
-                  wraplength=720).pack(anchor="w")
-        self._content.trace_add("write", self._content_changed)
-        # Read-only saved identity on the daily settings page. Its form lives
-        # exclusively in the dedicated '내 캐릭터' screen.
-        summary = self._section(tab, "내 캐릭터")
+        ttk.Label(tab, text="방송 설정", style="Operator.Section.TLabel").pack(anchor="w", pady=(0, 4))
+        ttk.Label(
+            tab, text="방송을 시작하지 않고 준비값만 저장합니다. 캐릭터는 별도로 관리합니다.",
+            wraplength=770,
+        ).pack(anchor="w", pady=(0, 9))
+
+        summary = self._section(tab, "내 캐릭터 · 저장된 정체성")
         self._saved_character_status = tk.StringVar(value=self._saved_character_description())
         ttk.Label(
             summary, textvariable=self._saved_character_status,
-            font=("Malgun Gothic", 11, "bold"), wraplength=700,
-        ).pack(anchor="w", pady=(1, 6))
+            font=("Malgun Gothic", 11, "bold"), wraplength=750,
+        ).pack(anchor="w", pady=(0, 5))
+        character_controls = ttk.Frame(summary)
+        character_controls.pack(fill="x")
         ttk.Label(
-            summary, text="이름·말투·성격은 최초 저장 후 자동 복원됩니다. 방송할 때 다시 입력하지 않습니다.",
-            wraplength=700,
-        ).pack(anchor="w", pady=(0, 6))
+            character_controls,
+            text="다음 실행에도 그대로 사용 · 매번 다시 입력할 필요 없음",
+        ).pack(side="left")
         ttk.Button(
-            summary, text="캐릭터 처음 만들기 / 기존 캐릭터 수정",
+            character_controls, text="캐릭터 관리",
             command=lambda: self._navigate_to("내 캐릭터"),
+        ).pack(side="right")
+
+        selections = ttk.Frame(tab)
+        selections.pack(fill="x", pady=(0, 7))
+        platform_box = ttk.LabelFrame(selections, text="방송 플랫폼 (복수 선택)", padding=9)
+        platform_box.pack(side="left", fill="both", expand=True, padx=(0, 7))
+        self._platforms = {}
+        platform_row = ttk.Frame(platform_box)
+        platform_row.pack(anchor="w", pady=(2, 5))
+        for label, code in PLATFORMS.items():
+            flag = tk.BooleanVar(value=code in self.settings["platforms"])
+            ttk.Checkbutton(
+                platform_row, text=label, variable=flag,
+            ).pack(side="left", padx=(0, 14))
+            self._platforms[code] = flag
+        ttk.Label(
+            platform_box, text="선택만으로 방송은 시작되지 않습니다.",
+            wraplength=320,
         ).pack(anchor="w")
+
+        content_box = ttk.LabelFrame(selections, text="방송 콘텐츠", padding=9)
+        content_box.pack(side="left", fill="both", expand=True)
+        self._content = self._choice(content_box, CONTENTS, self.settings["content"])
+        self._content_preview = tk.StringVar(value=content_preview(CONTENTS[self._content.get()]))
+        ttk.Label(
+            content_box, textvariable=self._content_preview, wraplength=365,
+        ).pack(anchor="w", pady=(3, 0))
+        self._content.trace_add("write", self._content_changed)
+
         row = ttk.Frame(tab)
         row.pack(fill="x", pady=(0, 7))
-        avatarbox = ttk.LabelFrame(row, text="아바타 외형 선택 (캐릭터 생성과 별개)", padding=10)
-        avatarbox.pack(side="left", fill="x", expand=True)
-        voicebox = ttk.LabelFrame(row, text="목소리 선택", padding=10)
-        voicebox.pack(side="left", fill="x", expand=True, padx=(9, 0))
+        avatarbox = ttk.LabelFrame(row, text="아바타 외형 · 캐릭터와 별개", padding=9)
+        avatarbox.pack(side="left", fill="both", expand=True, padx=(0, 7))
+        voicebox = ttk.LabelFrame(row, text="목소리 선택", padding=9)
+        voicebox.pack(side="left", fill="both", expand=True)
         self._avatar = self._choice(avatarbox, AVATARS, self.settings["avatar"])
         self._avatar_choice_info = tk.StringVar(value=avatar_choice(self.settings["avatar"]).description)
-        ttk.Label(avatarbox, textvariable=self._avatar_choice_info, wraplength=330).pack(anchor="w", pady=(4, 0))
+        ttk.Label(
+            avatarbox, textvariable=self._avatar_choice_info, wraplength=360,
+        ).pack(anchor="w", pady=(3, 0))
         self._avatar.trace_add("write", self._avatar_changed)
         self._voice = self._choice(voicebox, VOICES, self.settings["voice"])
         self._voice_source_info = tk.StringVar(value=describe_voice_source(self.settings["voice"]))
-        ttk.Label(voicebox, textvariable=self._voice_source_info, wraplength=340).pack(anchor="w")
+        ttk.Label(
+            voicebox, textvariable=self._voice_source_info, wraplength=360,
+        ).pack(anchor="w", pady=(3, 0))
         self._voice.trace_add("write", self._voice_source_changed)
-        # Save is pinned outside the scrolling canvas in settings_footer.
 
     def _build_character_editor(self, tab) -> None:
         ttk.Label(tab, text="내 캐릭터", style="Operator.Section.TLabel").pack(anchor="w", pady=(1, 5))
