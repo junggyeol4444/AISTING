@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -37,6 +38,13 @@ class TestWindowsFrozenEvidence(unittest.TestCase):
         source = (ROOT / "src/ai_broadcaster/desktop.py").read_text(encoding="utf-8")
         self.assertIn("root = bundled_project_root()", source)
         self.assertNotIn("root = Path(__file__).resolve().parents[2]", source)
+
+    def test_explicit_entrypoint_resource_check_exits_successfully_without_gui(self):
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "scripts/run_desktop.py"), "--verify-bundled-resources"],
+            cwd=ROOT, capture_output=True, timeout=30, check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr.decode("utf-8", "replace"))
 
     def test_windows_batch_and_actions_include_all_six_evidence_paths(self):
         batch = (ROOT / "build_exe_windows.bat").read_text(encoding="utf-8")
