@@ -302,6 +302,21 @@ def main():
         pyautogui.screenshot().save(OUTPUT / "18_actual_avatar_popout_full_desktop.png")
         print("OPERATOR PASS user mouse click opened standalone native avatar window", popout, flush=True)
 
+        # The pop-out provides a real background combo near the bottom of its window.
+        pop_left, pop_top, pop_right, pop_bottom = popout["rect"]
+        before_color = pyautogui.screenshot().getpixel((pop_left + 20, pop_top + 60))
+        pyautogui.click(pop_left + 140, pop_bottom - 54)
+        pyautogui.press("home")
+        pyautogui.press("down")
+        pyautogui.press("enter")
+        time.sleep(0.7)
+        pyautogui.screenshot().save(OUTPUT / "18b_avatar_green_background_selected.png")
+        after_color = pyautogui.screenshot().getpixel((pop_left + 20, pop_top + 60))
+        color_distance = sum(abs(before_color[i] - after_color[i]) for i in range(3))
+        print("AVATAR_POPOUT_BACKGROUND_PIXEL_DELTA", color_distance, before_color, after_color, flush=True)
+        assert color_distance > 30, "Selecting another background in real avatar window did not update the canvas"
+        print("OPERATOR PASS pop-out background changed after physical Windows combo selection", flush=True)
+
         # A second click must activate the existing window, not create duplicates.
         click_relative(hwnd, 120, 523)
         time.sleep(0.6)
@@ -323,6 +338,24 @@ def main():
         assert json.loads(settings_file.read_text(encoding="utf-8")) == saved, \
             "Opening/closing standalone avatar window changed saved user settings"
         print("OPERATOR PASS avatar-only close leaves main EXE and settings intact", flush=True)
+
+        # Check real Tk avatar mouth animation from the user's checkbox.
+        click_relative(hwnd, 380, 456)
+        time.sleep(0.5)
+        snap("20_mouth_animation_checkbox_clicked", hwnd)
+        samples = []
+        for _ in range(12):
+            frame = pyautogui.screenshot(region=client_area(hwnd)).convert("RGB")
+            samples.append(frame.crop((393, 305, 455, 380)))
+            time.sleep(0.13)
+        from PIL import ImageChops
+        changes = [
+            sum(val > 20 for val in ImageChops.difference(samples[0], other).convert("L").getdata())
+            for other in samples[1:]
+        ]
+        print("AVATAR_MOUTH_ANIMATION_CHANGED_PIXELS", max(changes, default=0), flush=True)
+        assert max(changes, default=0) > 45, "Clicking mouth animation demo did not change any mouth frames"
+        print("OPERATOR PASS checkbox enables visible 2D mouth motion", flush=True)
         close_app()
 
         assert settings_file.is_file()
