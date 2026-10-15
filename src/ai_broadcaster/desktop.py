@@ -264,7 +264,7 @@ class AistingApp(tk.Tk):
         header.pack(fill="x", pady=(0, 9))
         ttk.Label(header, text="AISTING", style="Operator.Title.TLabel").pack(side="left")
         ttk.Label(
-            header, text="내 PC에서 준비하는 AI 방송인  ·  외부 방송 꺼짐",
+            header, text="자율 AI 방송인 개발 중  ·  실제 외부 송출 비활성",
         ).pack(side="right")
         navigation = ttk.Frame(main)
         navigation.pack(fill="x", pady=(0, 11))
@@ -783,8 +783,12 @@ class AistingApp(tk.Tk):
         )
         self._home_rehearsal_button.pack(fill="x", pady=(0, 5))
         ttk.Button(
-            actions, text="아바타 화면 / 목소리 확인",
+            actions, text="아바타 화면 확인",
             command=lambda: self._navigate_to("아바타 미리보기"),
+        ).pack(fill="x", pady=(0, 5))
+        ttk.Button(
+            actions, text="자동 방송 일정·운영 흐름 점검 (모의)",
+            command=lambda: self._navigate_to("방송 시작 일정 초안"),
         ).pack(fill="x")
         self._update_broadcaster_home()
         self._draw_avatar_canvases()
