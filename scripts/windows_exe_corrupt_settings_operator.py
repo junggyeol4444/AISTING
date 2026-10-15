@@ -65,16 +65,11 @@ def main() -> None:
         assert not op.u32.IsWindow(message_window), "Warning dialog cannot be dismissed"
         op.snap("31_default_settings_after_warning", hwnd)
 
-        # Explicitly let the user choose to replace the invalid file through Save.
-        left, top, _, _ = op.client_area(hwnd)
-        pyautogui.moveTo(left + 650, top + 430)
-        high = ((-120 * 40) & 0xFFFF) << 16
-        point = (((top + 430) & 0xFFFF) << 16) | ((left + 650) & 0xFFFF)
-        op.u32.SendMessageW(hwnd, 0x020A, high, point)
-        time.sleep(0.5)
-        op.snap("32_after_user_scroll_to_save", hwnd)
-        op.click_relative(hwnd, 765, 590)
-        time.sleep(0.8)
+        # User explicitly saves local preferences using the visible settings
+        # page's documented Ctrl+S shortcut. Never auto-repair at startup.
+        op.go(hwnd, 1)
+        op.snap("32_operator_settings_before_user_save", hwnd)
+        op.save_preferences(hwnd)
 
         repaired_bytes = settings.read_bytes()
         assert repaired_bytes != original, "Clicking Save did not replace corrupt JSON"
