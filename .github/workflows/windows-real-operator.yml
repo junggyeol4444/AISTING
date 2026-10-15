@@ -15,7 +15,7 @@ permissions:
 jobs:
   windows-real-ui:
     runs-on: windows-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
       PYTHONIOENCODING: utf-8
       PYTHONUTF8: "1"
@@ -24,14 +24,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Download actual frozen EXE from verified Windows test-branch run
-        uses: actions/download-artifact@v4
-        with:
-          name: AISTING-v105-Windows-EXE-TEST-BRANCH
-          run-id: 38665856725
-          github-token: ${{ github.token }}
-      - name: Install screenshot and input automation (test runner only)
-        run: python -m pip install --disable-pip-version-check "pyautogui>=0.9.54,<1"
+      - name: Install packaging and Windows GUI operator dependencies on ephemeral runner
+        run: python -m pip install --disable-pip-version-check "pyinstaller>=6,<7" "pyautogui>=0.9.54,<1"
+      - name: Build current testing branch's native Windows EXE
+        run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name AISTING --paths src --add-data "config;config" --add-data "docs;docs" --add-data "logs/STAGE100_FINAL_VALIDATION.txt;logs" --add-data "logs/STAGE100_UNITTEST.log;logs" scripts/run_desktop.py
       - name: Capture operator interactions from real Windows EXE
         run: python scripts/windows_exe_real_operator.py
       - name: Upload actual screen evidence and failure logs
