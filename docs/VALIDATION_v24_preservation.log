@@ -1,0 +1,6 @@
+v23 source files: 147
+unchanged: 140
+modified intentionally: 7
+removed: 0
+modified paths: ['README.md', 'TEST_RESULTS.txt', 'config/roadmap.json', 'docs/CORE_AI_CONNECTION.md', 'docs/ROADMAP_100.md', 'docs/STATUS.md', 'src/ai_broadcaster/desktop.py']
+original plan sha256: d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c

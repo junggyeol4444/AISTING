@@ -1,0 +1,9 @@
+AISTING v73 / original stage 072 avatar screen link (offline partial)
+Base: v72 cumulative ZIP; original plan, roadmap, roadmap.json, README, stage72 logs reviewed.
+Changed: offline_avatar_screen_link.py, desktop.py, new unit tests, GUI smoke script, documentation.
+Automated: PYTHONPATH=src python -m unittest discover -s tests -q => 1365 tests, OK.
+GUI: xvfb-run -a python scripts/gui_offline_broadcast_scene_smoke.py => PASS.
+GUI: xvfb-run -a python scripts/gui_offline_avatar_screen_link_smoke.py => PASS.
+Syntax: python -m compileall -q src => PASS.
+No Windows, EXE, OBS, live capture, account or real model verification.
+Final approval remains pending.

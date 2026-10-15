@@ -1,0 +1,14 @@
+AISTING v59 / original stage 058 avatar layout preview, 2026-10-13 KST
+Previous archive: v58 ZIP, 467 files; CRC testzip=None; old file paths all preserved.
+Changed existing files (4): README.md, TEST_RESULTS.txt, docs/ROADMAP_100.md, src/ai_broadcaster/desktop.py
+New file paths (8 including this log): docs/STAGE59_AVATAR_LAYOUT.md, logs/STAGE59_GUI_ALL.log, logs/STAGE59_SYNTAX.log, logs/STAGE59_UNITTEST.log, scripts/gui_avatar_layout_smoke.py, src/ai_broadcaster/avatar_layout.py, tests/test_avatar_layout.py, logs/STAGE59_FINAL_VALIDATION.txt
+Original plan SHA256 preserved: d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c
+Implementation: local Tk built-in 2D sample scaled/moved into 640x360 mock scene using explicit x/y/size and background. All items stay within normalized mock scene coordinates. Separate local JSON draft requires operator confirmation to save; load manual, delete double confirmation. Reject untrusted records, 3D/unselected and symlinks. Existing selectable platforms/contents/character/voice/avatar/settings/SQLite preserved.
+Automated tests: 1055/1055 PASS (+21 vs baseline 1034), Linux unittest discover.
+GUI actual Tk scripts: 57/57 PASS, Linux Xvfb; prior 56 plus new 1.
+Python syntax AST parse: 184/184 PASS.
+No Github, network service, OS probes/user PC access, download/install, OBS start, broadcast, payment or external AI API used.
+This is MOCK PREVIEW ONLY: not actual OBS layout, Windows rendering, external Live2D/VRM model or user aesthetic judgement. Windows EXE/actual PC: NOT TESTED.
+Stage 010 final user approval: PENDING. Stage 011+ user PC confirmation: PENDING. Original 058 complete checkbox: PENDING actual user acceptance/Windows verification.
+Code coverage progress range: 58/100; not 58 fully approved milestones.
+Preliminary ZIP re-extracted unittest 1055/1055 PASS and new Xvfb Tk GUI PASS. Final ZIP re-extraction tests also required.

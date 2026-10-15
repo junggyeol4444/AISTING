@@ -1,0 +1,52 @@
+test_existing_legacy_tmp_not_overwritten (test_settings_atomicity.SettingsAtomicityTests.test_existing_legacy_tmp_not_overwritten) ... ERROR
+test_existing_legacy_tmp_symlink_target_untouched (test_settings_atomicity.SettingsAtomicityTests.test_existing_legacy_tmp_symlink_target_untouched) ... FAIL
+test_failed_replace_preserves_previous_settings_and_removes_new_temp (test_settings_atomicity.SettingsAtomicityTests.test_failed_replace_preserves_previous_settings_and_removes_new_temp) ... FAIL
+test_successful_atomic_save_preserves_selection_and_no_leftover (test_settings_atomicity.SettingsAtomicityTests.test_successful_atomic_save_preserves_selection_and_no_leftover) ... ok
+
+======================================================================
+ERROR: test_existing_legacy_tmp_not_overwritten (test_settings_atomicity.SettingsAtomicityTests.test_existing_legacy_tmp_not_overwritten)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/data/aisting_work_v103/baseline/AISTING_Offline_v102/tests/test_settings_atomicity.py", line 28, in test_existing_legacy_tmp_not_overwritten
+    self.assertEqual(legacy.read_text(encoding="utf-8"), "operator's previous temporary data")
+                     ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.13/pathlib/_local.py", line 548, in read_text
+    return PathBase.read_text(self, encoding, errors, newline)
+           ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.13/pathlib/_abc.py", line 632, in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors, newline=newline) as f:
+         ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.13/pathlib/_local.py", line 539, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/tmp/tmplxzra6ax/config/settings.tmp'
+
+======================================================================
+FAIL: test_existing_legacy_tmp_symlink_target_untouched (test_settings_atomicity.SettingsAtomicityTests.test_existing_legacy_tmp_symlink_target_untouched)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/data/aisting_work_v103/baseline/AISTING_Offline_v102/tests/test_settings_atomicity.py", line 53, in test_existing_legacy_tmp_symlink_target_untouched
+    self.assertTrue(legacy.is_symlink())
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true
+
+======================================================================
+FAIL: test_failed_replace_preserves_previous_settings_and_removes_new_temp (test_settings_atomicity.SettingsAtomicityTests.test_failed_replace_preserves_previous_settings_and_removes_new_temp)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/data/aisting_work_v103/baseline/AISTING_Offline_v102/tests/test_settings_atomicity.py", line 41, in test_failed_replace_preserves_previous_settings_and_removes_new_temp
+    self.assertEqual(sorted(p.name for p in self.path.parent.iterdir()), ["settings.json"])
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: Lists differ: ['settings.json', 'settings.tmp'] != ['settings.json']
+
+First list contains 1 additional elements.
+First extra element 1:
+'settings.tmp'
+
+- ['settings.json', 'settings.tmp']
++ ['settings.json']
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.004s
+
+FAILED (failures=2, errors=1)

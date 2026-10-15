@@ -1,0 +1,26 @@
+test_before_minimum_blocks_end (test_offline_broadcast_duration.DurationRulesTests.test_before_minimum_blocks_end) ... ok
+test_changed_operator_limits_respected (test_offline_broadcast_duration.DurationRulesTests.test_changed_operator_limits_respected) ... ok
+test_data_immutable (test_offline_broadcast_duration.DurationRulesTests.test_data_immutable) ... ok
+test_description_discloses_mock (test_offline_broadcast_duration.DurationRulesTests.test_description_discloses_mock) ... ok
+test_equal_limits (test_offline_broadcast_duration.DurationRulesTests.test_equal_limits) ... ok
+test_exact_minimum_enables_only_eligibility (test_offline_broadcast_duration.DurationRulesTests.test_exact_minimum_enables_only_eligibility) ... ok
+test_just_below_and_equal_maximum (test_offline_broadcast_duration.DurationRulesTests.test_just_below_and_equal_maximum) ... ok
+test_no_io_network_process_or_wait (test_offline_broadcast_duration.DurationRulesTests.test_no_io_network_process_or_wait) ... ok
+test_over_maximum_still_no_termination (test_offline_broadcast_duration.DurationRulesTests.test_over_maximum_still_no_termination) ... ok
+test_plan_defaults (test_offline_broadcast_duration.DurationRulesTests.test_plan_defaults) ... ok
+test_precision_seconds (test_offline_broadcast_duration.DurationRulesTests.test_precision_seconds) ... ok
+test_reject_excessive_limits (test_offline_broadcast_duration.DurationRulesTests.test_reject_excessive_limits) ... ok
+test_reject_invalid_elapsed (test_offline_broadcast_duration.DurationRulesTests.test_reject_invalid_elapsed) ... ok
+test_reject_inverted_limits (test_offline_broadcast_duration.DurationRulesTests.test_reject_inverted_limits) ... ok
+test_reject_non_integer_limits_and_bools (test_offline_broadcast_duration.DurationRulesTests.test_reject_non_integer_limits_and_bools) ... ok
+test_reject_zero_and_negative_limits (test_offline_broadcast_duration.DurationRulesTests.test_reject_zero_and_negative_limits) ... ok
+test_clock_rollback_rejected (test_offline_broadcast_duration.DurationSessionTests.test_clock_rollback_rejected) ... ok
+test_future_clock_invalid_keeps_last_state (test_offline_broadcast_duration.DurationSessionTests.test_future_clock_invalid_keeps_last_state) ... ok
+test_session_invalid_inputs (test_offline_broadcast_duration.DurationSessionTests.test_session_invalid_inputs) ... ok
+test_time_progression_monotonic (test_offline_broadcast_duration.DurationSessionTests.test_time_progression_monotonic) ... ok
+test_without_real_clock_or_scheduler (test_offline_broadcast_duration.DurationSessionTests.test_without_real_clock_or_scheduler) ... ok
+
+----------------------------------------------------------------------
+Ran 21 tests in 0.002s
+
+OK

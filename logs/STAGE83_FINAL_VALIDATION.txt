@@ -1,0 +1,13 @@
+AISTING v83 | Original stage 082 자동 방송 시작 제어 | OFFLINE MANUAL REHEARSAL ONLY
+Date: 2026-10-14 KST
+BASE: AISTING_Offline_Development_v82.zip (722 actual source/archive file paths)
+REVIEWED: docs/ORIGINAL_PLAN.txt (4부 방송 자동화), docs/ROADMAP_100.md, config/roadmap.json, README.md, docs/STAGE82_OFFLINE_START_SCHEDULE.md, logs/STAGE82_FINAL_VALIDATION.txt and existing source/test logs before code changes.
+IMPLEMENTED: src/ai_broadcaster/offline_start_control.py (manual KST schedule matching, strict false-policy gates, duplicate/in-progress blocking, memory mock start/finish and display-failure retry); integration into existing 방송 시작 일정 초안 GUI tab. NEVER executes actual schedules or registers timers; no system clock inspection, streaming, external operations, settings mutation, program installation, payments or user PC data collection.
+NEW UNIT: 22/22 PASS — logs/STAGE83_NEW_UNITTEST.log.
+FULL UNIT: 1547/1547 PASS — logs/STAGE83_UNITTEST.log.
+GUI: 81/81 PASS, Linux Xvfb. Initial monolithic run cut off by execution limit after a set of successful scripts; remaining cases were run independently and completed without failures, logs/STAGE83_GUI_ALL.log. New GUI independently PASS logs/STAGE83_NEW_GUI.log.
+AST: 256/256 Python src/tests/scripts/tools.py PASS, logs/STAGE83_SYNTAX.log.
+OLD PATHS: 722/722 preserved. README.md, docs/REAL_DEVICE_ACCEPTANCE_CHECKLIST.md, docs/ROADMAP_100.md, src/ai_broadcaster/desktop.py intentionally edited; docs/ORIGINAL_PLAN.txt, config/roadmap.json, config/requirements.json byte-for-byte identical, logs/STAGE83_PRESERVATION.log.
+NOT VERIFIED / NOT IMPLEMENTED: Windows/EXE, actual scheduler/task execution, PC clock/wake handling, OBS start, streaming, accounts, announcement, TTS, avatar, live viewers and messages, real duplicate replay protection after app restart (memory only), actual operator acceptance. Stage 082 remains pending, stage 010 final approval pending. CODE DEVELOPMENT REACHED 82/100, NOT PRODUCT COMPLETION.
+Prohibited operations were not performed: no GitHub, remote repos, network API/cloud service, external server, paid service, installs, account connection, OBS, live broadcast, remote user PC access, unattended data/audio collection.
+POST-EXTRACTION: independently extracted ZIP and ran full unit 1547/1547 PASS and new Tkinter GUI PASS (Linux Xvfb), see logs/STAGE83_REEXTRACTED_UNITTEST.log and logs/STAGE83_REEXTRACTED_GUI.log. ZIP CRC PASS.

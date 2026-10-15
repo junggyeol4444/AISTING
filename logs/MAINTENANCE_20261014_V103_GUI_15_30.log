@@ -1,0 +1,16 @@
+[16/99] gui_brain_stage_review_smoke.py: PASS
+[17/99] gui_character_dialogue_review_smoke.py: PASS
+[18/99] gui_content_smoke.py: PASS
+[19/99] gui_context_retention_smoke.py: PASS
+[20/99] gui_conversation_continuity_smoke.py: PASS
+[21/99] gui_core_ai_connection_smoke.py: PASS
+[22/99] gui_core_ai_probe_smoke.py: PASS
+[23/99] gui_core_execution_smoke.py: PASS
+[24/99] gui_core_foundation_smoke.py: PASS
+[25/99] gui_development_review_smoke.py: PASS
+[26/99] gui_development_scope_smoke.py: PASS
+[27/99] gui_dialogue_voice_link_smoke.py: PASS
+[28/99] gui_emotion_expression_smoke.py: PASS
+[29/99] gui_execution_selfcheck_smoke.py: PASS
+[30/99] gui_hardware_readiness_smoke.py: PASS
+GUI TOTAL 15/15 passed; elapsed=19.61s; failed=[]

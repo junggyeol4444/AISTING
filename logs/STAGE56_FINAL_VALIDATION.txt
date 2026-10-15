@@ -1,0 +1,30 @@
+AISTING v56 FINAL VALIDATION / original roadmap 055 silent voice-avatar mouth routing
+Baseline: v55 ZIP, 440 files; ZIP testzip=None; all previous file paths preserved.
+Changed existing files (5):
+  README.md
+  TEST_RESULTS.txt
+  docs/ROADMAP_100.md
+  docs/STATUS.md
+  src/ai_broadcaster/desktop.py
+New files (9, final ZIP):
+  docs/STAGE56_VOICE_AVATAR_MOUTH.md
+  logs/STAGE56_GUI_ALL.log
+  logs/STAGE56_SYNTAX.log
+  logs/STAGE56_UNITTEST.log
+  scripts/gui_avatar_voice_mouth_smoke.py
+  src/ai_broadcaster/avatar_voice_mouth.py
+  tests/test_avatar_voice_mouth.py
+  logs/STAGE56_FINAL_VALIDATION.txt
+  logs/STAGE56_REEXTRACTED.log
+Original plan SHA256 identical: d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c
+Implemented: Manual mock FIFO chat->answer->virtual Korean voice segment->2D OPEN/OPEN/CLOSED mouth frames. Only successful segments get motion cues. Errors retain pending; operator click resumes. 3D unavailable; operator expression preserved.
+Automatic unittest: 995/995 PASS, 18 new (baseline 977), Linux Python.
+GUI scripts: 54/54 PASS under Linux Xvfb (53 gui_*_smoke.py plus scripts/gui_smoke.py). 53 patterns exercised including newly added test; all passed.
+AST parse: 175/175 PASS.
+User PC accessed/PC info collected: NO. Windows installed voice hardware / Windows EXE: NOT TESTED.
+Real speaker playback, waveform/phoneme synchronization, external Live2D/VRM, real stream/OBS: NOT TESTED / NOT STARTED.
+Stage 010 final approval: PENDING; 011+ PC examination: PENDING. GitHub/remote APIs/network/install/payment/account linking: NOT USED.
+Previous file paths preserved 440/440; no original settings or SQLite data modified.
+ZIP re-extract verification: 995/995 unittest PASS and new Tk GUI PASS on extracted preliminary archive.
+Initial archive file count: 448. Final archive includes this validation log.
+Final ZIP: 449 entries, CRC valid. ZIP re-extracted after final packing: 995/995 unittest PASS and new GUI PASS.

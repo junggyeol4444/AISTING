@@ -1,0 +1,23 @@
+AISTING v75 offline development validation — original roadmap 074 (partial local-only check)
+Source baseline: AISTING_Offline_Development_v74.zip, CRC PASS, 632 entries.
+Original design: docs/ORIGINAL_PLAN.txt read, unchanged SHA256 d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c
+Original roadmap: docs/ROADMAP_100.md read, step 074 checkbox deliberately pending; appendix only.
+Original roadmap JSON config/roadmap.json read, unchanged, steps 010 and 074 remain pending.
+Read README, previous v74 developer docs and logs; reused 071 scene, 072 2D Canvas and 073 voice overlay.
+Added: offline_broadcast_output_audit.py + GUI button and local operator report in desktop.py.
+Nominal volume 0..100, mute-setting 0, Canvas 640x360, content/title/avatar/watermark/voice overlay consistency.
+No measured speaker loudness, actual sound, OBS, device, stream, remote access, external API, install or operator PC data.
+New unit tests: 17/17 PASS.
+Original source full suite: 1394/1394 PASS; source logs/STAGE75_UNITTEST.log.
+Original source Python compileall src/tests/scripts: PASS; logs/STAGE75_SYNTAX.log.
+Original source new Tk GUI smoke on Linux Xvfb: PASS; logs/STAGE75_GUI_NEW.log.
+Original source full GUI smoke suite individually on Linux Xvfb: 73/73 PASS, 0 failed; logs/STAGE75_GUI_ALL.log.
+Original ZIP baseline relative paths preserved; final ZIP CRC and re-extraction verified separately.
+Windows EXE/real speaker loudness or image/sound quality/real broadcast/rights: NOT tested.
+Operator final approval pending; official step 074 pending; code development reaches 74/100 only.
+Separate extraction of preliminary complete source ZIP into /mnt/data/aisting_v75_reextracted:
+- unit tests PYTHONDONTWRITEBYTECODE=1: 1394/1394 PASS.
+- new real Tk GUI Xvfb test: PASS.
+- Python AST check: 231/231 Python source files PASS.
+- ZIP original entries preserved: 632/632; original plan and config/roadmap.json byte identical.
+- Final cumulative ZIP expected entries: 642; regeneration after embedding this report verified with CRC and byte comparisons.

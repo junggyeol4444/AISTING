@@ -1,0 +1,14 @@
+AISTING v22 로컬 소스 무결성 검사 (2026-10-13)
+기준 ZIP: AISTING_Offline_Development_v21.zip
+기존 ZIP의 파일 127개: 삭제 0개, 120개 원본 바이트 동일, 7개 의도된 변경.
+의도 변경: README.md, config/roadmap.json, docs/CORE_FOUNDATION.md,
+docs/ROADMAP_100.md, docs/STATUS.md,
+src/ai_broadcaster/core_foundation.py, src/ai_broadcaster/desktop.py.
+신규: src/ai_broadcaster/core_execution.py, tests/test_core_execution.py,
+scripts/gui_core_execution_smoke.py, docs/CORE_EXECUTION.md 및 v22 검증 로그.
+Python 소스 74개 AST 구문 검사 통과.
+원본 기획안 SHA256: d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c (v21과 동일)
+로드맵 completed=9; step 10 pending; step 22 pending (구현 증거만 기록, 실기기 검증/운영 승인 미완료).
+자동 테스트 422/422 통과; GUI smoke 21/21 통과; 자가점검 5/5 통과.
+외부 저장소/GitHub/프로그램 설치/실제 방송/사용자 PC 접근 없음.
+Windows 실기기 및 EXE 검증 미수행.

@@ -1,0 +1,33 @@
+AISTING v67 / original roadmap 066 / no-artificial-delay offline FIFO mock response timing
+
+BASELINE
+- Source: /mnt/data/AISTING_Offline_Development_v66.zip, 540 relative files, CRC PASS.
+- Reviewed docs/ORIGINAL_PLAN.txt, docs/ROADMAP_100.md, config/roadmap.json, README, docs/STAGE66_ALL_CHAT_REACTIONS.md and earlier stage 062-065 modules/tests/logs.
+- Original requirement: respond to all accepted chats; do not impose intentional delay or default filtering; naturalness judged by operator.
+- v66 baseline: 1220/1220 unit tests passed.
+
+IMPLEMENTATION (stage 066 code scope only)
+- src/ai_broadcaster/offline_chat_latency.py: time actual existing 065 OfflineChatReactions.reply_next() synchronous mock calls with perf_counter_ns; per-event samples, median, min/max, nearest-rank P95; no sleep, artificial wait, automatic retry, background timer, default filtering, or pass/fail speed threshold.
+- Existing 062 receiver / 063 FIFO / 065 mock reply port reused. Explicit manual next/batch (up to 50), fail-fast and pending preservation, clock failure/previously responded but unmeasured reporting, no duplicate-text elimination.
+- src/ai_broadcaster/desktop.py: one new Tk tab '채팅 무지연 모의 시험'; old tabs unchanged.
+- tests/test_offline_chat_latency.py: 20 new tests. scripts/gui_offline_chat_latency_smoke.py: new real Tk GUI test.
+- docs/STAGE67_NO_ARTIFICIAL_CHAT_DELAY.md, README, ROADMAP, TEST_RESULTS updated.
+
+ACTUAL TESTS EXECUTED
+- Unit: PYTHONPATH=src python -m unittest discover -s tests -q -> 1240/1240 PASS (20 new; 1220 baseline).
+- GUI: 64/64 scripts/gui_*_smoke.py PASS on Linux Xvfb; includes new 066 Tk GUI test. See logs/STAGE67_GUI_REGRESSION.log.
+- AST: 208/208 .py files parse successfully. See logs/STAGE67_SYNTAX.log.
+- Preliminary ZIP CRC PASS and extraction into separate /mnt/data/aisting_v67_reextracted/AISTING_Offline_v67.
+- After preliminary extraction: 1240/1240 unittest PASS, new stage-066 GUI PASS, all 64/64 GUI regression PASS. See logs/STAGE67_REEXTRACTED_*.
+- Final archive source/test code is identical to preliminary archive; only evidence logs/this final validation are appended or updated.
+
+PRESERVATION
+- All 540 v66 relative file paths preserved. Modified prior paths: README.md, TEST_RESULTS.txt, docs/ROADMAP_100.md, src/ai_broadcaster/desktop.py. All other prior files byte-identical.
+- docs/ORIGINAL_PLAN.txt SHA256: d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c (unchanged).
+- config/roadmap.json original 066 status pending; original 010 final user approval pending. Code development reach: 66/100; NOT approval count.
+- No GitHub, external servers/cloud AI, user PC access/data collection, installations, paid services, OBS or real broadcast actions.
+
+LIMITS
+- Only synchronous in-memory mock reply call duration measured. Not live chat arrival-to-reply latency, real AI inference, GUI/TTS/avatar/audio, real platform, end-to-end streaming delay or human-likeness.
+- Windows PC/EXE and actual devices not tested. No operator final approval or live-platform validation. Roadmap 066 remains pending.
+- Final cumulative archive: AISTING_Offline_Development_v67.zip; ZIP CRC validated after archive creation.

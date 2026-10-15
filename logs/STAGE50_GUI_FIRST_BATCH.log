@@ -1,0 +1,39 @@
+GUI regression FIRST BATCH: 34/34 PASS observed in run output.
+The runner was interrupted by the tool wall-time after the 34th PASS.
+Remaining 14 were executed separately; see STAGE50_GUI_REMAINING.log.
+This record transcribes the returned runner output, not a completed runner log.
+
+PASS gui_all_chat_policy_smoke.py
+PASS gui_avatar_selection_smoke.py
+PASS gui_avatar_smoke.py
+PASS gui_backup_recovery_smoke.py
+PASS gui_basic_reaction_smoke.py
+PASS gui_brain_stage_review_smoke.py
+PASS gui_character_dialogue_review_smoke.py
+PASS gui_content_smoke.py
+PASS gui_context_retention_smoke.py
+PASS gui_conversation_continuity_smoke.py
+PASS gui_core_ai_connection_smoke.py
+PASS gui_core_ai_probe_smoke.py
+PASS gui_core_execution_smoke.py
+PASS gui_core_foundation_smoke.py
+PASS gui_development_review_smoke.py
+PASS gui_development_scope_smoke.py
+PASS gui_dialogue_voice_link_smoke.py
+PASS gui_emotion_expression_smoke.py
+PASS gui_execution_selfcheck_smoke.py
+PASS gui_hardware_readiness_smoke.py
+PASS gui_idle_speech_smoke.py
+PASS gui_korean_dialogue_test_smoke.py
+PASS gui_local_operation_smoke.py
+PASS gui_manual_archive_smoke.py
+PASS gui_operator_boundaries_smoke.py
+PASS gui_operator_feedback_smoke.py
+PASS gui_os_readiness_smoke.py
+PASS gui_persona_drafts_smoke.py
+PASS gui_persona_input_smoke.py
+PASS gui_persona_smoke.py
+PASS gui_platform_smoke.py
+PASS gui_pronunciation_review_smoke.py
+PASS gui_reaction_directions_smoke.py
+PASS gui_response_error_smoke.py

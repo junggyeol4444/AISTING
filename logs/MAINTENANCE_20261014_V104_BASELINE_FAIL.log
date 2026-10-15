@@ -1,0 +1,57 @@
+test_existing_legacy_history_kept_and_append_works (test_local_memory_sqlite_safety.LocalMemorySqliteSafetyTests.test_existing_legacy_history_kept_and_append_works) ... ok
+test_extra_foreign_tables_rejected_without_modification (test_local_memory_sqlite_safety.LocalMemorySqliteSafetyTests.test_extra_foreign_tables_rejected_without_modification) ... FAIL
+test_foreign_database_is_not_modified (test_local_memory_sqlite_safety.LocalMemorySqliteSafetyTests.test_foreign_database_is_not_modified) ... FAIL
+test_malformed_history_schema_rejected_without_modification (test_local_memory_sqlite_safety.LocalMemorySqliteSafetyTests.test_malformed_history_schema_rejected_without_modification) ... FAIL
+test_new_database_and_operations_still_work (test_local_memory_sqlite_safety.LocalMemorySqliteSafetyTests.test_new_database_and_operations_still_work) ... ok
+test_symlinked_database_refused_without_target_changes (test_local_memory_sqlite_safety.LocalMemorySqliteSafetyTests.test_symlinked_database_refused_without_target_changes) ... FAIL
+test_symlinked_parent_refused_without_creating_database (test_local_memory_sqlite_safety.LocalMemorySqliteSafetyTests.test_symlinked_parent_refused_without_creating_database) ... FAIL
+
+======================================================================
+FAIL: test_extra_foreign_tables_rejected_without_modification (test_local_memory_sqlite_safety.LocalMemorySqliteSafetyTests.test_extra_foreign_tables_rejected_without_modification)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/data/aisting_v104_work/AISTING_Offline_v103/tests/test_local_memory_sqlite_safety.py", line 51, in test_extra_foreign_tables_rejected_without_modification
+    with self.assertRaises(ValueError):
+         ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_foreign_database_is_not_modified (test_local_memory_sqlite_safety.LocalMemorySqliteSafetyTests.test_foreign_database_is_not_modified)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/data/aisting_v104_work/AISTING_Offline_v103/tests/test_local_memory_sqlite_safety.py", line 31, in test_foreign_database_is_not_modified
+    with self.assertRaises(ValueError):
+         ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_malformed_history_schema_rejected_without_modification (test_local_memory_sqlite_safety.LocalMemorySqliteSafetyTests.test_malformed_history_schema_rejected_without_modification)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/data/aisting_v104_work/AISTING_Offline_v103/tests/test_local_memory_sqlite_safety.py", line 42, in test_malformed_history_schema_rejected_without_modification
+    with self.assertRaises(ValueError):
+         ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_symlinked_database_refused_without_target_changes (test_local_memory_sqlite_safety.LocalMemorySqliteSafetyTests.test_symlinked_database_refused_without_target_changes)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/data/aisting_v104_work/AISTING_Offline_v103/tests/test_local_memory_sqlite_safety.py", line 72, in test_symlinked_database_refused_without_target_changes
+    with self.assertRaises(ValueError):
+         ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_symlinked_parent_refused_without_creating_database (test_local_memory_sqlite_safety.LocalMemorySqliteSafetyTests.test_symlinked_parent_refused_without_creating_database)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/data/aisting_v104_work/AISTING_Offline_v103/tests/test_local_memory_sqlite_safety.py", line 84, in test_symlinked_parent_refused_without_creating_database
+    with self.assertRaises(ValueError):
+         ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+----------------------------------------------------------------------
+Ran 7 tests in 0.009s
+
+FAILED (failures=5)

@@ -1,0 +1,8 @@
+Linux Xvfb GUI checked, passed:
+new: scripts/gui_avatar_voice_sync_smoke.py
+prior: scripts/gui_avatar_voice_mouth_smoke.py
+prior: scripts/gui_avatar_expressions_smoke.py
+prior: scripts/gui_avatar_display_validation_smoke.py
+prior: scripts/gui_avatar_selection_smoke.py
+prior: scripts/gui_voice_final_verification_smoke.py
+Note: full 55-script GUI sweep NOT complete due execution time limits.

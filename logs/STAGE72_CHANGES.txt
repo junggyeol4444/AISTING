@@ -1,0 +1,11 @@
+AISTING v72 / original 071 offline scene composition only.
+Baseline: actually existing v71 ZIP; docs/ORIGINAL_PLAN.txt, docs/ROADMAP_100.md,
+config/roadmap.json, README.md, TEST_RESULTS.txt, STAGE71 audit docs,
+logs/STAGE71_FINAL_VALIDATION.txt, existing source and tests inspected before changes.
+Modified: src/ai_broadcaster/desktop.py, README.md, TEST_RESULTS.txt, docs/ROADMAP_100.md.
+Added: src/ai_broadcaster/offline_broadcast_scene.py,
+       tests/test_offline_broadcast_scene.py (27 tests),
+       scripts/gui_offline_broadcast_scene_smoke.py,
+       docs/STAGE72_BROADCAST_SCENE.md and STAGE72 logs.
+No remote, cloud, OBS, capture, payment, install, account, PC information or voice collection.
+Approval 010/071 pending; actual Windows and broadcasting not verified.

@@ -1,0 +1,58 @@
+AISTING v71 / ORIGINAL 070 실시간 채팅 소통 검증 — OFFLINE INTEGRATION ONLY
+
+BASELINE / ACTUAL REVIEW
+- Latest actually existing cumulative source: AISTING_Offline_Development_v70.zip; 588 relative files.
+- Inspected docs/ORIGINAL_PLAN.txt (all-chat, no default artificial delay, operator judges naturalness),
+  docs/ROADMAP_100.md (original 070 pending), config/roadmap.json (010/069/070 pending),
+  README.md, TEST_RESULTS.txt, docs/STAGE70_CHAT_CONNECTION_RECOVERY.md,
+  logs/STAGE70_CHANGES.txt, logs/STAGE70_FINAL_VALIDATION.txt and existing 061-069
+  connector/receiver/order/reactions/recovery/viewer context source and unit/GUI tests.
+- Original 059-069 offline mock work already exists; not reimplemented in this run.
+
+IMPLEMENTED / ONE STAGE
+- Original 070 offline portion: a new finite, operator-triggered, isolated end-to-end
+  synthetic communication drill, with 15 invariant checks and 6 mock messages.
+- Existing 061 connection, 062 receiver, 063 FIFO, 065 mock replies, 067 viewer history,
+  069 manual outage/recovery classes are reused. No new receiver or production queue.
+- Covers pre-connect ingress rejection, manual connect/attach, duplicate text, multiple
+  viewers, global FIFO, failed reply head retention and manual resume, outage ingress
+  rejection, simulated handshake failure without automatic retry, manual reconnect and
+  separate reattach, preserved prefix, new messages, all six replies in order, and
+  per-(platform,nickname) successful history isolation.
+- GUI tab '채팅 소통 통합 모의 검증'; no platform auto-selection; selection change invalidates
+  prior GUI result. Test uses new ephemeral memory objects and does NOT change the
+  user's current chat session, settings, files or selected character/voice/avatar.
+- The scripted failure/recovery sequence is inside the explicitly requested test ONLY;
+  it is not a production background retry loop. No network, timer, sleep or disk I/O.
+
+TESTS ACTUALLY EXECUTED
+- Source-tree full unittest: 1334/1334 PASS (21 new versus v70 1313).
+  Evidence: logs/STAGE71_UNITTEST.log.
+- Source-tree GUI: 68/68 scripts/gui_*_smoke.py PASS on Linux Xvfb,
+  including new Tk integration test. Evidence: logs/STAGE71_GUI_REGRESSION.log.
+- Python AST: 219/219 PASS. Evidence: logs/STAGE71_SYNTAX.log.
+- Preliminary ZIP: 596 files, CRC PASS, extracted into independent directory.
+- Re-extracted full unittest: 1334/1334 PASS.
+  Evidence: logs/STAGE71_REEXTRACTED_UNITTEST.log.
+- Re-extracted new Tk GUI: PASS; prior 069 recovery GUI: PASS.
+  Evidence: logs/STAGE71_REEXTRACTED_GUI.log and STAGE71_REEXTRACTED_GUI_REGRESSION.log.
+- Final ZIP adds only these re-extraction logs and this validation text after preliminary
+  extraction; source/tests/GUI scripts unchanged from tested preliminary archive.
+
+PRESERVATION / ROADMAP
+- All 588/588 previous relative paths preserved.
+- Previously existing files modified only: README.md, TEST_RESULTS.txt, docs/ROADMAP_100.md, src/ai_broadcaster/desktop.py.
+- New relative paths before this validation file: 11.
+- Original plan SHA256: d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c (unchanged).
+- config/roadmap.json SHA256: bcaee31766fc5db4307f2d6f86becbe7dce28931d55c51ff8b39296beba5d48e (unchanged).
+- 010 final operator approval, 069 real platform validation and 070 final acceptance remain
+  pending. Code development reach 70/100 != user signoff or actual live verification.
+
+LIMITS / PROHIBITIONS
+- NOT verified: actual real-time platform chat, server-side message gaps, live AI response,
+  voice/avatar/OBS/broadcast, naturalness, Windows real device/EXE, user approval,
+  licensing/rights or installations.
+- No GitHub, remote repo, external servers, cloud AI API, payment, account connection,
+  unauthorized installation, remote PC control or user PC/voice information collection.
+- GUI used Linux Xvfb only; no Windows machine or actual platform was accessed.
+- Next original stage: 071 방송 송출 화면 구성 (offline-only preview/contract; no OBS).

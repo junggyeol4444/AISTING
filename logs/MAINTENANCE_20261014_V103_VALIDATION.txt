@@ -1,0 +1,17 @@
+AISTING v103 maintenance validation (2026-10-14, offline)
+This is maintenance of original roadmap, NOT stage 101 or user approval.
+Source baseline: AISTING_Offline_Development_v102.zip, 999 original files.
+
+Observed before patch: 4 new regression tests on v102 => 1 passed, 2 failed, 1 error.
+Cause: save_settings() reused fixed settings.tmp and could overwrite unrelated data / symlink target; failed replace left temp behind.
+Patch: private unique sibling tempfile + flush + fsync + os.replace + finally unlink; existing settings schema unchanged.
+Secondary fix: test_all_chat_policy.py now inserts local src path so README's plain unittest command succeeds.
+
+Full tests: python -m unittest discover -s tests -v => 2002/2002 PASS; ResourceWarning 0.
+Full tests: PYTHONPATH=src PYTHONWARNINGS=always::ResourceWarning python -m unittest discover -s tests -v => 2002/2002 PASS; ResourceWarning 0.
+GUI Linux Xvfb: 99/99 scripts PASS in seven non-overlapping batches.
+Python AST: 311/311 files PASS.
+Independent extracted ZIP: 2002/2002 PASS; ResourceWarning 0; 4/4 targeted GUI scripts PASS.
+Old 999 files all retained; only README.md, TEST_RESULTS.txt, docs/ROADMAP_100.md, src/ai_broadcaster/offline_settings.py, tests/test_all_chat_policy.py changed among them.
+Original docs/ORIGINAL_PLAN.txt and config/roadmap.json are byte-for-byte unchanged.
+Windows EXE, actual OBS/TTS/avatar/chat/broadcast, long-running real operation and user approval NOT tested or granted.

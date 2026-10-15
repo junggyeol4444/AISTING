@@ -1,0 +1,17 @@
+AISTING v84 | Original stage 083 시작부터 종료까지 자동 진행 테스트 | OFFLINE AUDIT ONLY
+Date: 2026-10-14 KST
+SOURCE: AISTING_Offline_Development_v83.zip, 735 ZIP files, CRC PASS.
+REVIEWED BEFORE CHANGE: docs/ORIGINAL_PLAN.txt (4부), docs/ROADMAP_100.md, config/roadmap.json, README.md, TEST_RESULTS.txt, docs/STAGE82_OFFLINE_START_SCHEDULE.md, docs/STAGE83_OFFLINE_START_CONTROL.md, logs/STAGE83_FINAL_VALIDATION.txt, existing code and tests.
+IMPLEMENTED: src/ai_broadcaster/offline_full_cycle_audit.py using existing 081 schedule / 082 start / 078 duration / 079 closing; a 14-check integrated, deterministic manual rehearsal and a GUI button/status on existing schedule tab. All times supplied explicitly; no actual timers, broadcast, audio, devices, OBS, network, accounts, files/settings writes or paid services. Any failed state causes FAIL, not a false-positive certification.
+NEW UNIT: 23/23 PASS — logs/STAGE84_NEW_UNITTEST.log.
+FULL UNIT: 1570/1570 PASS — logs/STAGE84_UNITTEST.log.
+GUI: 82/82 PASS in Linux Xvfb. Initial sequential batch confirmed 28 before tool timeout; next 7 related GUIs passed, and remaining 47 independent scripts passed with parallel execution. logs/STAGE84_GUI_BATCH_A.console, logs/STAGE84_GUI_TARGETED.log, logs/STAGE84_GUI_REMAINING.console/log.
+AST: 259/259 Python files PASS — logs/STAGE84_SYNTAX.log.
+PRESERVATION: see logs/STAGE84_PRESERVATION.log; older ZIP entry paths all retained, original plan and config/roadmap.json exactly unchanged.
+ORIGINAL STAGE 083 STATUS: pending (real integration not performed). Original stage 010 final approval: pending.
+CODE DEVELOPMENT REACHED: 83/100 (NOT a measured product completeness percentage).
+NOT IMPLEMENTED/VERIFIED: real auto start/stop, timed wall-clock execution, pre/post announcements, actual viewer messages, AI LLM broadcast, TTS audio, real avatar/Live2D/VRM, OBS/stream, Windows EXE, OS sleep/reboot handling, rights, naturalness, operator approval. User must test/approve these separately.
+PROHIBITED ACTIONS: no GitHub/repositories, external servers, cloud APIs, payments, installs, accounts, OBS/real broadcast, remote user PC, system data/audio gathering.
+POST-EXTRACTION: independent extraction into /mnt/data/aisting_v84_reextracted and 1570/1570 full unit test PASS, new Tkinter GUI PASS (Linux Xvfb). logs/STAGE84_REEXTRACTED_UNITTEST.log and logs/STAGE84_REEXTRACTED_GUI.log. ZIP CRC PASS.
+
+Final archive contains all 735 v83 relative file paths; new files and logs included. No user settings or existing user data were modified.

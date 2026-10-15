@@ -1,0 +1,2 @@
+Initial GUI slice 60:90 run was interrupted by external execution timeout before result output; this was NOT counted as pass.
+Re-run in six independent 5-script slices: 60:65, 65:70, 70:75, 75:80, 80:85, 85:90; each 5/5 PASS. Total fresh GUI scripts 90/90 PASS.

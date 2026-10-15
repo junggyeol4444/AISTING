@@ -1,0 +1,13 @@
+AISTING v87 FINAL VALIDATION — ORIGINAL 086 offline rehearsal only
+Base source: AISTING_Offline_Development_v86.zip, verified ZIP CRC, original plan/roadmap reviewed.
+Scope: linked stage 082 *virtual* start to 084 local notice and 085 Discord unpublishable preview. Manual local display and in-memory duplicate suppression. No real automatic posting.
+Modified previous code: src/ai_broadcaster/desktop.py, src/ai_broadcaster/offline_start_control.py; added new rehearsal module, unit and GUI tests.
+Source full unit: 1635/1635 PASS (21 new) — logs/STAGE87_UNITTEST.log.
+Source GUI: 85/85 PASS, Linux Xvfb (including new stage 086) — logs/STAGE87_GUI_REGRESSION.log.
+Source syntax: 267/267 PASS — logs/STAGE87_SYNTAX.log.
+Code reached original 086 (86/100 stages attempted); original 086 status pending and final operator approval 010 pending. This is not product completeness.
+No GitHub, remote server, Discord login/API, OBS start, payments, installs, user PC access/data/voice collection.
+NOT VERIFIED: Windows 10/11/EXE, live timer/scheduler, actual announcement posting, Discord API compatibility, persistence/restart duplicate protection, real AI/voice/avatar/OBS or user acceptance.
+REEXTRACTION: unit 1635/1635 PASS, new Tkinter GUI PASS under Linux Xvfb; separate folder: source copied from actual ZIP.
+PRESERVATION: 772/772 old paths present; original plan and roadmap JSON byte-identical.
+FINAL ZIP: 783 files including new post-extraction logs (checked again after repack); ZIP CRC PASS.

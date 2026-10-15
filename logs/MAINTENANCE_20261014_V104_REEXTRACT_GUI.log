@@ -1,0 +1,9 @@
+PASS scripts/gui_smoke.py
+PASS scripts/gui_response_records_smoke.py
+PASS scripts/gui_offline_memory_recall_smoke.py
+PASS scripts/gui_offline_past_broadcast_memory_smoke.py
+PASS scripts/gui_offline_final_acceptance_smoke.py
+PASS scripts/gui_offline_operator_maintenance_smoke.py
+PASS scripts/gui_platform_smoke.py
+PASS scripts/gui_voice_source_smoke.py
+GUI_REEXTRACT 8 / 8

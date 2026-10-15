@@ -1,0 +1,9 @@
+AISTING v21 무결성 검사 (패키징 전)
+기존 v20 파일 보존: 117/117 존재
+기존 파일 내용 동일: 111/111 (예정된 6개 변경 제외)
+예정된 변경: README.md, TEST_RESULTS.txt, config/roadmap.json, docs/ROADMAP_100.md, docs/STATUS.md, src/ai_broadcaster/desktop.py
+Python AST 구문 검사: 71개 통과
+원본 기획안 SHA256: d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c
+원본 기획안 SHA256: v20과 일치
+로드맵: 100개, 공식 완료 9개, 10~100 pending
+외부 네트워크/GitHub/설치/실방송 수행 없음

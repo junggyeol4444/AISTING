@@ -1,0 +1,8 @@
+AISTING v104 Linux Xvfb GUI smoke results
+99 unique scripts from scripts/gui_*smoke.py
+first 28: 28 PASS, 0 FAIL (logs/MAINTENANCE_20261014_V104_GUI.log)
+28..47: 20 PASS, 0 FAIL (logs/MAINTENANCE_20261014_V104_GUI_028_048.log)
+48..67: 20 PASS, 0 FAIL (logs/MAINTENANCE_20261014_V104_GUI_048_068.log)
+68..87: 20 PASS, 0 FAIL (logs/MAINTENANCE_20261014_V104_GUI_068_088.log)
+88..98: 11 PASS, 0 FAIL (logs/MAINTENANCE_20261014_V104_GUI_088_099.log)
+TOTAL 99/99 PASS, Linux virtual display, not Windows real hardware.

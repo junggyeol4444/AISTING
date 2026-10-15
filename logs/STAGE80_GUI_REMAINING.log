@@ -1,0 +1,150 @@
+gui_emotion_expression_smoke.py EXIT=0
+GUI stage048 manual emotion-expression review: PASS
+
+gui_execution_selfcheck_smoke.py EXIT=0
+20단계 GUI · 수동 자가점검/오류/탭 이동/기존 데이터 보존: 통과
+
+gui_hardware_readiness_smoke.py EXIT=0
+12단계 하드웨어 수동 입력 GUI · 확인/저장/복원/삭제/무조회/무전송: 통과
+
+gui_idle_speech_smoke.py EXIT=0
+GUI original roadmap 038 idle speech simulation: PASS
+
+gui_korean_dialogue_test_smoke.py EXIT=0
+25단계 GUI · 한국어 모의 시험/중복/입력 오류/초기화/무접속: 통과
+
+gui_local_operation_smoke.py EXIT=0
+9단계 PC 로컬 운영 GUI · 수동 점검 · 원본 보존 · 네트워크 미사용: 통과
+
+gui_manual_archive_smoke.py EXIT=0
+18단계 GUI · 탭 이동/무조회 미리보기/취소/수동 보관/중복 차단/무전송: 통과
+
+gui_offline_avatar_screen_link_smoke.py EXIT=0
+Stage 072 real Tk Canvas 2D link / 3D no-fallback: PASS
+
+gui_offline_broadcast_closing_smoke.py EXIT=0
+Stage 079 GUI local notice/farewell/mock stop/invalidation/3D/no IO PASS
+
+gui_offline_broadcast_duration_smoke.py EXIT=0
+Stage 078 Tk GUI time bounds/invalidation/3D/no IO: PASS
+
+gui_offline_broadcast_output_audit_smoke.py EXIT=0
+Stage 074 Tk nominal volume 0/85/invalid, scene tags, voice marker, 2D/3D, no IO: PASS
+
+gui_offline_broadcast_output_settings_smoke.py EXIT=0
+Stage 075 Tk offline settings binding/audit/stale/mute/3D/no IO: PASS
+
+gui_offline_broadcast_scene_smoke.py EXIT=0
+GUI original 071 offline broadcast scene preview + stale/2D/3D: PASS
+
+gui_offline_broadcast_voice_link_smoke.py EXIT=0
+Stage 073 Tk voice/scene mock route, manual retry, invalidation, no fallback: PASS
+
+gui_offline_chat_communication_audit_smoke.py EXIT=0
+GUI original 070 isolated offline chat chain + selection invalidation: PASS
+
+gui_offline_chat_integrity_smoke.py EXIT=0
+GUI stage 064 duplicate content preserved, unsynced not lost, gap detection, stale audit, no I/O: PASS
+
+gui_offline_chat_latency_smoke.py EXIT=0
+GUI stage 066 timed existing FIFO mock replies, fail/resume, untimed detection, no I/O: PASS
+
+gui_offline_chat_order_smoke.py EXIT=0
+GUI stage 063 manual FIFO, duplicate, simulated failure/resume, disconnect retention: PASS
+
+gui_offline_chat_reactions_smoke.py EXIT=0
+GUI stage 065 FIFO duplicate all-chat mock response, failure/manual resume, no I/O: PASS
+
+gui_offline_chat_receiver_smoke.py EXIT=0
+GUI stage 062 manual synthetic receive, duplicate retention, disconnect, selection invalidation: PASS
+
+gui_offline_chat_recovery_smoke.py EXIT=0
+GUI original 069 offline outage/failure/manual recovery/FIFO: PASS
+
+gui_offline_chat_voice_screen_integration_smoke.py EXIT=0
+Stage 077 GUI mock-chat -> mock-reply -> silent voice -> local Tk overlay, failures, stale, 3D, no IO: PASS
+
+gui_offline_multi_viewer_smoke.py EXIT=0
+GUI original 068 multi-viewer interleaving + failure/resume + isolation: PASS
+
+gui_offline_private_broadcast_rehearsal_smoke.py EXIT=0
+Stage 076 Tk private procedure rehearsal/invalidations/3D/no streams/no IO: PASS
+
+gui_offline_viewer_context_smoke.py EXIT=0
+GUI stage 067 opt-in viewer history + actual FIFO replies + isolation: PASS
+
+gui_operator_boundaries_smoke.py EXIT=0
+GUI stage35 operator boundaries smoke: PASS
+
+gui_operator_feedback_smoke.py EXIT=0
+GUI stage 039 operator feedback: PASS
+
+gui_os_readiness_smoke.py EXIT=0
+11단계 OS 수동 입력 GUI · 평가/저장확인/불러오기/삭제/무조회·무전송: 통과
+
+gui_persona_drafts_smoke.py EXIT=0
+GUI 성격·말투 예시/수정/저장/기본 전환/스크롤/무통신: 통과
+
+gui_persona_input_smoke.py EXIT=0
+GUI persona input smoke: PASS
+
+gui_persona_smoke.py EXIT=0
+GUI 캐릭터 기본값/직접 만들기/아바타 이름/저장/초안 보존: 통과
+
+gui_platform_chat_connector_smoke.py EXIT=0
+GUI stage 061 platform selection, manual mock connection, invalidation, no external I/O: PASS
+
+gui_platform_smoke.py EXIT=0
+GUI 플랫폼 미선택/복수 선택/변경/해제 및 로컬 저장: 통과
+
+gui_pronunciation_review_smoke.py EXIT=0
+GUI 047 manual pronunciation + intonation: PASS
+
+gui_reaction_directions_smoke.py EXIT=0
+GUI stage34 smoke: PASS
+
+gui_response_error_smoke.py EXIT=0
+27단계 GUI · 오류 8종/수동 재시도/확인 후 제외/무접속: 통과
+
+gui_response_records_smoke.py EXIT=0
+28단계 GUI · 미리보기/동의 거절/수동 저장/중복/조회/2회 삭제/무접속: 통과
+
+gui_response_speed_smoke.py EXIT=0
+GUI roadmap 036 mock reply time observation: PASS
+
+gui_runtime_profile_smoke.py EXIT=0
+17단계 실행 환경 GUI · 계획/취소/수동 저장/불러오기/적용/삭제/연습중 변경차단/무전송: 통과
+
+gui_selected_voice_routing_smoke.py EXIT=0
+GUI 046 voice routing, selection, invalidation, stop, error, offline: PASS
+
+gui_software_cost_guide_smoke.py EXIT=0
+14단계 프로그램·비용 안내 GUI · 전 항목 표시/조회 없음/설치 없음/결제 없음: 통과
+
+gui_style_consistency_smoke.py EXIT=0
+GUI stage33 smoke: PASS
+
+gui_synthesis_environment_smoke.py EXIT=0
+GUI original roadmap 044 Korean synthesis environment: PASS
+
+gui_voice_final_verification_smoke.py EXIT=0
+GUI stage 050 PASS: virtual voice final checklist, invalidation, safety gates
+
+gui_voice_material_smoke.py EXIT=0
+GUI stage 042 voice material metadata draft: PASS
+
+gui_voice_output_validation_smoke.py EXIT=0
+GUI original 045 Korean virtual output + interrupted worker: PASS
+
+gui_voice_quality_smoke.py EXIT=0
+GUI original stage 043 operator quality: PASS
+
+gui_voice_rights_smoke.py EXIT=0
+GUI stage 041 voice rights review: PASS
+
+gui_voice_source_smoke.py EXIT=0
+GUI 목소리 확보 방식 선택·저장·복원·속도/음량 전달·미설치 음성 대체 방지: 통과
+
+gui_workspace_setup_smoke.py EXIT=0
+16단계 작업 공간 GUI · 미리보기/취소/수동 생성/재실행/기존 파일 보존/무전송: 통과
+

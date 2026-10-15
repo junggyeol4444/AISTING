@@ -1,0 +1,10 @@
+v20 source verification
+v19 archived files: 107; missing: 0
+Modified existing files: README.md, TEST_RESULTS.txt, docs/ROADMAP_100.md, docs/STATUS.md, src/ai_broadcaster/desktop.py
+Original plan SHA256 (unchanged): d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c
+Python compile() files: 67, passed
+v19 old test baseline: 339 passed
+v20 unit tests: 362 passed
+v20 GUI smoke: 19 passed
+v20 manual CLI selfcheck: 5/5 passed
+No Windows real-device or EXE verification

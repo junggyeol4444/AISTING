@@ -1,0 +1,12 @@
+AISTING v37 | 2026-10-13
+Source: verified full v36 archive with 259 entries.
+Original roadmap item 036: offline mock response timing observation GUI and pure Python module.
+Automation: PYTHONPATH=src python -m unittest discover -s tests -q — 674/674 PASS.
+GUI new: PYTHONPATH=src xvfb-run -a python scripts/gui_response_speed_smoke.py — PASS.
+GUI regression: 9/9 PASS, Linux Xvfb (platform/content/persona/persona input/style/reaction directions/brain/response records/operator boundaries).
+Python AST: 118/118 PASS.
+Detailed raw execution stdout/stderr in STAGE37_UNITTEST.log, STAGE37_GUI_NEW.log, STAGE37_GUI_REGRESSION.log, STAGE37_SYNTAX.log.
+All timings are mock core synchronous measurements, no artificial delay, no AI naturalness threshold.
+Not tested: Windows physical device, EXE, local LLM model, real streaming and TTS response timings.
+Not performed: GitHub, cloud/external API, account login, install, payment, OBS, broadcasting, real PC inventory/access.
+10th-step final operator approval and 11th-step onward actual PC checks: pending; no auto-approval.

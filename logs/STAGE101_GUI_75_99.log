@@ -1,0 +1,25 @@
+PASS gui_os_readiness_smoke.py exit=0
+PASS gui_persona_drafts_smoke.py exit=0
+PASS gui_persona_input_smoke.py exit=0
+PASS gui_persona_smoke.py exit=0
+PASS gui_platform_chat_connector_smoke.py exit=0
+PASS gui_platform_smoke.py exit=0
+PASS gui_pronunciation_review_smoke.py exit=0
+PASS gui_reaction_directions_smoke.py exit=0
+PASS gui_response_error_smoke.py exit=0
+PASS gui_response_records_smoke.py exit=0
+PASS gui_response_speed_smoke.py exit=0
+PASS gui_runtime_profile_smoke.py exit=0
+PASS gui_selected_voice_routing_smoke.py exit=0
+PASS gui_smoke.py exit=0
+PASS gui_software_cost_guide_smoke.py exit=0
+PASS gui_style_consistency_smoke.py exit=0
+PASS gui_synthesis_environment_smoke.py exit=0
+PASS gui_voice_final_verification_smoke.py exit=0
+PASS gui_voice_material_smoke.py exit=0
+PASS gui_voice_output_validation_smoke.py exit=0
+PASS gui_voice_quality_smoke.py exit=0
+PASS gui_voice_rights_smoke.py exit=0
+PASS gui_voice_source_smoke.py exit=0
+PASS gui_workspace_setup_smoke.py exit=0
+GUI SLICE 75:99 — 24/24 PASS

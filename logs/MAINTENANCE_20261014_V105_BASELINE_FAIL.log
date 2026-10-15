@@ -1,0 +1,30 @@
+test_normal_save_has_no_error (test_memory_failure_reporting.MemoryFailureReportingTests.test_normal_save_has_no_error) ... ok
+test_replaced_db_after_delivery_is_preserved_and_reported (test_memory_failure_reporting.MemoryFailureReportingTests.test_replaced_db_after_delivery_is_preserved_and_reported) ... ERROR
+test_sqlite_error_after_delivery_is_reported (test_memory_failure_reporting.MemoryFailureReportingTests.test_sqlite_error_after_delivery_is_reported) ... ok
+
+======================================================================
+ERROR: test_replaced_db_after_delivery_is_preserved_and_reported (test_memory_failure_reporting.MemoryFailureReportingTests.test_replaced_db_after_delivery_is_preserved_and_reported)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/data/aisting_v105_work/AISTING_Offline_v104/tests/test_memory_failure_reporting.py", line 39, in test_replaced_db_after_delivery_is_preserved_and_reported
+    runner.process_next(swap_after_delivery)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/data/aisting_v105_work/AISTING_Offline_v104/src/ai_broadcaster/offline_chat.py", line 257, in process_next
+    self.memory.append(answer)
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^
+  File "/mnt/data/aisting_v105_work/AISTING_Offline_v104/src/ai_broadcaster/offline_chat.py", line 206, in append
+    with self._connection() as db:
+         ~~~~~~~~~~~~~~~~^^
+  File "/usr/lib/python3.13/contextlib.py", line 141, in __enter__
+    return next(self.gen)
+  File "/mnt/data/aisting_v105_work/AISTING_Offline_v104/src/ai_broadcaster/offline_chat.py", line 200, in _connection
+    self._validate_existing(db)
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^
+  File "/mnt/data/aisting_v105_work/AISTING_Offline_v104/src/ai_broadcaster/offline_chat.py", line 184, in _validate_existing
+    raise ValueError("기존 SQLite 파일은 AISTING 대화 기억 DB가 아닙니다. 변경하지 않습니다.")
+ValueError: 기존 SQLite 파일은 AISTING 대화 기억 DB가 아닙니다. 변경하지 않습니다.
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.005s
+
+FAILED (errors=1)

@@ -1,0 +1,38 @@
+AISTING v58 FINAL VALIDATION — original roadmap stage 057
+Baseline: v57 accumulated ZIP (458 files), verified CRC before extraction.
+Stage: operator-controlled built-in 2D expression and movement structural review.
+
+AUTOMATED TESTS
+  Full Python unittest: 1034 / 1034 PASS (19 added tests)
+  Source archive unpacked in a separate directory: 1034 / 1034 PASS
+  Python syntax: 180 / 180 .py files PASS
+
+GUI TESTS
+  Linux Tk/Xvfb GUI scripts: 56 / 56 PASS (includes new stage 057 GUI)
+  New stage GUI from prelim ZIP unpack: PASS
+  Results: logs/STAGE58_GUI_TARGETED.log + logs/STAGE58_GUI_REMAINING.log
+  An earlier sequential GUI run hit execution timeout after 15 PASS; ALL scripts were subsequently rerun in isolated parallel groups and ALL 56 passed.
+
+PRESERVATION
+  Original v57 paths: 458; missing: 0
+  Existing files modified: 6
+    README.md
+    TEST_RESULTS.txt
+    docs/ROADMAP_100.md
+    docs/STATUS.md
+    src/ai_broadcaster/avatar_renderer.py
+    src/ai_broadcaster/desktop.py
+  Files added before final validation log: 8
+  Original plan SHA256 (both archives): d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c
+  All previous source files, settings defaults, tests and original plan retained.
+
+OUTSTANDING, NOT CLAIMED AS COMPLETE
+  010 final operator approval pending.
+  011+ actual user PC inspection and all Windows/native EXE tests pending.
+  No actual sound wave or model-based lipsync, external Live2D/VRM, OBS streaming,
+  hardware tests or operator judgement of naturalness performed.
+  No GitHub, network, installation, paid services, recording, device inspection,
+  PC remote access, voice cloning or autonomous broadcasting performed.
+  GUI scripts executed in isolated Linux virtual displays, not Windows.
+
+  This log concerns source tests, not a 57% production-ready system.

@@ -1,0 +1,8 @@
+v89 paths retained 816/816
+Removed paths: 0
+Changed existing paths (4):
+ - README.md
+ - docs/REAL_DEVICE_ACCEPTANCE_CHECKLIST.md
+ - docs/ROADMAP_100.md
+ - src/ai_broadcaster/desktop.py
+Original plan and config/roadmap.json: byte identical

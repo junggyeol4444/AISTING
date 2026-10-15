@@ -1,0 +1,69 @@
+AISTING v100 / ORIGINAL STAGE 099 / OPERATOR MAINTENANCE PARTIAL IMPLEMENTATION
+Date: 2026-10-14 (Asia/Seoul)
+Base: /mnt/data/AISTING_Offline_Development_v99.zip (959 files, CRC PASS)
+Target: original 099 운영자 점검 및 유지보수 체계 확정
+Reviewed: docs/ORIGINAL_PLAN.txt, docs/ROADMAP_100.md, config/roadmap.json,
+ README.md, TEST_RESULTS.txt, docs/REAL_DEVICE_ACCEPTANCE_CHECKLIST.md,
+ docs/STAGE99_OFFLINE_MULTISESSION_STABILITY.md, logs/STAGE99_FINAL_VALIDATION.txt,
+ recent source/test/GUI scripts and stage 099 roadmap item.
+
+IMPLEMENTATION
+ - src/ai_broadcaster/offline_operator_maintenance.py: 12 fixed operator check items,
+   pending/reviewed(operator self-report)/problem statuses, unconditional unresolved
+   legacy SQLite ResourceWarning, immutable bounded report, never any approval.
+ - desktop.py: explicit operator-only maintenance tab; manual per-item input, reset,
+   no-overwrite JSON snapshot via file dialog. No local file scans or automatic saving.
+ - tests/test_offline_operator_maintenance.py: 24 tests.
+ - scripts/gui_offline_operator_maintenance_smoke.py: new isolated Tkinter smoke.
+ - docs/STAGE100_OFFLINE_OPERATOR_MAINTENANCE.md, README, roadmap notes,
+   real-device checklist, TEST_RESULTS, this log updated.
+
+ACTUALLY EXECUTED TESTS (offline project root, PYTHONPATH=src)
+ - python -m unittest discover -s tests -p test_offline_operator_maintenance.py -v
+   -> 24 / 24 PASS.
+ - python -m unittest discover -s tests -q -> 1968 / 1968 PASS;
+   logs/STAGE100_UNITTEST.log.
+ - Python AST parse of src/tests/scripts -> 307 / 307 PASS;
+   logs/STAGE100_SYNTAX.log.
+ - xvfb-run -a env PYTHONPATH=src python scripts/gui_offline_operator_maintenance_smoke.py
+   -> PASS; logs/STAGE100_GUI_NEW.log.
+ - All 98 GUI smoke scripts through scripts/run_stage88_gui_regression.py,
+   slices 0:25=25, 25:50=25, 50:75=25, 75:99=23 -> 98 / 98 PASS.
+   Evidence: logs/STAGE100_GUI_0_25.log, _25_50.log, _50_75.log, _75_99.log.
+   One grouped shell call timed out AFTER 50:75 script wrote all PASS rows; the
+   final 75:99 slice was then run separately. Individual slice logs show PASS.
+ - No GitHub, external server, cloud AI, paid API, user PC collection,
+   OBS, actual streaming, app installation, browser automation or account access.
+
+PRESERVATION
+ - Every relative file path in prior 959-file v99 archive retained.
+ - Unchanged SHA256 ORIGINAL_PLAN.txt:
+   d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c
+ - Unchanged SHA256 config/roadmap.json:
+   bcaee31766fc5db4307f2d6f86becbe7dce28931d55c51ff8b39296beba5d48e
+ - Existing modified files: README.md, TEST_RESULTS.txt,
+   docs/REAL_DEVICE_ACCEPTANCE_CHECKLIST.md, docs/ROADMAP_100.md,
+   src/ai_broadcaster/desktop.py.
+
+KNOWN OPEN ISSUES / ABSENCE OF EVIDENCE
+ - Existing sqlite3.Connection ResourceWarning: unclosed database is still reproduced
+   in full suite. This was not fixed by the operator self-report checklist.
+ - Windows real device/EXE, actual local AI quality, TTS voice, avatar,
+   OBS stream, social posting, platform chat, long real run, real resource leaks,
+   actual rights, actual operator sign-off remain UNVERIFIED / PENDING.
+ - Self-reported manual checkmarks must never be interpreted as product validation.
+ - Original stages 099 and 010 are NOT approved; config/roadmap.json remains pending.
+ - Code development reached 99/100, NOT 99% real product readiness.
+ - NEXT ORIGINAL STAGE 100: final feature review & operator approval; operator
+   approval cannot be granted by this assistant and must remain pending.
+
+POST-EXTRACTION VERIFICATION: appended upon independent zip extraction rerun.
+
+POST-EXTRACTION VERIFIED (independent location)
+ - First v100 ZIP extracted to /mnt/data/aisting_v100_reextracted/AISTING_Offline_v100.
+ - PYTHONPATH=src python -m unittest discover -s tests -q -> 1968/1968 PASS,
+   logs/STAGE100_REEXTRACTED_UNITTEST.log; legacy SQLite warning reproduced.
+ - xvfb-run -a env PYTHONPATH=src python scripts/gui_offline_operator_maintenance_smoke.py
+   -> PASS; logs/STAGE100_REEXTRACTED_GUI.log.
+ - Python __pycache__ / .pyc test-generated files excluded from final ZIP.
+ - No actual user device/streaming was exercised.

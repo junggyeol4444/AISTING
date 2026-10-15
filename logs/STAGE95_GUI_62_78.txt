@@ -1,0 +1,17 @@
+PASS gui_offline_prebroadcast_notice_smoke.py exit=0
+PASS gui_offline_private_broadcast_rehearsal_smoke.py exit=0
+PASS gui_offline_program_recovery_smoke.py exit=0
+PASS gui_offline_start_control_smoke.py exit=0
+PASS gui_offline_viewer_context_smoke.py exit=0
+PASS gui_operator_boundaries_smoke.py exit=0
+PASS gui_operator_feedback_smoke.py exit=0
+PASS gui_os_readiness_smoke.py exit=0
+PASS gui_persona_drafts_smoke.py exit=0
+PASS gui_persona_input_smoke.py exit=0
+PASS gui_persona_smoke.py exit=0
+PASS gui_platform_chat_connector_smoke.py exit=0
+PASS gui_platform_smoke.py exit=0
+PASS gui_pronunciation_review_smoke.py exit=0
+PASS gui_reaction_directions_smoke.py exit=0
+PASS gui_response_error_smoke.py exit=0
+GUI SLICE 62:78 — 16/16 PASS

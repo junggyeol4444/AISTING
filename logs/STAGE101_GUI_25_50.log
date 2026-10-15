@@ -1,0 +1,26 @@
+PASS gui_development_scope_smoke.py exit=0
+PASS gui_dialogue_voice_link_smoke.py exit=0
+PASS gui_emotion_expression_smoke.py exit=0
+PASS gui_execution_selfcheck_smoke.py exit=0
+PASS gui_hardware_readiness_smoke.py exit=0
+PASS gui_idle_speech_smoke.py exit=0
+PASS gui_korean_dialogue_test_smoke.py exit=0
+PASS gui_local_operation_smoke.py exit=0
+PASS gui_manual_archive_smoke.py exit=0
+PASS gui_offline_avatar_screen_link_smoke.py exit=0
+PASS gui_offline_broadcast_automation_audit_smoke.py exit=0
+PASS gui_offline_broadcast_closing_audit_smoke.py exit=0
+PASS gui_offline_broadcast_closing_smoke.py exit=0
+PASS gui_offline_broadcast_duration_smoke.py exit=0
+PASS gui_offline_broadcast_journal_smoke.py exit=0
+PASS gui_offline_broadcast_output_audit_smoke.py exit=0
+PASS gui_offline_broadcast_output_settings_smoke.py exit=0
+PASS gui_offline_broadcast_safety_smoke.py exit=0
+PASS gui_offline_broadcast_scene_smoke.py exit=0
+PASS gui_offline_broadcast_schedule_smoke.py exit=0
+PASS gui_offline_broadcast_voice_link_smoke.py exit=0
+PASS gui_offline_chat_communication_audit_smoke.py exit=0
+PASS gui_offline_chat_integrity_smoke.py exit=0
+PASS gui_offline_chat_latency_smoke.py exit=0
+PASS gui_offline_chat_order_smoke.py exit=0
+GUI SLICE 25:50 — 25/25 PASS

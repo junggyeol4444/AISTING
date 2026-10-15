@@ -1,0 +1,58 @@
+RUN scripts/gui_platform_chat_connector_smoke.py
+GUI stage 061 platform selection, manual mock connection, invalidation, no external I/O: PASS
+PASS scripts/gui_platform_chat_connector_smoke.py
+RUN scripts/gui_platform_smoke.py
+GUI 플랫폼 미선택/복수 선택/변경/해제 및 로컬 저장: 통과
+PASS scripts/gui_platform_smoke.py
+RUN scripts/gui_pronunciation_review_smoke.py
+GUI 047 manual pronunciation + intonation: PASS
+PASS scripts/gui_pronunciation_review_smoke.py
+RUN scripts/gui_reaction_directions_smoke.py
+GUI stage34 smoke: PASS
+PASS scripts/gui_reaction_directions_smoke.py
+RUN scripts/gui_response_error_smoke.py
+27단계 GUI · 오류 8종/수동 재시도/확인 후 제외/무접속: 통과
+PASS scripts/gui_response_error_smoke.py
+RUN scripts/gui_response_records_smoke.py
+28단계 GUI · 미리보기/동의 거절/수동 저장/중복/조회/2회 삭제/무접속: 통과
+PASS scripts/gui_response_records_smoke.py
+RUN scripts/gui_response_speed_smoke.py
+GUI roadmap 036 mock reply time observation: PASS
+PASS scripts/gui_response_speed_smoke.py
+RUN scripts/gui_runtime_profile_smoke.py
+17단계 실행 환경 GUI · 계획/취소/수동 저장/불러오기/적용/삭제/연습중 변경차단/무전송: 통과
+PASS scripts/gui_runtime_profile_smoke.py
+RUN scripts/gui_selected_voice_routing_smoke.py
+GUI 046 voice routing, selection, invalidation, stop, error, offline: PASS
+PASS scripts/gui_selected_voice_routing_smoke.py
+RUN scripts/gui_software_cost_guide_smoke.py
+14단계 프로그램·비용 안내 GUI · 전 항목 표시/조회 없음/설치 없음/결제 없음: 통과
+PASS scripts/gui_software_cost_guide_smoke.py
+RUN scripts/gui_style_consistency_smoke.py
+GUI stage33 smoke: PASS
+PASS scripts/gui_style_consistency_smoke.py
+RUN scripts/gui_synthesis_environment_smoke.py
+GUI original roadmap 044 Korean synthesis environment: PASS
+PASS scripts/gui_synthesis_environment_smoke.py
+RUN scripts/gui_voice_final_verification_smoke.py
+GUI stage 050 PASS: virtual voice final checklist, invalidation, safety gates
+PASS scripts/gui_voice_final_verification_smoke.py
+RUN scripts/gui_voice_material_smoke.py
+GUI stage 042 voice material metadata draft: PASS
+PASS scripts/gui_voice_material_smoke.py
+RUN scripts/gui_voice_output_validation_smoke.py
+GUI original 045 Korean virtual output + interrupted worker: PASS
+PASS scripts/gui_voice_output_validation_smoke.py
+RUN scripts/gui_voice_quality_smoke.py
+GUI original stage 043 operator quality: PASS
+PASS scripts/gui_voice_quality_smoke.py
+RUN scripts/gui_voice_rights_smoke.py
+GUI stage 041 voice rights review: PASS
+PASS scripts/gui_voice_rights_smoke.py
+RUN scripts/gui_voice_source_smoke.py
+GUI 목소리 확보 방식 선택·저장·복원·속도/음량 전달·미설치 음성 대체 방지: 통과
+PASS scripts/gui_voice_source_smoke.py
+RUN scripts/gui_workspace_setup_smoke.py
+16단계 작업 공간 GUI · 미리보기/취소/수동 생성/재실행/기존 파일 보존/무전송: 통과
+PASS scripts/gui_workspace_setup_smoke.py
+GUI BATCH3 PASS=19 FAIL=0

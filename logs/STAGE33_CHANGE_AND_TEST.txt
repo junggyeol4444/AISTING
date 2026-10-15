@@ -1,0 +1,8 @@
+Stage 33: offline style consistency structural review
+Base: AISTING_Offline_Development_v32.zip
+Changed: src/ai_broadcaster/desktop.py
+Added: src/ai_broadcaster/style_consistency.py, tests/test_style_consistency.py, scripts/gui_style_consistency_smoke.py, docs/STAGE33_STYLE_CONSISTENCY.md
+Automated unittest: 634 tests, OK (PYTHONPATH=src python -m unittest discover -s tests -q)
+New GUI smoke: PASS (xvfb-run -a python scripts/gui_style_consistency_smoke.py)
+Limitations: mock/structural checks only; Windows real machine and real LLM not tested.
+Approval pending: stage 10 final approval and user PC checks.

@@ -1,0 +1,15 @@
+AISTING v74 · official stage 073 음성 방송 출력 연결 (offline silent virtual port)
+Base ZIP: /mnt/data/AISTING_Offline_Development_v73.zip (622 paths; CRC checked, success)
+Original files reviewed: docs/ORIGINAL_PLAN.txt, docs/ROADMAP_100.md, config/roadmap.json, README.md, preceding stage development/test logs.
+New code: src/ai_broadcaster/offline_broadcast_voice_link.py
+Existing code edited: src/ai_broadcaster/desktop.py (manual GUI actions, on-change invalidation).
+Tests added: tests/test_offline_broadcast_voice_link.py (12 cases)
+New GUI smoke: scripts/gui_offline_broadcast_voice_link_smoke.py
+Unit tests: PYTHONPATH=src python -m unittest discover -s tests -q -> 1,377 tests, PASS (exit 0)
+Syntax: python -m compileall -q src tests scripts -> PASS (exit 0)
+Focused GUI: four scripts in STAGE74_GUI_REGRESSION.log -> PASS 4/4 (Linux Xvfb).
+Extra broad GUI: scripts/gui_*smoke.py (72 discovered); batch interrupted by execution timeout after 29 completed, all 29 completed PASS, remaining 43 NOT RUN. See STAGE74_GUI_ALL.log. Do not count unrun tests as pass.
+Existing scene 071/072 and stage070 GUI smoke results included in focused run.
+Safety boundaries: no external network, OS TTS, audio recording, speaker playback, model/API, OBS, GitHub, remote storage, account, PC discovery, installation, payments or streaming. Tests patch network, process, storage calls in new path.
+Actual speech capture/OBS routing, 3D renderer, sound quality, Windows EXE, installed voice availability, user rights/approval all NOT VERIFIED.
+Original stage 073 + stage 010 roadmap status: pending; code progress only 73/100.

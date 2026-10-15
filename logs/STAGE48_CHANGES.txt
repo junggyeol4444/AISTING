@@ -1,0 +1,16 @@
+BASE v47: 367 paths; all retained: True
+Changed prior paths:
+README.md
+TEST_RESULTS.txt
+docs/STATUS.md
+src/ai_broadcaster/desktop.py
+New paths:
+docs/STAGE48_PRONUNCIATION_INTONATION.md
+logs/STAGE48_GUI_NEW.log
+logs/STAGE48_GUI_REGRESSION.log
+logs/STAGE48_SYNTAX.log
+logs/STAGE48_UNITTEST.log
+scripts/gui_pronunciation_review_smoke.py
+src/ai_broadcaster/pronunciation_review.py
+tests/test_pronunciation_review.py
+Original plan SHA256: d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c (unchanged: True)

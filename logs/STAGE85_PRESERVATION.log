@@ -1,0 +1,8 @@
+Existing archived files: 751; missing: 0; changed: 5
+Changed existing paths:
+README.md
+TEST_RESULTS.txt
+docs/REAL_DEVICE_ACCEPTANCE_CHECKLIST.md
+docs/ROADMAP_100.md
+src/ai_broadcaster/desktop.py
+Original plan and config/roadmap.json: BYTE IDENTICAL

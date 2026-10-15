@@ -1,0 +1,36 @@
+AISTING v19 integrity checks
+v18 original plan SHA256: d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c
+v19 original plan SHA256: d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c
+Original plan unchanged: yes
+Previous v18 files present: 100/100
+Python compile() files: 63 success
+Unit tests: 339/339 passed (Linux Python 3.13)
+GUI smoke: 18/18 passed (Linux Xvfb)
+v18 manual archive read by v19: passed
+Roadmap: 100 steps, completed 9, 10-19 pending
+Windows EXE and user PC: not tested
+
+Changed existing files:
+README.md
+TEST_RESULTS.txt
+config/roadmap.json
+docs/REQUIREMENTS.md
+docs/ROADMAP_100.md
+docs/STATUS.md
+src/ai_broadcaster/desktop.py
+src/ai_broadcaster/manual_archive.py
+src/ai_broadcaster/runtime_profile.py
+
+Added files:
+docs/BACKUP_RECOVERY.md
+docs/VALIDATION_v19_gui.log
+docs/VALIDATION_v19_unittest.log
+scripts/gui_backup_recovery_smoke.py
+src/ai_broadcaster/backup_recovery.py
+tests/test_backup_recovery.py
+
+ZIP delivery validation:
+- ZIP testzip(): no bad members (107 files).
+- Re-extracted v19 ZIP: unittest 339/339 passed.
+- Re-extracted original plan SHA256 unchanged.
+- GUI smoke 18/18 tested against v19 source before packaging (Linux Xvfb).

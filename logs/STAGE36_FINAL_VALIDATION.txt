@@ -1,0 +1,12 @@
+AISTING v36 — original roadmap 035 basic reaction test
+Source: verified v35 ZIP (251 original files, CRC passed)
+Changed existing files: README.md, docs/ROADMAP_100.md, docs/STATUS.md, src/ai_broadcaster/desktop.py
+Added: basic_reaction_test.py, test_basic_reaction_test.py, gui_basic_reaction_smoke.py, STAGE36_BASIC_REACTION_VALIDATION.md, three raw log files and this validation log.
+Automatic tests: 661/661 passed (PYTHONPATH=src python -m unittest discover -s tests -q)
+GUI new: PASS (Linux Xvfb virtual display)
+GUI regression: 9/9 PASS (Linux Xvfb virtual display)
+Python syntax parse: 115/115 source/test/scripts passed
+Original plan SHA256: d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c
+No real Windows, EXE, model quality, OS/hardware probe, external network, broadcast, GitHub or installs performed.
+User approval, user PC check and actual AI/browser/OBS interaction: PENDING.
+This version addresses missing original roadmap 035 test; original roadmap 036 speed testing is not claimed complete.

@@ -1,0 +1,14 @@
+PASS gui_offline_start_control_smoke.py 082 local-only GUI: due/dedup/manual mock/invalid input/no network PASS
+
+PASS gui_offline_broadcast_schedule_smoke.py Stage 081 GUI schedule add/remove/save/load/manual preview/no auto-start/no network PASS
+
+PASS gui_offline_broadcast_duration_smoke.py Stage 078 Tk GUI time bounds/invalidation/3D/no IO: PASS
+
+PASS gui_offline_broadcast_closing_smoke.py Stage 079 GUI local notice/farewell/mock stop/invalidation/3D/no IO PASS
+
+PASS gui_offline_broadcast_closing_audit_smoke.py Stage 080 GUI isolated offline audit/invalid inputs/selection change/no IO PASS
+
+PASS gui_offline_broadcast_scene_smoke.py GUI original 071 offline broadcast scene preview + stale/2D/3D: PASS
+
+PASS gui_offline_full_cycle_audit_smoke.py GUI 083 PASS — independent virtual start-to-end audit only; no actual streaming
+

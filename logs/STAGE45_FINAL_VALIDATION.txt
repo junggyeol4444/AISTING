@@ -1,0 +1,32 @@
+AISTING offline cumulative v45 — 2026-10-13 KST
+Based on provided v44 ZIP: 331 files, CRC PASS.
+Implemented original roadmap stage 044 "Korean voice synthesis environment configuration" (DRAFT ONLY).
+
+IMPLEMENTED
+- Non-executing ko-KR environment plan from current operator-selected voice source and stored Windows voice profile.
+- Existing Windows System.Speech backend candidate shown without probing any voice/OS/device.
+- Uninstalled, unconnected future local TTS candidates explicitly marked pending (no fake ready state).
+- Explicit-confirmation isolated local JSON save, manual load, double-confirm delete, change invalidation.
+- Strict schema: network/cloud engine rejected; audio/PC/model/training/broadcast/verification flags forced false.
+- GUI tab, backend, unit + GUI smoke tests, docs and change/test logs.
+
+ACTUAL VERIFICATION
+- Source Python unittest: 797/797 PASS, logs/STAGE45_UNITTEST.log (v44 780 + 17 new).
+- Source GUI smoke: 43/43 PASS (Linux Xvfb; split in two sessions after first runner timeout, logs/STAGE45_GUI_ALL.log).
+- Source Python AST syntax: 141/141 PASS, logs/STAGE45_SYNTAX.log.
+- Preliminary ZIP integrity: PASS (341 files).
+- Freshly re-extracted preliminary ZIP: 797/797 unittest PASS, new GUI 1/1 PASS.
+- Original v44 paths preserved: 331/331; existing files modified: 5 (README.md, TEST_RESULTS.txt, docs/ROADMAP_100.md, docs/STATUS.md, src/ai_broadcaster/desktop.py).
+- Original plan SHA256 unchanged: d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c.
+
+LIMITS / USER ACTIONS STILL PENDING
+- 010 final user approval NOT given; 011+ PC information NOT collected.
+- No Windows hardware/installed voices checked. No Windows EXE build or native run.
+- No TTS engine model installed, no real speech generated, audio/material recordings accessed,
+  voice cloned/trained, actual rights or voice quality certified, OBS/streaming/account connected.
+- No GitHub, cloud, network, remote PC control, cost or software installation.
+- Code work reached original stage 044/100; this is not 44 stages fully approved.
+- Next candidate original stage 045 "basic Korean speech output"; requires safe simulated outputs
+  or operator-initiated Windows on-device manual testing, not automatic device probing.
+
+FINAL ZIP: 343 files, CRC PASS.

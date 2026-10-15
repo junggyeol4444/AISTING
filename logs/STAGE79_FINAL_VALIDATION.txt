@@ -1,0 +1,17 @@
+AISTING v79 · original step 078 (offline minimum/maximum broadcasting duration RULES ONLY)
+SOURCE: /mnt/data/AISTING_Offline_Development_v78.zip (671 files, ZIP CRC good). Reviewed original plan, ROADMAP_100.md, config/roadmap.json, README, source, prior logs.
+BASE RULES: source docs/ORIGINAL_PLAN.txt §4-3: min ~60min; max ~180min; operator-adjustable. Optional quiet-chat/time-of-day/random variation NOT enabled.
+CODE: new immutable pure offline_broadcast_duration.py, monotonic clock input contract; manual elapsed minutes UI in broadcast-scene tab; no real clock query, no timer thread, no OBS or broadcast stop, no persistence.
+BOUNDARIES: min/maximum exact checks, invalid/nonfinite input rejection, minimum>maximum rejection, monotonic-clock rollback, input change invalidation; 079 closing speech/auto terminate not implemented.
+NEW UNIT TESTS: 21/21 PASS (logs/STAGE79_NEW_UNITTEST.log).
+FULL UNIT TESTS: 1468/1468 PASS (logs/STAGE79_UNITTEST.log).
+LINUX XVFB GUI SMOKES: 76/76 PASS (logs/STAGE79_GUI_ALL.log); no Windows real device tested.
+PYTHON AST: 243/243 PASS (logs/STAGE79_SYNTAX.log).
+PREVIOUS FILE PRESERVATION: 671/671 present. CHANGED FILES: README.md, TEST_RESULTS.txt, docs/REAL_DEVICE_ACCEPTANCE_CHECKLIST.md, docs/ROADMAP_100.md, src/ai_broadcaster/desktop.py. All others same bytes.
+ORIGINAL PLAN SHA256: d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c, unchanged.
+ROADMAP JSON SHA256: bcaee31766fc5db4307f2d6f86becbe7dce28931d55c51ff8b39296beba5d48e, unchanged; step078 PENDING and step010 user final approval PENDING.
+USER APPROVAL & DEVICE: Windows 10/11, EXE, real elapsed time, sleep/resume, TTS/audio, actual OBS stream/stop and 2D/3D naturalness all UNVERIFIED, operator direct test/approval required.
+NETWORK/EXTERNAL: no GitHub/cloud/server/OBS/platform/account connection; no installation or user PC information/voice collection.
+POST-EXTRACTION: will append verified results below.
+
+POST-EXTRACTION v79 PREVERIFY ZIP: separate directory; full 1468/1468 unittest PASS; new actual Linux Tk GUI smoke PASS.

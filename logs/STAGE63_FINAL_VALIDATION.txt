@@ -1,0 +1,41 @@
+AISTING v63 — original roadmap 062 '채팅 메시지 실시간 수신'
+Offline manual simulated reception CONTRACT ONLY | 2026-10-13 KST
+
+BASELINE
+- Source: AISTING_Offline_Development_v62.zip (501 files; CRC valid).
+- Reviewed docs/ORIGINAL_PLAN.txt, docs/ROADMAP_100.md, config/roadmap.json,
+  README.md, docs/STAGE62_PLATFORM_CHAT_CONNECTOR.md, logs/STAGE62_FINAL_VALIDATION.txt.
+- Original plan SHA256: d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c.
+- Original roadmap 062 remains pending/unchecked: no real-time platform receiving.
+
+IMPLEMENTED (code development reached 62/100, NOT 62 approved stages)
+- src/ai_broadcaster/offline_chat_receiver.py: explicit in-memory synthetic message acceptance.
+- Manual binding to existing stage061 simulated connected contract, no auto connection.
+- Selected-platform enforcement; sender/content validation; 500-event cap with explicit
+  refusal and no silent deletion; duplicate messages retained; immutable event snapshots.
+- On platform selection change/disconnect, mock reception detaches but accepted messages remain.
+- desktop.py: new '채팅 수신 모의' tab with manual setup, input, receive, and recent event display.
+- 22 new unit tests, 1 new GUI smoke, updated README/STATUS/roadmap, stage documentation.
+- No actual live reception, no AI processing/response, no message routing to real broadcast.
+
+ACTUAL TEST RESULTS
+- Full unittest: 1150/1150 PASS (baseline v62: 1128, new: 22).
+  Evidence: logs/STAGE63_UNITTEST.log.
+- Linux Xvfb GUI smoke regression: 60/60 PASS, including new stage GUI.
+  Evidence: logs/STAGE63_GUI_REGRESSION.log and logs/STAGE63_GUI_RUNNER.log.
+- AST parse: 196/196 Python files PASS.
+- Baseline v62: 501/501 relative file paths retained in v63.
+- Preliminary ZIP: 508 files, CRC PASS; extracted into a separate directory.
+- Preliminary ZIP extraction full unittest: 1150/1150 PASS.
+  Evidence: logs/STAGE63_EXTRACTED_UNITTEST.log.
+- Preliminary ZIP extraction new GUI smoke: PASS under Linux Xvfb.
+  Evidence: logs/STAGE63_EXTRACTED_GUI.log.
+- Original plan SHA256 unchanged.
+
+NOT VERIFIED / NOT PERFORMED
+- No actual Chzzk/YouTube/Twitch authentication, connections, real-time message receiving,
+  platform timestamps, WebSocket/HTTP, streaming, OBS, cloud AI, paid services, GitHub,
+  remote storage, PC inspection, installs, or account access.
+- No Windows real-device or EXE verification; no avatar/voice real-world quality certification.
+- Original stage010 final user approval and stage062 real service acceptance remain pending.
+- Next roadmap target: original 063 '메시지 처리 순서 관리'.

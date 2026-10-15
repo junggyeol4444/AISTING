@@ -1,0 +1,27 @@
+AISTING v94 — 2026-10-14 (Asia/Seoul)
+Original step 093 '기억 검색과 다음 방송 연동' — offline partial ONLY.
+Source: verified existing /mnt/data/AISTING_Offline_Development_v93.zip (878 files, CRC testzip None).
+Reviewed docs/ORIGINAL_PLAN.txt, docs/ROADMAP_100.md, config/roadmap.json, README.md, stage93 logs and source/tests.
+Implementation: src/ai_broadcaster/offline_memory_recall.py, src/ai_broadcaster/desktop.py,
+ tests/test_offline_memory_recall.py, scripts/gui_offline_memory_recall_smoke.py.
+Manual substring search of preselected synthetic memory cards, opt-in one-session bounded next mock turn context,
+ existing MockReplyGenerator dry-run; no actual model, AI prompt injection, network, OBS, platform chat, audio, uploads,
+ real streaming, OS data harvesting, automatic file scanning/saving, or automatic schedules.
+Existing user preferences, voice/avatar/platform/content/character selection preserved.
+Unit command: PYTHONPATH=src python -m unittest discover -s tests -q
+=> Ran 1808 tests / OK. New stage tests: 27/27.
+GUI: Linux Xvfb, python scripts/run_stage88_gui_regression.py [0 30], [30 60], [60 92]
+=> 30/30 + 30/30 + 32/32 = 92/92 GUI smoke scripts PASS.
+Python syntax: AST parse all src/tests/scripts .py => 289/289 PASS.
+Existing SQLite ResourceWarning (unclosed sqlite3.Connection, offline_chat.py:51) observed; unresolved.
+Original docs/ORIGINAL_PLAN.txt and config/roadmap.json bytes preserved; original 093 and final 010 approval remain PENDING.
+The code reached 93/100 stages: NOT product completion %, Windows EXE/real AI memory/OBS/TTS/avatars unverified.
+Re-extraction: independent directory /mnt/data/AISTING_v94_independent_extract/AISTING_Offline_v94
+  PYTHONPATH=src python -m unittest discover -s tests -q => 1808/1808 PASS.
+  xvfb-run -a env PYTHONPATH=src python scripts/gui_offline_memory_recall_smoke.py => PASS.
+Existing v93 paths: 878/878 retained. Only 5 existing files modified:
+  README.md, TEST_RESULTS.txt, docs/ROADMAP_100.md, docs/REAL_DEVICE_ACCEPTANCE_CHECKLIST.md,
+  src/ai_broadcaster/desktop.py.
+Original docs/ORIGINAL_PLAN.txt / config/roadmap.json binary equality confirmed.
+ZIP archive integrity CRC checked after final packaging; no cache files included.
+User PC never accessed. Windows 10/11/EXE/actual broadcasting and real memory recall NOT VERIFIED.

@@ -1,0 +1,5 @@
+JOURNEY 1: GUI first start/settings/platform/content/persona/voice/avatar/save/2D close PASS
+JOURNEY 2: restart/restored selections/mock FIFO duplicate replies/no DB PASS
+JOURNEY 3: fake local AI (NO real model)/SQLite 2 records PASS
+JOURNEY 4: late memory failure shown to user / prior SQLite preserved PASS
+JOURNEY 5: final restart/persistence/untouched file/no network/no process PASS

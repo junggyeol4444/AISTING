@@ -1,0 +1,10 @@
+Input ZIP: AISTING_Offline_Development_v104.zip
+Input entries: 1035; ZIP CRC: PASS
+All original relative file paths preserved: 1035/1035
+Modified existing files only: README.md; TEST_RESULTS.txt; src/ai_broadcaster/offline_chat.py; src/ai_broadcaster/desktop.py
+Original docs/ORIGINAL_PLAN.txt: unchanged (SHA256 d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c)
+Original docs/ROADMAP_100.md: unchanged (SHA256 d9f49d8ef8b9697fbcfaf6331ef4ce9e95b75effeeb11656de87fdc9d63428cc)
+Original config/roadmap.json: unchanged (SHA256 bcaee31766fc5db4307f2d6f86becbe7dce28931d55c51ff8b39296beba5d48e)
+Original config/requirements.json: unchanged (SHA256 940e340390061c8acf793a6d3059e64f13aa8bb5d374ec027c12156e84e7d9ab)
+Roadmap steps: 100 (1..100); completed=9; pending=91; no additional stage created
+Prior code-reach claim 100/100 remains a code scope claim, not product approval.

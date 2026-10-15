@@ -1,0 +1,5 @@
+Base ZIP CRC: None
+Old paths: 735 retained: 735
+Modified old files: ['README.md', 'TEST_RESULTS.txt', 'docs/REAL_DEVICE_ACCEPTANCE_CHECKLIST.md', 'docs/ROADMAP_100.md', 'src/ai_broadcaster/desktop.py']
+Original plan SHA256 same: True
+roadmap JSON byte unchanged: True

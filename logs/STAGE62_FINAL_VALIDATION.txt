@@ -1,0 +1,38 @@
+AISTING v62 — original roadmap 061 "방송 플랫폼 채팅 연결"
+Offline mock connection CONTRACT ONLY | 2026-10-13 KST
+
+BASELINE AND ORIGINAL PLAN
+- Source: AISTING_Offline_Development_v61.zip (491 files, ZIP CRC valid).
+- Original plan docs/ORIGINAL_PLAN.txt SHA256:
+  d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c (unchanged).
+- Read original plan, docs/ROADMAP_100.md, config/roadmap.json, README, previous v61 stage report.
+- Original stage 061 "방송 플랫폼 채팅 연결" remains pending / unchecked for actual platform verification.
+- All 491 existing relative paths preserved in cumulative source; no existing user settings/data removed.
+
+ACTUAL CODE DEVELOPMENT (61/100 reached; NOT 61 approved stages)
+- src/ai_broadcaster/platform_chat_connector.py: memory-only connector state contract for Chzzk, YouTube and Twitch.
+- Operator-selected multi-platform set preserved, including empty selection; manual connect/disconnect only.
+- Atomic virtual handshake failure rollback, no automatic retries, no credentials or real chat clients.
+- src/ai_broadcaster/desktop.py: "플랫폼 채팅 연결 모의" Tk tab; current settings checkbox values used without saving; selection changes invalidate virtual connection.
+- tests/test_platform_chat_connector.py: 20 new tests.
+- scripts/gui_platform_chat_connector_smoke.py: new Linux Xvfb GUI smoke.
+- Documentation updated: README.md, docs/ROADMAP_100.md, TEST_RESULTS.txt, docs/STAGE62_PLATFORM_CHAT_CONNECTOR.md.
+
+ACTUAL VERIFICATION
+- Full unit tests: 1128/1128 PASS (v61 baseline 1108 + 20); logs/STAGE62_UNITTEST.log.
+- GUI regression: 59/59 scripts PASS (27 sequential + 32 parallel, isolated Xvfb instances); logs/STAGE62_GUI_REGRESSION.log.
+- New GUI: PASS; logs/STAGE62_GUI_NEW.log.
+- AST syntax parse: 193/193 Python files PASS.
+- Preliminary ZIP: 498 files; 491 baseline relative paths retained; CRC PASS.
+- Preliminary ZIP extracted into separate folder; 1128/1128 unit tests PASS, new GUI PASS.
+  logs/STAGE62_EXTRACTED_UNITTEST.log and logs/STAGE62_EXTRACTED_GUI.log.
+- Final ZIP: 501 files including extracted verification logs and this report; CRC and final extraction verified.
+- Final extracted ZIP: 1128/1128 unit tests PASS and new GUI PASS under Linux Xvfb.
+
+IMPORTANT NOT VERIFIED / NOT EXECUTED
+- ZERO real connections to Chzzk/YouTube/Twitch. No network, HTTP, WebSocket, OAuth, tokens,
+  real-time message receiving, platform policy assessment, OBS, live stream or remote repository.
+- No Windows 10/11 real PC/EXE validation, no actual avatar/voice quality certification.
+- No user PC inspection, installation, external server, cloud API, billing or account login.
+- Original 010 final user approval and original 061 real platform connection acceptance remain pending.
+- Next roadmap stage: 062 "채팅 메시지 실시간 수신" (offline contract only until external approval).

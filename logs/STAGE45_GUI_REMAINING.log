@@ -1,0 +1,11 @@
+34 scripts/gui_runtime_profile_smoke.py PASS
+35 scripts/gui_software_cost_guide_smoke.py PASS
+36 scripts/gui_style_consistency_smoke.py PASS
+37 scripts/gui_synthesis_environment_smoke.py PASS
+38 scripts/gui_voice_material_smoke.py PASS
+39 scripts/gui_voice_quality_smoke.py PASS
+40 scripts/gui_voice_rights_smoke.py PASS
+41 scripts/gui_voice_source_smoke.py PASS
+42 scripts/gui_workspace_setup_smoke.py PASS
+43 scripts/gui_smoke.py PASS
+TAIL_RESULT 10/10 passed | total 43

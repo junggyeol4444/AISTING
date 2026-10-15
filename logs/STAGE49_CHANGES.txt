@@ -1,0 +1,16 @@
+BASE v48: 379 paths; all preserved: True
+Changed prior paths:
+README.md
+TEST_RESULTS.txt
+docs/STATUS.md
+src/ai_broadcaster/desktop.py
+New paths:
+docs/STAGE49_EMOTION_EXPRESSION_REVIEW.md
+logs/STAGE49_GUI_NEW.log
+logs/STAGE49_GUI_REGRESSION.log
+logs/STAGE49_SYNTAX.log
+logs/STAGE49_UNITTEST.log
+scripts/gui_emotion_expression_smoke.py
+src/ai_broadcaster/emotion_expression_review.py
+tests/test_emotion_expression_review.py
+Original plan SHA256: d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c; unchanged: True

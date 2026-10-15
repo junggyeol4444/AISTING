@@ -1,0 +1,22 @@
+AISTING v90 — original stage 089: End-of-broadcast notice + results logging (offline partial implementation)
+
+SOURCE: actual AISTING_Offline_Development_v89.zip checked and extracted; 816 file paths.
+REVIEWED: docs/ORIGINAL_PLAN.txt 5th part (start/end notices, publication log); docs/ROADMAP_100.md step 089; config/roadmap.json; README.md; existing 078 duration, 079 closing and 084-088 notice logic; logs/STAGE89_FINAL_VALIDATION.txt and previous tests.
+
+MODIFIED: src/ai_broadcaster/desktop.py; docs/ROADMAP_100.md; README.md; docs/REAL_DEVICE_ACCEPTANCE_CHECKLIST.md.
+ADDED: src/ai_broadcaster/offline_end_notice.py; tests/test_offline_end_notice.py; scripts/gui_offline_end_notice_smoke.py; docs/STAGE90_OFFLINE_END_NOTICE.md; verification logs.
+
+FEATURES: New '방송 종료 공지·결과 기록' GUI tab; requires operator-input KST date/time, verified existing 078 maximum-duration decision, and completed 079 notice+farewell+virtual end. Generates memory-only rule-based closing notice and explicit virtual-only record. Optional EXPLICIT operator JSON export with exclusive create/no overwrite. Changes in inputs or virtual session invalidate previews. No actual viewership metrics are collected or invented. Mock-only flags: actual_broadcast_verified=false, published=false, actual_end_time=null, viewer_count=null.
+
+TEST EVIDENCE:
+ - An initial development run revealed 4 new-test failures (over-strict concrete Path type, unvalidated raw control characters, and an incorrect inconsistent-duration test fixture); implementation and test fixture corrected, then full suite rerun successfully.
+ - new unit: python -m unittest tests.test_offline_end_notice -q => 19/19 PASS, logs/STAGE90_NEW_UNITTEST.log.
+ - full unit: PYTHONPATH=src python -m unittest discover -s tests -q => 1705/1705 PASS, logs/STAGE90_UNITTEST.log.
+ - GUI regression: scripts/gui*.py under Linux Xvfb, 88/88 PASS, logs/STAGE90_GUI_REGRESSION.log. First single-process run reached 26 PASS before execution time limit. Remaining 62 individually executed using concurrent isolated Xvfb sessions; 62/62 PASS. No GUI tests were counted as passed before execution.
+ - syntax check: AST parse 278/278 Python files PASS, logs/STAGE90_SYNTAX.log.
+ - previous v89: all 816 paths retained, removed 0, 4 existing files modified; originals docs/ORIGINAL_PLAN.txt and config/roadmap.json byte-identical (logs/STAGE90_PRESERVATION.log).
+
+INDEPENDENT REEXTRACT: Draft ZIP unpacked to fresh /mnt/data/aisting_v90_reextracted/AISTING_Offline_v90; PYTHONPATH=src python -m unittest discover -s tests -q => 1705/1705 PASS; xvfb-run -a python scripts/gui_offline_end_notice_smoke.py => PASS. Logs STAGE90_REEXTRACTED_UNITTEST.log and STAGE90_REEXTRACTED_GUI.log are included in final ZIP.
+
+LIMITATIONS: Offline virtual simulation only. Actual broadcast end notice posting, Discord and Naver Cafe integration, real publish success/failure/duplicate persistence, platform/OBS broadcast state and actual end time, actual viewer statistics, installed voice/avatar, Windows 10/11/EXE, rights and operator acceptance are NOT IMPLEMENTED or NOT VERIFIED. No GitHub, internet, API, paid service, account or user PC access, audio collection, program installation, stream/OBS or remote-control operations performed. Original 089 and 010 final approval remain pending. Code development reach only 89/100; NOT product completion rate.
+NEXT: original stage 090 broadcast automation end-to-end verification (offline-only until permitted).

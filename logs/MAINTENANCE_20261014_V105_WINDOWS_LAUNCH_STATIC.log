@@ -1,0 +1,2 @@
+PASS Windows launcher/builder source-only static checks: 9 assertions
+NOT RUN: Windows batch files, PyInstaller build, EXE, Windows GUI/TTS/OBS

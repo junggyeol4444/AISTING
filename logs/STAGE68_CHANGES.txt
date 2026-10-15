@@ -1,0 +1,11 @@
+AISTING v68 / original stage 067: viewer-specific conversation context linking.
+BASE v67: 552 archived relative files, unit 1240/1240 PASS.
+ADDED src/ai_broadcaster/offline_viewer_context.py, tests/test_offline_viewer_context.py,
+      scripts/gui_offline_viewer_context_smoke.py, docs/STAGE68_VIEWER_CONTEXT.md,
+      logs/STAGE68_UNITTEST.log, STAGE68_GUI_REGRESSION.log, STAGE68_SYNTAX.log,
+      STAGE68_CHANGES.txt, STAGE68_FINAL_VALIDATION.txt, post-extraction logs.
+CHANGED src/ai_broadcaster/offline_chat_reactions.py (explicit opt-in viewer history),
+        src/ai_broadcaster/desktop.py (one new tab), README.md,
+        docs/ROADMAP_100.md, TEST_RESULTS.txt.
+PRESERVED original plan, JSON roadmap pending statuses, existing modules, user data and settings.
+LIMITS real viewer identity, LLM semantic memory, Windows EXE, platform chat, OBS untested.

@@ -1,0 +1,58 @@
+AISTING v95 — 2026-10-14 (Asia/Seoul)
+Original 094: 프로그램 오류 자동 복구 — OFFLINE MOCK-REPLY BLOCK-RESET ONLY.
+Prior complete source archive: /mnt/data/AISTING_Offline_Development_v94.zip.
+Verified prior ZIP CRC: testzip() None; 888 existing files.
+Actually reviewed: docs/ORIGINAL_PLAN.txt, docs/ROADMAP_100.md, config/roadmap.json,
+ README.md, logs/STAGE94_FINAL_VALIDATION.txt, tests and existing 062/063/065 reply/recovery code.
+
+Implemented:
+ src/ai_broadcaster/offline_program_recovery.py — source/pending/reply/FIFO/session consistency checks,
+ one fail-closed automatic in-memory reset of known mock reply blocked state, NO automatic failed-reply retry.
+ src/ai_broadcaster/desktop.py — independent operator-triggered recovery audit GUI tab.
+ tests/test_offline_program_recovery.py — 26 tests, including mutated source, appended event,
+ changed queue, invalid/absent/changed connector, unexpected exceptions, no external I/O,
+ failure non-retry, immutability, sensitive error redaction and safe explicit replay.
+ scripts/gui_offline_program_recovery_smoke.py — actual Tk UI under Linux Xvfb.
+ docs/STAGE95_OFFLINE_PROGRAM_RECOVERY.md + README, roadmap notes, acceptance checklist.
+
+Issues actually found during development and corrected:
+ - Initial source consistency check accidentally compared receiver buffer to itself.
+ - Initial test fault injection returned a normal response, so no failure was triggered;
+   tests were corrected to inject a real synthetic response error.
+ - Additional connector-detach and disconnected-session safety checks added.
+ These initial tests FAILED before the fixes; final tests below are after corrections.
+
+Final commands and results (source directory, PYTHONPATH=src):
+ python -m unittest discover -s tests -p test_offline_program_recovery.py -q
+  => 26/26 PASS.
+ python -m unittest discover -s tests -q
+  => Ran 1834 tests, OK (full suite, stdout/stderr logs/STAGE95_UNIT_TEST_RUN.txt).
+ Python ast.parse all src/tests/scripts Python files => 292/292 PASS.
+ Linux Xvfb real Tk scripts/run_stage88_gui_regression.py 0 31
+  => 31/31 PASS (logs/STAGE95_GUI_0_31.txt).
+ Linux Xvfb same runner 31 62 => 31/31 PASS (logs/STAGE95_GUI_31_62.txt).
+ Linux Xvfb same runner 62 78 => 16/16 PASS (logs/STAGE95_GUI_62_78.txt).
+ Linux Xvfb same runner 78 93 => 15/15 PASS (logs/STAGE95_GUI_78_93.txt).
+ GUI union: 93/93 distinct smoke scripts PASS. A one-shot repeat of slice 62:93 was interrupted
+ by command execution timeout; not counted. Final small-slice reruns cover all 31 scripts.
+
+Independent ZIP extraction (/mnt/data/AISTING_v95_independent_extract/AISTING_Offline_v95):
+ PYTHONPATH=src python -m unittest discover -s tests -q => 1834/1834 PASS.
+ xvfb-run -a env PYTHONPATH=src python scripts/gui_offline_program_recovery_smoke.py => PASS.
+
+Prior v94 file paths preserved: 888/888 (root prefix versioned; relative paths identical).
+ Existing file contents changed only: README.md, TEST_RESULTS.txt,
+ docs/REAL_DEVICE_ACCEPTANCE_CHECKLIST.md, docs/ROADMAP_100.md,
+ src/ai_broadcaster/desktop.py.
+ docs/ORIGINAL_PLAN.txt and config/roadmap.json byte-for-byte unchanged.
+ ZIP CRC: verified after final packaging; source ZIP contains no Python cache directories.
+
+UNRESOLVED WARNINGS AND SCOPE:
+ SQLite ResourceWarning unclosed sqlite3.Connection still seen in unrelated test run.
+ No real Windows/EXE, real process restart, app crash recovery, persistent checkpoint,
+ OS/kernel/device recovery, OBS/stream, actual chat/platform, AI, TTS or avatar recovery verified.
+ Automatic reset only in-memory MOCK replies, and only when a synthetic failed reply is proven unchanged.
+ No network/remote/paid operations, no installation, no credentials/accounts, no PC data/voice collection.
+ Original 094 is pending; final user approval 010 remains pending.
+ Code development reached original 94/100 stages, NOT actual product completion percentage.
+ Next original stage 095: abnormal condition detection and safe control.

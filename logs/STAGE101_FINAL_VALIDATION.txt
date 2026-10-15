@@ -1,0 +1,70 @@
+AISTING v101 / ORIGINAL STAGE 100 / FINAL REVIEW DOSSIER — NO OPERATOR APPROVAL
+Date: 2026-10-14 Asia/Seoul
+Base: /mnt/data/AISTING_Offline_Development_v100.zip (973 files, CRC pass)
+Official target: 100 최종 기능 검수 및 운영자 승인
+Reviewed actual files: docs/ORIGINAL_PLAN.txt; docs/ROADMAP_100.md;
+ config/roadmap.json; README.md; TEST_RESULTS.txt;
+ docs/REAL_DEVICE_ACCEPTANCE_CHECKLIST.md;
+ docs/STAGE100_OFFLINE_OPERATOR_MAINTENANCE.md;
+ logs/STAGE100_FINAL_VALIDATION.txt; logs/STAGE100_UNITTEST.log;
+ existing src/tests/scripts and v100 maintenance module.
+
+IMPLEMENTED (offline review prep ONLY)
+ - src/ai_broadcaster/offline_final_acceptance.py: fixed review matrix of 14 topics,
+   6 explicit bundled-path existence/hash observations, roadmap original approval
+   010/100 pending checks, persistent unresolved SQLite ResourceWarning blocker.
+   Existing operator 099 self-report status never counts as live-device evidence.
+ - Desktop Tk tab '최종 기능 검수·승인 대기': only manual click to inspect six
+   bundled project files; visual blocker dossier; manual no-overwrite JSON export.
+ - docs/STAGE101_FINAL_ACCEPTANCE_PENDING.md and JSON dossier, README, roadmap
+   notes, final-device checklist and test summary updated.
+ - No final approval, no user PC scan, no account, no network, no OBS,
+   no installation, no payment or real broadcast actions.
+ - Original docs/ORIGINAL_PLAN.txt and config/roadmap.json SHA256 unchanged;
+   every original roadmap step including stage 010 and 100 remains pending.
+
+TESTS ACTUALLY RUN IN DEVELOPMENT TREE
+ - New tests/test_offline_final_acceptance.py: 28/28 PASS,
+   logs/STAGE101_NEW_UNITTEST.log.
+ - PYTHONPATH=src python -m unittest discover -s tests -q:
+   1996/1996 PASS; logs/STAGE101_UNITTEST.log.
+ - GUI regression in 4 verified Xvfb slices (25+25+25+24):
+   99/99 PASS; logs/STAGE101_GUI_0_25.log, STAGE101_GUI_25_50.log,
+   STAGE101_GUI_50_75.log, STAGE101_GUI_75_99.log.
+ - Explicit new Xvfb GUI smoke: PASS; logs/STAGE101_GUI_NEW.log.
+ - Python AST syntax check src/tests/scripts: 310/310 PASS;
+   logs/STAGE101_SYNTAX.log.
+ - SQLite unclosed connection ResourceWarning is STILL reproduced in full suite;
+   it was not fixed or suppressed.
+ - Neither Linux GUI nor archived test log proves Windows, actual AI/TTS/avatar,
+   OBS, streaming, social publishing, rights or long-running stability.
+
+PRESERVATION
+ - Existing 973 relative source/file paths: 973/973 preserved.
+ - Changed existing files: README.md, TEST_RESULTS.txt,
+   docs/ROADMAP_100.md, docs/REAL_DEVICE_ACCEPTANCE_CHECKLIST.md,
+   src/ai_broadcaster/desktop.py. New files are cumulative additions only.
+ - SHA256 ORIGINAL_PLAN.txt d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c
+ - SHA256 config/roadmap.json bcaee31766fc5db4307f2d6f86becbe7dce28931d55c51ff8b39296beba5d48e
+
+POST-EXTRACTION VERIFIED FROM FIRST v101 ZIP (independent directory)
+ - First ZIP extracted to /mnt/data/AISTING_v101_independent_extract/AISTING_Offline_v101.
+ - PYTHONPATH=src python -m unittest discover -s tests -q:
+   1996/1996 PASS; logs/STAGE101_REEXTRACTED_UNITTEST.log.
+ - xvfb-run -a env PYTHONPATH=src python scripts/gui_offline_final_acceptance_smoke.py:
+   PASS; logs/STAGE101_REEXTRACTED_GUI.log.
+ - SQLite ResourceWarning reproduced in independent extracted run (UNRESOLVED).
+ - Original 973/973 relative files present, no deletions.
+ - Original docs/ORIGINAL_PLAN.txt and config/roadmap.json hashes match v100.
+ - First ZIP CRC test passed, 987 files before post-extraction logs attached.
+ - Final ZIP rebuilt with exact same source/test behavior and extracted results.
+ - Test result applies to source/test code; adding logs does NOT validate Windows/broadcast.
+
+DECISION (NEVER OVERRIDE FROM OFFLINE TESTS)
+ - 100/100 means the ORIGINAL CODE DEVELOPMENT STAGES HAVE BEEN REACHED for
+   offline portions, NOT that actual product is 100% implemented/verified.
+ - Original stage 100 REAL operator acceptance is PENDING. No release authorization.
+ - Original stage 010 user final approval is PENDING, all other stages pending.
+ - SQLite unclosed connection warning and real-device/platform/OBS/voice/avatar
+   integrations remain unresolved or unverified; further validation and fixes needed.
+ - No fabricated stage 101 beyond original 100-step roadmap.

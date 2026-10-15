@@ -1,0 +1,3 @@
+Linux Xvfb actual Tkinter GUI smoke: 78/78 PASS; 0 FAIL
+Initial batch timed out after 26/78 PASS. Remaining 52 verified independently in 4 batches of 13, 52/52 PASS.
+This is not Windows device validation.

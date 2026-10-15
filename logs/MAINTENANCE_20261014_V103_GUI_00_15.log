@@ -1,0 +1,16 @@
+[01/99] gui_all_chat_policy_smoke.py: PASS
+[02/99] gui_avatar_display_validation_smoke.py: PASS
+[03/99] gui_avatar_endurance_smoke.py: PASS
+[04/99] gui_avatar_expressions_smoke.py: PASS
+[05/99] gui_avatar_integration_smoke.py: PASS
+[06/99] gui_avatar_layout_smoke.py: PASS
+[07/99] gui_avatar_motion_review_smoke.py: PASS
+[08/99] gui_avatar_preparation_smoke.py: PASS
+[09/99] gui_avatar_runtime_environment_smoke.py: PASS
+[10/99] gui_avatar_selection_smoke.py: PASS
+[11/99] gui_avatar_smoke.py: PASS
+[12/99] gui_avatar_voice_mouth_smoke.py: PASS
+[13/99] gui_avatar_voice_sync_smoke.py: PASS
+[14/99] gui_backup_recovery_smoke.py: PASS
+[15/99] gui_basic_reaction_smoke.py: PASS
+GUI TOTAL 15/15 passed; elapsed=20.53s; failed=[]

@@ -1,0 +1,68 @@
+AISTING v98 | ORIGINAL STAGE 097 | OFFLINE ACCELERATED UNATTENDED AUDIT
+Date: 2026-10-14 (Asia/Seoul)
+Base: AISTING_Offline_Development_v97.zip; ZIP CRC PASS, 928 files.
+
+SOURCES REVIEWED:
+ docs/ORIGINAL_PLAN.txt, docs/ROADMAP_100.md, config/roadmap.json,
+ README.md, TEST_RESULTS.txt, prior source, tests and logs/STAGE97_FINAL_VALIDATION.txt.
+ Original stage 097: 장시간 무인 방송 테스트; 098 remains next.
+
+ACTUAL NEW SOURCE (offline only):
+ src/ai_broadcaster/offline_unattended_endurance.py:
+  existing 062/063/065/078/079/095 engines integrated for accelerated virtual
+  1 hour (3,601 ticks, 13 duplicate-preserving synthetic chats) and
+  3 hours (10,801 ticks, 37 synthetic chats), virtual closing checks.
+  deterministic independent in-memory session, fail-closed on corrupted cursor,
+  simulated reply failure, clock reversal or closing display failure.
+  bounded audit samples <=12; no actual streaming or OS timer.
+ src/ai_broadcaster/desktop.py: operator-click-only 097 Tkinter tab,
+  readonly 1h/3h selector, stale report invalidation, no settings write.
+ tests/test_offline_unattended_endurance.py: 30 new unit tests.
+ scripts/gui_offline_unattended_endurance_smoke.py: GUI with socket/process/settings
+  save blocked; checks 1h/3h and invalidation.
+ docs/STAGE98_OFFLINE_UNATTENDED_ENDURANCE.md / checklist / README / roadmap notes.
+
+ACTUAL TEST COMMANDS / RESULTS (cwd source directory, PYTHONPATH=src):
+  python -W default -m unittest discover -s tests -q
+   => 1918/1918 PASS (logs/STAGE98_UNITTEST.log).
+  python -m unittest discover -s tests -p test_offline_unattended_endurance.py -q
+   => 30/30 PASS.
+  python AST parse all src/tests/scripts .py => 301/301 PASS
+   (logs/STAGE98_SYNTAX.log).
+  xvfb-run -a env PYTHONPATH=src python scripts/gui_offline_unattended_endurance_smoke.py
+   => PASS (logs/STAGE98_GUI_NEW.log).
+  xvfb-run -a env PYTHONPATH=src python scripts/run_stage88_gui_regression.py START END
+   => 0:24 24 PASS; 24:48 24 PASS; 48:72 24 PASS; 72:96 24 PASS;
+   => 96/96 GUI scripts PASS, separately verified by respective logs.
+  Virtual 1h complete in ~0.04 s, 3h ~0.13 s on development container.
+  Failure injection four cases FAIL AS EXPECTED, no false PASS:
+    mock reply failure / FIFO cursor corruption / reversed clock /
+    closing display exception (logs/STAGE98_VIRTUAL_AUDIT.log).
+  Tracemalloc repeated 3h synthetic functions five times, measured only Python
+   allocations of short simulated loops, not actual OS RSS or leak freedom.
+
+KNOWN ISSUE STILL REPRODUCIBLE:
+  sqlite3.Connection ResourceWarning: unclosed database in existing project
+  tests; full test suite passed but warning NOT resolved. Long-time memory,
+  thread, SQLite, Windows TTS/OBS/avatar/live chat safety remains UNVERIFIED.
+
+BOUNDARIES:
+ NO real one-to-three-hour elapsed-time run, no Windows machine or EXE,
+ no actual OBS / broadcasting / TTS / avatar / live chat, no actual PC data
+ access, user voice capture, external API, network, payment, installation,
+ GitHub, account connection or background automation. The accelerated mock
+ passing is not a deployable-product readiness or real unattended safety proof.
+ Original stage 097 and user-final-approval 010 remain pending in config/roadmap.json.
+ Original plan, roadmap JSON, config/requirements.json unchanged byte-for-byte.
+ Code development scope reaches 97/100; actual product completeness unverified.
+
+INDEPENDENT ZIP EXTRACTION / REVALIDATION — PASS:
+ Extracted preliminary v98 archive into separate
+ /mnt/data/aisting_v98_independent_extract/AISTING_Offline_v98
+ PYTHONPATH=src python -W default -m unittest discover -s tests -q
+  => 1918/1918 PASS, logs/STAGE98_EXTRACTED_UNITTEST.log.
+ xvfb-run -a env PYTHONPATH=src python scripts/gui_offline_unattended_endurance_smoke.py
+  => PASS, logs/STAGE98_EXTRACTED_GUI.log.
+ SQLite ResourceWarning persists; Python reports legacy src/ai_broadcaster/offline_chat.py:51
+ in extracted test run; warnings are not treated as 'resolved'.
+ ZIP CRC, source preservation, hashes verified after final archive creation.

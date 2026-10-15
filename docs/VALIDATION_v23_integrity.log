@@ -1,0 +1,5 @@
+AISTING v23 final archive integrity preflight
+Expected archive file count including this log: 147
+Original plan SHA256: d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c
+Source base: v22 136 files, removed 0; see VALIDATION_v23_preservation.log
+Final ZIP CRC verification and SHA256 checked after packaging (see user-facing report).

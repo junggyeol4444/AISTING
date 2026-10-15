@@ -1,0 +1,12 @@
+RUN scripts/gui_offline_broadcast_scene_smoke.py
+GUI original 071 offline broadcast scene preview + stale/2D/3D: PASS
+EXIT=0
+RUN scripts/gui_offline_avatar_screen_link_smoke.py
+Stage 072 real Tk Canvas 2D link / 3D no-fallback: PASS
+EXIT=0
+RUN scripts/gui_offline_broadcast_voice_link_smoke.py
+Stage 073 Tk voice/scene mock route, manual retry, invalidation, no fallback: PASS
+EXIT=0
+RUN scripts/gui_offline_chat_communication_audit_smoke.py
+GUI original 070 isolated offline chat chain + selection invalidation: PASS
+EXIT=0

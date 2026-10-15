@@ -1,0 +1,12 @@
+AISTING v67 / original roadmap stage 066
+Source: full cumulative AISTING_Offline_Development_v66.zip, 540 files, CRC valid.
+Original plan SHA256 unchanged: d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c.
+Original 066 title: 인위적 응답 지연 없이 반응 테스트. 066 roadmap approval remains pending.
+New src/ai_broadcaster/offline_chat_latency.py: explicit timer around existing 065 FIFO mock replies, bounded manual batch, no added sleep/timer, no automatic retry or selection, failure and clock error reporting, measured/unmeasured integrity.
+New tests/test_offline_chat_latency.py: 20 tests, deterministic clock and negative cases.
+New scripts/gui_offline_chat_latency_smoke.py: real Tk GUI smoke using 062/063/065 state and stage 066 audit.
+New docs/STAGE67_NO_ARTIFICIAL_CHAT_DELAY.md: scope, limits, manual instructions.
+Modified src/ai_broadcaster/desktop.py: one extra tab and 066 buttons; existing tabs retained.
+Modified README.md, TEST_RESULTS.txt, docs/ROADMAP_100.md: additive documentation; README version heading updated.
+Prior v66 relative paths preserved 540/540. No modifications to original plan, config/roadmap.json, user data, voice/avatar/platform settings, old stage source modules, or prior tests.
+NOT a real end-to-end platform/chat/AI/TTS/OBS response latency test. No speed acceptance threshold. Windows PC/EXE/operator approval pending.

@@ -1,0 +1,9 @@
+HOURS 1 elapsed_wall_clock_sec 0.0382 passed True ticks 3601 mock_received 13 mock_responded 13 sample_count 7 real_broadcast False
+HOURS 3 elapsed_wall_clock_sec 0.1282 passed True ticks 10801 mock_received 37 mock_responded 37 sample_count 10 real_broadcast False
+INJECTED {'fault_second': 600} passed False failure RuntimeError: 주입된 모의 응답 실패 · 자동 재시도 없이 중단 pending 1
+INJECTED {'corrupt_second': 601} passed False failure RuntimeError: 가상 이상 감지 보류: 모의 채팅 기록 불일치 pending 0
+INJECTED {'reverse_clock_second': 600} passed False failure ValueError: 단조 시계 역행 감지 · 기존 판단 유지 pending 0
+INJECTED {'fail_closing_display': True} passed False failure RuntimeError: 주입된 마무리 화면 표시 실패 pending 0
+tracemalloc_current_bytes_after_gc_each_of_five_virtual_3h_runs [40, 72, 840, 872, 904]
+tracemalloc_peak_bytes 752434
+IMPORTANT: Python tracer only, not RSS/Windows/system/device/actual 3h run.

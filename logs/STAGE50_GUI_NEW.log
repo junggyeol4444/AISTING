@@ -1,0 +1,5 @@
+Traceback (most recent call last):
+  File "/mnt/data/aisting_build50/AISTING_Offline_v49/scripts/gui_dialogue_voice_link_smoke.py", line 32, in <module>
+    assert app._link_session is not None
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError

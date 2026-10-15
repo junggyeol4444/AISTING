@@ -1,0 +1,16 @@
+AISTING v40 FINAL VALIDATION — 2026-10-13 (KST)
+Base ZIP: AISTING_Offline_Development_v39.zip / 287 original files / CRC valid.
+Original roadmap task: 039 Operator feedback change-request preparation.
+Automated tests: 714/714 PASS (previous v39 702; new stage39 tests 12).
+GUI smoke: 15/15 PASS including new operator feedback + 14 existing, Linux Xvfb only.
+Python source syntax: 127/127 PASS.
+Preliminary ZIP CRC: PASS; extracted automated tests: 714/714 PASS; extracted new GUI: PASS.
+Prior baseline files missing: 0; modified: README.md, TEST_RESULTS.txt, docs/ROADMAP_100.md, docs/STATUS.md, src/ai_broadcaster/desktop.py.
+Original plan SHA256: d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c
+config/roadmap.json identical to original ZIP; original plan preserved byte-for-byte.
+Explicitly operator-controlled JSON feedback journal only; no auto change to persona/settings/SQLite/AI.
+User stage010 final approval and stage011+ PC examination PENDING.
+Windows real device / EXE, live LLM naturalness, live chat, TTS/broadcast NOT TESTED.
+No GitHub, remote server, install, payment, external account, OBS broadcast or user PC inventory.
+Next original roadmap task: 040 character dialogue first validation.
+Full source + tests + docs + logs packed into cumulative v40 ZIP.

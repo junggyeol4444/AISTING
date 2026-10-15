@@ -1,0 +1,15 @@
+AISTING v65 · original roadmap stage 064 · manual offline synthetic chat duplicate/gap audit
+Source: AISTING_Offline_Development_v64.zip (520 files)
+Reviewed: docs/ORIGINAL_PLAN.txt, docs/ROADMAP_100.md, config/roadmap.json, README, docs/STAGE64_CHAT_ORDER.md, docs/STAGE63_OFFLINE_CHAT_RECEIVE.md, logs/STAGE64_FINAL_VALIDATION.txt, prior tests.
+Scope: read-only 062/063 in-memory integrity inspection; no actual platform message IDs, network receiving, automatic responses, data deletion, persistence, OBS or PC inspection.
+Implementation: src/ai_broadcaster/offline_chat_integrity.py, desktop.py manual audit tab and stale-result invalidation, tests/test_offline_chat_integrity.py, scripts/gui_offline_chat_integrity_smoke.py.
+Unit command: PYTHONPATH=src python -m unittest discover -s tests -q
+Unit result: Ran 1195 tests; OK (24 new tests). Existing tests: 1171.
+GUI command: all 62 scripts/gui_*_smoke.py via xvfb-run -a; result 62/62 PASS; 0 FAIL. See logs/STAGE65_GUI_REGRESSION.log.
+Python syntax: AST parse 201/201 source/test/script Python files PASS.
+PRELIM ZIP: 527 files; CRC PASS; all 520 prior paths preserved.
+PRELIM re-extracted: 1195/1195 unittest PASS; new GUI smoke PASS.
+Original plan SHA256: d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c (unchanged).
+Roadmap stage 064 remains pending; only code-development reach 64/100, not actual platform functionality or user acceptance.
+Windows real hardware/EXE, real network message omission, natural AI responses, actual voice/avatar and streaming not tested.
+FINAL ZIP target: AISTING_Offline_Development_v65.zip; 530 files; original v64 520/520 file paths retained, modified existing files only README.md, TEST_RESULTS.txt and desktop.py; ZIP CRC PASS.

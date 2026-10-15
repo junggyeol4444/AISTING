@@ -1,0 +1,13 @@
+AISTING v85 | Original stage 084 방송 전 공지 문구 생성 | LOCAL REVIEW DRAFT ONLY
+Date: 2026-10-14 KST
+SOURCE: AISTING_Offline_Development_v84.zip, 751 ZIP entries, CRC PASS.
+REVIEWED: docs/ORIGINAL_PLAN.txt (5부), docs/ROADMAP_100.md, config/roadmap.json, README.md, TEST_RESULTS.txt, previous stage docs/tests/logs.
+IMPLEMENTED: src/ai_broadcaster/offline_prebroadcast_notice.py and Tkinter new '방송 전 공지 초안' tab. Uses existing validated saved settings/active persona, manually entered KST scheduled time, optional topic. No fake broadcast URL; no AI generation. Strict rejects newline, URL, mass mention; failed preview invalidated. No network, accounts, payments, installations, scheduler, file write, OBS or broadcast.
+NEW UNIT: 23/23 PASS; logs/STAGE85_NEW_UNITTEST.log.
+SOURCE FULL UNIT: 1593/1593 PASS; logs/STAGE85_UNITTEST.log.
+SOURCE GUI: 83/83 PASS, Linux Xvfb Tkinter smoke scripts in independent processes; logs/STAGE85_GUI_REGRESSION.log.
+PYTHON AST: 262/262 PASS; logs/STAGE85_SYNTAX.log.
+PRESERVATION: all 751 previous paths present, original plan + config/roadmap.json byte identical; logs/STAGE85_PRESERVATION.log.
+POST-EXTRACTION: Fresh-folder re-extract verified 1593/1593 full unit PASS and actual Tkinter GUI smoke PASS (Linux Xvfb); logs/STAGE85_REEXTRACTED_UNITTEST.log, logs/STAGE85_REEXTRACTED_GUI.log. Original plan and config/roadmap.json unchanged. ZIP CRC PASS.
+APPROVAL: original 084 pending, original 010 final operator approval pending. CODE DEVELOPMENT REACHED 84/100, NOT product-completeness or broadcasting-ready measure.
+NOT VERIFIED: Windows 10/11 actual GUI/EXE/real TTS/avatar/OBS/stream, real AI generation or naturalness, Discord/Naver Cafe authentication, external posting, platform policies, user rights and final approval. See docs/REAL_DEVICE_ACCEPTANCE_CHECKLIST.md.

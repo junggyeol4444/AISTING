@@ -1,0 +1,349 @@
+AISTING offline cumulative source v38 | 2026-10-13 KST
+Source baseline: v37 ZIP / 269 entries / CRC valid.
+Original roadmap: 037 chat-all-response default policy, memory-only mock session.
+New: all_chat_policy.py; all-chat Tk tab; 12 unit tests; GUI smoke; docs and run logs.
+No automatic filtering, delay, retry, drop, model connection, network or broadcasting.
+Unit tests: 686 / 686 passed (previous v37: 674).
+GUI: 1 new + 11 regression passed on Linux Xvfb (NOT actual Windows).
+Windows real-device/EXE, live model/chat, streaming, user naturalness evaluation: NOT VERIFIED.
+Operator approval of stage 010 and stage 011+ user PC verification remain pending.
+See logs/STAGE38_FINAL_VALIDATION.txt for archive and post-extraction verification.
+
+v39 / 원본 038 무채팅 자발 발화 **오프라인 모의**
+- 자동 시험: 702개 통과 (이전 v38 686개 + 신규 16개), Linux Python / unittest.
+- 신규 GUI Xvfb 테스트: 무채팅 자발 발화 모의 화면, 기본 비활성, 허용/발화후보, 채팅 우선, 반복 방지, 초기화 검사 통과.
+- 기존 GUI 회귀 / 최종 압축본 재검증 상세: logs/STAGE39_FINAL_VALIDATION.txt.
+- Windows 실기기/EXE/실제 AI 생성·음성·방송 기능 검증 없음. 최종 승인·PC 확인 pending.
+
+v40 / 원본 039 운영자 피드백 수정 준비 (오프라인)
+- 운영자가 직접 입력한 문제·변경 지시의 별도 로컬 기록 및 확인 후 추가·수정·삭제. 실제 캐릭터·AI 적용 없음.
+- 자동 테스트: 714개 통과 (이전 v39 702 + 신규 12).
+- GUI: 신규 포함 15종 Linux Xvfb 통과. Windows 실기기·EXE 미검증.
+- 최종 ZIP 재검증 및 원본 파일 보존: logs/STAGE40_FINAL_VALIDATION.txt 확인.
+
+v41 / 원본 로드맵 040 캐릭터 대화 1차 검증 (오프라인)
+- 자동 테스트: 728/728 통과 (v40 714 + 신규 14).
+- 신규 GUI: 1/1, 기존 GUI 회귀: 15/15 Linux Xvfb 통과.
+- 선택형 캐릭터와 사용자 입력 지침의 읽기 전용 결합, 모의 FIFO/맥락 검사 및 운영자 수동 평가.
+- 사람 같은 자연스러움/실제 모델의 반응·금기 준수 자동 합격 없음.
+- Windows 실기기·EXE·실제 방송/사용자 PC 검사는 하지 않음.
+- 최종 ZIP 재검증: logs/STAGE41_FINAL_VALIDATION.txt 참조.
+
+v42 / 원본 041 사용할 음성의 권리 및 동의 확인
+- 운영자 로컬 권리 확인 4종 체크, 출처 변경 시 초기화, 수동 저장/불러오기/2회 확인 삭제.
+- 신규 16개 및 전체 자동 테스트 744개, Linux GUI 신규 1종 + 기존 GUI 회귀 16종.
+- 음성 학습·복제·녹음·법적 권리 확인·실방송 승인/진행 없음.
+- 상세 결과: logs/STAGE42_FINAL_VALIDATION.txt
+
+v43 / 원본 로드맵 042 '승인된 음성 자료 준비' 메타데이터 초안
+- 새 자동 테스트 18건; 전체 자동 테스트 762/762 통과.
+- GUI Linux Xvfb 신규 1종과 기존 회귀 40종 = 41/41 통과.
+- 실제 음성 파일·권리 증빙 읽기, PC 수집, 녹음, 학습, 복제, 실방송 없음.
+- 자료 목록은 운영자 자체 신고 메타데이터만 표시함. Windows 실기기·EXE 미검증.
+
+v44 / 원본 로드맵 043 ‘음성 자료 품질 검사’ 운영자 기록 기능
+- 기존 762개 + 신규 18개 = 자동 테스트 780개 통과.
+- 신규 GUI와 기존 회귀를 포함한 Linux Xvfb GUI 스모크 42종 통과.
+- 권리/음질 실측·실제 녹음/파일 접근·Windows PC/EXE 미검증.
+- 상세: logs/STAGE44_FINAL_VALIDATION.txt, docs/STAGE44_VOICE_QUALITY_REVIEW.md
+
+## v45 / 원본 044 — 한국어 음성 합성 환경 구성 (코드 작업 범위 44/100)
+
+- `한국어 TTS 환경 준비` 탭에서 현재 선택한 목소리 방식과 ko-KR 구성 후보·Windows 음성 프로필을 읽기 전용 미리보기하고, 사용자 확인 후에만 별도 JSON 초안을 저장/수동 조회/2회 확인 삭제합니다.
+- 이미 내장된 Windows System.Speech와 미래의 별도 로컬 음성 엔진 **미설치 후보**를 구분합니다. 실제 음성/OS 조회·설치·재생·녹음·학습·클로닝·방송은 하지 않습니다.
+- 기록의 권한/설치/PC 조사 상태는 모두 거짓이며, 음성 선택/속도/음량 변경 시 재사용을 차단합니다. 기존 선택형 기능과 데이터, 원본 기획안, 사용자 승인 대기 상태를 보존합니다.
+- 구현 진행 범위 **44/100**은 승인 완료 비율이 아닙니다. 010 최종 승인, 011 이후 사용자 PC 정보 확인, 044 Windows 음성 실기기 검증 및 045 실제 기본 한국어 음성 출력은 대기 상태입니다.
+- 상세: `docs/STAGE45_SYNTHESIS_ENVIRONMENT.md`, 실제 결과: `logs/STAGE45_FINAL_VALIDATION.txt`.
+
+
+v46 / Original 045 basic Korean output path simulated rehearsal
+- Existing Windows manual TTS preserved. No real speaker/device used; 814 unit tests passed, 44 GUI scripts passed under Linux Xvfb.
+- Virtual chunks FIFO, preservation after simulated stop/failure, no automatic retry, and existing _speech_worker False->stopped regression verified.
+- No actual Windows TTS audible quality certified, and user approval/PC steps remain pending. Details logs/STAGE46_FINAL_VALIDATION.txt.
+
+
+v47 / 원본 046 선택한 목소리 적용 (offline virtual only)
+- Unit: 832/832 PASS (v46 814 + new 18).
+- Linux Xvfb GUI: 45/45 scripts PASS (first batch 31/31; remaining batch 14/14; includes new stage script).
+- Real Windows/EXE/system audio: NOT TESTED; user final approval remains PENDING.
+- See logs/STAGE47_FINAL_VALIDATION.txt for final package and extracted rerun.
+
+v48 / Original roadmap 047 operator pronunciation and intonation notes
+- New 20 unit tests; full offline unittest: 852/852 PASS.
+- Linux Xvfb: new GUI 1/1 PASS and previous GUI regression 44/44 PASS.
+- Actual audio playback/Windows real PC/EXE/acoustic naturalness: NOT TESTED.
+- User final approval and user PC inspection: PENDING.
+- Detail logs/STAGE48_FINAL_VALIDATION.txt.
+
+
+v49 / Original roadmap 048 감정 표현 테스트 (manual operator notes, no audio generation)
+- New 20 unit tests + existing 852 = 872 unittest cases passed in initial source run.
+- New GUI smoke: scripts/gui_emotion_expression_smoke.py on Linux Xvfb, PASS.
+- GUI regression, syntax, preservation and extracted archive rerun: see logs/STAGE49_FINAL_VALIDATION.txt.
+- Real Windows audio/EXE, emotion quality and any live streaming NOT TESTED.
+
+v50 / original 049 mock AI answer -> virtual voice FIFO link
+- 16 new unittest cases; total 888/888 PASS; extracted ZIP rerun 888/888 PASS.
+- New GUI smoke scripts/gui_dialogue_voice_link_smoke.py PASS (Linux Xvfb).
+- Existing 47 GUI smoke scripts PASS in two batches (first 34, remaining 14 including new = 48 total).
+- OS speaker playback, Windows EXE, real model, live streaming NOT TESTED.
+- See logs/STAGE50_FINAL_VALIDATION.txt.
+
+
+v51 (original 050 virtual voice acceptance only): 904/904 unittest, 49/49 Linux Xvfb GUI smoke, AST 160/160 PASS; real Windows voice/exe/audio NOT TESTED. See logs/STAGE51_FINAL_VALIDATION.txt.
+
+
+v53 / original 052 avatar runtime configuration candidate only
+- Previous cumulative tests: 923; new tests: 19; offline unittest: 942/942 PASS.
+- New GUI smoke: gui_avatar_runtime_environment_smoke.py PASS (Linux Xvfb).
+- All GUI smoke scripts: 51/51 PASS (50 previous + 1 new).
+- Real Windows, EXE, external Live2D/VRM, model rendering, license approval NOT TESTED.
+- Details: logs/STAGE53_FINAL_VALIDATION.txt.
+
+v53 preliminary ZIP extracted: full unittest 942/942 PASS and new Xvfb GUI PASS; original plan hash identical.
+
+v53 preliminary ZIP extracted: full unittest 942/942 PASS and new Xvfb GUI PASS; original plan hash identical.
+
+v53 preliminary ZIP extracted: full unittest 942/942 PASS and new Xvfb GUI PASS; original plan hash identical.
+
+
+v54 (original 053 avatar display structure checks): 957/957 unittest PASS (15 new), 52/52 Linux Xvfb GUI smoke PASS (51 old + 1 new), AST 169/169. Real Windows/EXE/models/visual quality NOT VERIFIED. See logs/STAGE54_FINAL_VALIDATION.txt.
+
+v55 / original 054: 977/977 unittest (20 new), Linux Xvfb GUI 53/53, AST 172/172. Final re-extraction rerun documented in logs/STAGE55_FINAL_VALIDATION.txt. Windows EXE/audio/live models NOT TESTED.
+
+
+v56 / Original 055 manual silent avatar mouth routing
+- 995/995 Python unittest passed (+18 new). 53/53 actual GUI smoke scripts passed using Linux Xvfb (52 scripts already in v55 ZIP + 1 new script). 175 Python files AST parse passed.
+- Existing source/settings/SQLite/original plan preserved. See logs/STAGE56_FINAL_VALIDATION.txt.
+- Windows real device / real voice audio or lip sync / external Live2D and VRM / EXE / actual broadcast: NOT TESTED.
+
+
+v57 (original 056): 1015/1015 unittest PASS (20 new), new GUI and 5 relevant prior GUI smoke PASS (Linux Xvfb). Python AST syntax tested; original plan hash and v56 paths preserved. Full GUI sweep was not completed (execution-time limits). Windows/EXE/audio not tested. See logs/STAGE57_FINAL_VALIDATION.txt.
+
+
+v58 original 057 expression/motion: 1034/1034 automated tests PASSED (19 new); 56/56 Linux Xvfb GUI scripts PASSED; source syntax and archive re-extraction validation in logs/STAGE58_FINAL_VALIDATION.txt. Windows native/EXE/real TTS/Live2D/OBS NOT tested.
+
+
+v59 / Original 058 avatar layout local 2D preview: 1055/1055 unittest PASS (+21); 57/57 Xvfb Tk GUI scripts PASS; Windows/EXE/OBS external models NOT TESTED. See logs/STAGE59_FINAL_VALIDATION.txt.
+
+
+v60 / Original 059 accelerated offline avatar endurance (not actual 24h):
+- Python unittest 1090/1090 PASS (+35); 58/58 Linux Xvfb GUI scripts PASS.
+- 24h virtual 86400 states, 12 retained checkpoints; actual Tk Canvas 240 redraws per manual click.
+- Real Windows/EXE, actual 24h runtime, RSS leak, voice, external avatar and OBS NOT VERIFIED.
+- See docs/STAGE60_AVATAR_ENDURANCE.md and logs/STAGE60_FINAL_VALIDATION.txt.
+
+v61 / original roadmap 060: integrated built-in 2D Canvas / expressions / layout / virtual voice interrupted+manual-resume / virtual 1h endurance audit.
+- unittest: 1108/1108 PASS (+18 new), Linux Python.
+- GUI: 59/59 unique smoke scripts PASS on Linux Xvfb (58 first parallel run; one Xvfb display contention failure then isolated PASS).
+- AST: 190 Python source/test/script files PASS.
+- Real Windows EXE/audio/live avatar/OBS/naturalness/24h operation/approval: NOT TESTED.
+- See logs/STAGE61_FINAL_VALIDATION.txt.
+
+v62 / original 061 broadcast platform chat connector OFFLINE CONTRACT ONLY
+- New 20 unit tests; full suite 1128/1128 PASS (previous v61 1108).
+- New Linux Xvfb GUI smoke: PASS.
+- No real connection to Chzzk, YouTube, Twitch; no auth, HTTP, WebSocket, tokens, chat messages, OBS or disk persistence.
+- Original 061 and operator 010 approvals pending; Windows real-device/EXE unverified.
+- Full regression and extracted-package verification in logs/STAGE62_FINAL_VALIDATION.txt.
+
+v63 / original 062: explicit memory-only synthetic chat reception tied to manual mock connection.
+- New 22 unittest cases; GUI smoke scripts/gui_offline_chat_receiver_smoke.py.
+- No real-time platform receiving, no network, no account/OBS, no automatic responses.
+- Final verification details: logs/STAGE63_FINAL_VALIDATION.txt.
+
+v64 / 원본 063 수동 FIFO 메시지 순서 관리: 전체 unittest 1,171/1,171 PASS; 신규 21/21 PASS; Linux Xvfb GUI smoke 61/61 PASS; Python syntax 198/198 PASS. 실제 플랫폼 채팅·AI 응답·Windows EXE/실기기/OBS 검증 아님. logs/STAGE64_* 참조.
+
+v65 / original 064: read-only manual synthetic chat duplicate/gap consistency audit.
+- 062 receiver + 063 FIFO queue reused, no message drop, automatic filtering, network or disk writes.
+- Same-content duplicates informational only; ordinal collision/gap/prefix divergence flagged; unsynced messages are NOT omissions.
+- New unit tests 24; full suite 1195/1195 PASS; Linux Xvfb GUI regression 62/62 PASS.
+- Actual platform message IDs/real missing deliveries, Windows EXE, user approval and OBS not tested.
+- See docs/STAGE65_CHAT_INTEGRITY.md and logs/STAGE65_FINAL_VALIDATION.txt.
+
+v66 / original 065 all-chat reaction structure (offline manual mock):
+- Reused 062 receiver + 063 order + existing 022/037 mock reply port. New 25 unit tests.
+- Full unittest: 1220/1220 PASS. Linux Xvfb GUI regression: 63/63 PASS.
+- No live platform messages, actual LLM, actual audio/avatar/OBS, Windows real-device/EXE or user final approval.
+- See logs/STAGE66_FINAL_VALIDATION.txt for post-extraction and preservation checks.
+
+v67 / original 066: manual no-artificial-delay offline FIFO mock reply timing.
+Details and exact executed test counts: logs/STAGE67_FINAL_VALIDATION.txt.
+Stage 066 roadmap approval remains pending; development reach 66/100.
+
+v68 / 원본 067 시청자와 대화 맥락 연결 (오프라인 모의)
+- 기존 065 모의 응답 포트에 운영자 명시적 활성화 후 동일 플랫폼+닉네임의 직전 성공 응답 최대 8건을 전달. 기본 동작 보존.
+- 신규 자동 테스트 21건, 전체 자동 테스트 1261/1261 통과.
+- GUI Linux Xvfb 신규 및 기존 65종 전체 통과. Python AST 211/211 통과.
+- 실제 AI 의미 이해·계정 인증·실시간 방송·Windows EXE·운영자 승인 미검증.
+- 로그: logs/STAGE68_*; 설명: docs/STAGE68_VIEWER_CONTEXT.md.
+
+
+v69 / original 068: operator-triggered interleaved multi-viewer mock FIFO.
+- Reuses existing 062/063/065/067 single session; viewer-specific read-only progress,
+  explicit activation, sync, manual next/batch (50), failure/manual resume.
+- 29 new unittest cases; full suite and Linux Xvfb Tk regression results in
+  logs/STAGE69_FINAL_VALIDATION.txt.
+- No real live viewers/platform/AI, Windows EXE, OBS or operator final approval.
+
+v70 / original 069: offline chat connection failure/recovery simulation implemented.
+Uses existing 061/062/063/065 objects, no network, no auto-retry, no persistence.
+See docs/STAGE70_CHAT_CONNECTION_RECOVERY.md and logs/STAGE70_FINAL_VALIDATION.txt.
+Actual Windows EXE, real platforms, broadcasting and user approval remain pending.
+Source-tree v70 verification: 1313/1313 unit tests PASS (23 new), 67/67 GUI smoke PASS on Linux Xvfb, 216/216 Python AST parse PASS.
+Logs: STAGE70_UNITTEST.log, STAGE70_GUI_REGRESSION.log, STAGE70_SYNTAX.log.
+Post-extraction verification is documented separately in STAGE70_FINAL_VALIDATION.txt.
+
+v71 / original 070: operator-triggered isolated end-to-end offline chat communication audit.
+- Reuses existing 061-069 in-memory classes, six synthetic chats and 15 invariant checks.
+- Selected platform changes invalidate GUI report; current app chat/settings unaffected.
+- Actual live platform/LLM/audio/OBS/Windows EXE/operator approval NOT tested.
+- Actual run counts and post-extraction results: logs/STAGE71_FINAL_VALIDATION.txt.
+- Source-tree validation: 1334/1334 unittest PASS (21 new); Linux Xvfb Tk GUI 68/68 PASS;
+  Python AST 219/219 PASS. Re-extraction checks documented in STAGE71_FINAL_VALIDATION.txt.
+
+v72 / original 071: offline 16:9 broadcast scene composition preview.
+- Reuses stage 058 local 2D layout and existing operator selections; 3D never falls back to 2D.
+- New 27 unittest cases; source-tree full suite 1361/1361 PASS (PYTHONPATH=src).
+- Linux Xvfb Tk smoke regression 69/69 individual scripts PASS in three batches.
+- No screen capture, actual OBS/streaming, audio routing, Windows EXE, real platform or operator approval.
+- Exact logs: logs/STAGE72_*.log; stage docs: docs/STAGE72_BROADCAST_SCENE.md.
+
+[v74 · original step 073 offline silent broadcast voice link]
+- Reused stage 071/072 scene and existing `speech_chunks` text segmentation; no real TTS/OS/OBS.
+- Added silent virtual manual segment display, interruption and invalidation, no voice fallback.
+- Detailed machine-readable logs: logs/STAGE74_UNITTEST.log, logs/STAGE74_GUI_REGRESSION.log,
+  logs/STAGE74_SYNTAX.log, logs/STAGE74_FINAL_VALIDATION.txt.
+- Original step 073 remains pending until real Windows, audio and broadcast checks and explicit approval.
+
+[v75 · original step 074 offline nominal volume and screen tag check]
+- Added read-only local current UI volume 0..100 check, warns on 0 configured mute; NOT measured dB/actual audio.
+- Inspects existing local 640x360 Canvas placeholder tags and virtual voice text marker; rejects stale/damaged/mismatched scene.
+- New unit tests: 17; full suite 1394/1394 PASS (PYTHONPATH=src), compileall PASS.
+- New actual Tk Linux Xvfb GUI smoke PASS; broader GUI results in logs/STAGE75_GUI_ALL.log.
+- Nothing persisted, no device/network/OBS/audio playback/actual broadcast or Windows EXE; official step 074 pending.
+
+[v76 · original step 075 offline broadcast output settings review bridge]
+- Current operator selections + 071 Canvas + 074 audit -> immutable local review snapshot and read-only JSON GUI. Never connects to OBS or streaming.
+- Added 18 unit tests; source-tree 1412/1412 unittest PASS, 74/74 Linux Xvfb GUI smoke PASS, 234/234 Python AST PASS.
+- See logs/STAGE76_FINAL_VALIDATION.txt for post-extraction confirmation and evidence. Actual broadcast/Windows EXE/operator approval NOT tested; stage 075 remains pending.
+
+[v77 · original step 076 private broadcast TEST: OFFLINE REHEARSAL ONLY]
+- Five deterministic in-memory phases reusing existing scene, nominal-volume audit and output-review snapshot. NEVER starts or checks a real private stream.
+- New unittest tests: 18; full source suite: 1430/1430 PASS.
+- All 74 GUI smoke scripts: 74/74 PASS on Linux Xvfb (not real Windows).
+- Python AST check: 238/238 PASS.
+- Actual private visibility, OBS, streaming, real audio/video, Windows/EXE, rights and operator approval: UNVERIFIED / PENDING.
+- See logs/STAGE77_FINAL_VALIDATION.txt; original roadmap statuses remain pending.
+
+[v78 · original 077 chat/mock reply/silent voice/screen isolated integration]
+- Three synthetic received chat messages -> FIFO MockCoreReplyPort -> silent virtual speech chunks -> Tk Canvas TEXT item comparison.
+- Found/fixed initial real Tk canvas failure: text option requested on a RECTANGLE sharing the same tag as text. Check canvas.type first.
+- New unit tests: 17/17 PASS; full source suite 1447/1447 PASS. Linux Xvfb GUI scripts 75/75 PASS.
+- No real streaming/audio/video/AI/platform API. Windows hardware/EXE, real 3D/avatar/TTS/OBS still UNVERIFIED; original 077 remains pending.
+- See docs/STAGE78_CHAT_VOICE_SCREEN_INTEGRATION.md and docs/REAL_DEVICE_ACCEPTANCE_CHECKLIST.md.
+
+[v79 · original stage 078 broadcast minimum/maximum duration (offline manual simulation)]
+- Default minimum 60 minutes / maximum 180 minutes, operator-changeable 1..1440 minutes, no actual streaming clock/OBS/termination.
+- 21 new unit tests; source full suite 1468/1468 PASS, Linux isolated Tk GUI smoke 76/76 PASS; AST 243/243 PASS.
+- No actual streaming/Windows EXE/audio/rights/user approval. Original stage 078 and user acceptance pending.
+- Full logs and after-extraction tests: logs/STAGE79_*, docs/STAGE79_BROADCAST_DURATION_RULES.md.
+
+[v80 · original stage 079 closing farewell and automatic termination (simulation only)]
+- Off-line state machine requires validated max-duration decision, notice -> farewell -> mock terminated; mock virtual flag is NEVER OBS stop.
+- New unit tests: 18/18 PASS, source full suite 1486/1486 PASS, Linux Xvfb individual GUI scripts 77/77 PASS, Python AST 246/246 PASS.
+- Actual Windows/EXE/voice/real OBS stream termination/user naturalness assessment NOT TESTED. Approval 010 and real stage 079 pending.
+- See docs/STAGE80_OFFLINE_CLOSING_SEQUENCE.md, logs/STAGE80_*.
+
+v84 / 원본 083: 수동 오프라인 시작→종료 통합 감사 추가. 23 신규 단위 테스트, 전체 1570/1570 PASS. Linux Xvfb 신규 GUI PASS, 이전 GUI 28개 + 관련 GUI 7개 PASS; GUI 나머지 47개 이번 실행 미확인(실패 판정 아님). Windows/OBS/실시간 자동 진행은 미검증. 세부 logs/STAGE84_FINAL_VALIDATION.txt.
+
+v85 / original 084: Added rules-based, review-only prebroadcast announcement text preview. No AI/model request, link invention, scheduler, external publishing, OBS or real streaming. See docs/STAGE85_PREBROADCAST_NOTICE.md and logs/STAGE85_FINAL_VALIDATION.txt. Original stage 084 pending; code development reached 84/100, NOT product completion.
+
+v86 / original 085: Local Discord message-shape preview (NO bot credentials, channel, login, network, or publication). New unit 21/21 PASS; complete 1614/1614 PASS; Xvfb Linux GUI 84/84 PASS; Python syntax 265/265 PASS. Original 085 remains pending. See logs/STAGE86_FINAL_VALIDATION.txt for post-archive validation.
+
+v87 / original 086: Manual in-memory posting-display rehearsal: no Discord posting, no automatic scheduler. 21 new unit tests; full unit 1635 PASS; Linux virtual GUI 85 scripts PASS; syntax 267 PASS. Source validation logs in logs/STAGE87_*. Approval and real-world compatibility pending. See docs/STAGE87_OFFLINE_NOTICE_POSTING_REHEARSAL.md.
+
+v88 / original 087: Naver Cafe OFFLINE feasibility report, no API call/OAuth/credential or posting. Added 23 new unit tests, total 1658/1658 PASS; GUI smoke 86/86 PASS in Linux Xvfb, Python syntax check and archive re-extraction details in logs/STAGE88_FINAL_VALIDATION.txt. Official Naver API capabilities/current policy and Windows/real posting NOT VERIFIED. Original 087 and stage 010 approval remain pending.
+
+[v90 · original stage 089 offline end notice and virtual result record]
+- Reuses 078/079 maximum-time + virtual-end checks; memory-only end notice and mock-only JSON result. Explicit local save only; existing file never overwritten. No real viewer counts, stream status or publishing.
+- 19/19 new unit, 1705/1705 total unit, 88/88 Linux Xvfb GUI scripts, 278/278 AST PASS; independent ZIP re-extraction unit 1705/1705 and new GUI PASS.
+- Original 089 real posting and Windows/OBS/voice/avatar verification pending; no external connectivity, automatic collection, or account access. See logs/STAGE90_FINAL_VALIDATION.txt.
+
+v92 / 원본 091: 모의 대화·사건 수동 로컬 JSON 보관 기능. 신규 26개 단위 테스트와 신규 Tk GUI 검사, 전체 유닛·GUI 회귀 및 압축 해제 후 재검증 기록: logs/STAGE92_FINAL_VALIDATION.txt. 실제 채팅·방송·후원·기억 검색/Windows 검증 없음.
+
+[v93 · original stage 092 synthetic past-broadcast memory cards]
+- Manual selection and verified import of 091 synthetic journal JSON; bounded memory cards and explicit local save/load; no AI, no real broadcast, no auto scan. Actual search and future-broadcast injection not built (stage 093).
+- 26 new unit tests, 1781/1781 total unit PASS; 91/91 Linux Xvfb GUI scripts PASS after sliced reruns; Python syntax checked. Independent archive verification in logs/STAGE93_FINAL_VALIDATION.txt.
+- Existing SQLite ResourceWarning persists in unrelated tests. Original 092 and 010 acceptance pending, Windows/EXE/actual memory quality unverified.
+
+v94 / original 093 offline manual memory substring retrieval and next MOCK turn preparation: see logs/STAGE94_FINAL_VALIDATION.txt. Full Windows EXE/actual AI recall unverified; final approval pending.
+
+v95 / 원본 094: 허용된 모의 FIFO 응답 오류 복구(처리 차단 1회 해제, 자동 재시도 없음) + 변조/연결 변경 감지 차단. 신규 단위 26/26, 전체 1834/1834 PASS. Linux Xvfb GUI 93/93 PASS; 구문 검사 292/292 PASS. SQLite ResourceWarning 미해결. 실제 Windows/EXE/OBS/AI/TTS/프로세스 재시작은 구현·검증하지 않음. 상세 logs/STAGE95_FINAL_VALIDATION.txt.
+
+v96 / Original 095 방송 중 이상 상황 감지 및 안전 제어 (OFFLINE ONLY)
+Full unittest: 1863/1863 PASS (Python unittest discover -s tests -q).
+New unit: 29/29 PASS.
+GUI: 94/94 PASS in five verified Linux Xvfb slices (24+24+24+11+11).
+Python AST parse: 295/295 PASS.
+Prior v95 files retained: 899/899, original plan and config/roadmap.json unchanged.
+No actual Windows/EXE, OBS, AI, live streaming, speech or equipment monitoring.
+SQLite ResourceWarning on unrelated test is unresolved.
+Development scope original 95/100; approval pending.
+
+v97 / original 096 offline manual operating cost estimator
+- New module: src/ai_broadcaster/offline_operating_cost.py, GUI tab in desktop.py.
+- Unit tests: 1888 / 1888 PASS (previous 1863 + 25), log: logs/STAGE97_UNITTEST.log.
+- GUI Xvfb smoke: 95 / 95 PASS across validated slices, logs: STAGE97_GUI_*.log.
+- Python AST syntax: 298 / 298 PASS, logs/STAGE97_SYNTAX.log.
+- Full extracted-source retest: see logs/STAGE97_FINAL_VALIDATION.txt.
+- Operating-cost estimate is based entirely on manual KRW/usage inputs, NOT actual charges.
+- SQLite unclosed connection ResourceWarning still observed, NOT FIXED.
+- Windows EXE, provider bills, costs, live APIs/OBS/TTS remain unverified; final approval pending.
+
+v98 원본 097 오프라인 가속 장시간 반복 시험 — 기존 062/063/065/078/079/095 상태 재사용.
+가상 1시간(3,601틱, 채팅 13건)과 3시간(10,801틱, 채팅 37건), 총 30개 신규 단위 테스트,
+새 Linux Xvfb GUI 스모크. 실제 1~3시간/Windows/OBS/TTS/AI/아바타 방송은 검증하지 않음.
+전체 검증 및 오류 주입 결과는 logs/STAGE98_FINAL_VALIDATION.txt 참조.
+
+v99 (원본 098, 승인 대기) — 독립 다회차 3/5/10 × 가상 1/3시간 모의 반복.
+기존 097 실행기를 각 회차별로 재사용. 회차 실패 및 독립 후속 회차 정상 처리 검증,
+자동 재시도/실방송/외부 접근 없음. 전체 Python unittest 1944/1944 PASS,
+신규 26/26 PASS, GUI 97/97 PASS (Linux Xvfb), 구문 304/304 PASS.
+기존 SQLite unclosed Connection ResourceWarning 여전히 미해결.
+Windows/EXE/실제 여러 회차/OBS/AI/TTS/아바타 미검증, 승인 pending.
+최종 ZIP 재검증 결과는 logs/STAGE99_FINAL_VALIDATION.txt 참조.
+
+v100 / original 099 operator-maintenance offline review:
+- 12 fixed operator self-report checks, persistent known unresolved SQLite ResourceWarning,
+  explicit non-release/non-approval statuses, manual no-overwrite JSON snapshot.
+- No actual user PC/Windows/OBS/platform/TTS/avatar test, API, upload or logging collection.
+- Source and GUI/tests: src/ai_broadcaster/offline_operator_maintenance.py,
+  tests/test_offline_operator_maintenance.py, scripts/gui_offline_operator_maintenance_smoke.py.
+- Full exact test and extracted-copy evidence: logs/STAGE100_FINAL_VALIDATION.txt.
+- Code reach 99/100, NOT product completion; original 099/010 approval pending.
+
+v101 / original 100 final feature review dossier ONLY; operator approval pending:
+- 14 non-release review topics and six explicit bundled project evidence checks.
+- Unconditional live Windows/OBS/AI/TTS/avatar/rights/endurance/approval blockers;
+  stage 010 and 100 remain pending, SQLite unclosed connection warning unresolved.
+- Operator 099 self-report marks cannot grant release, manual no-overwrite JSON export only.
+- New 28 unit tests; final full regression/GUI/syntax and extracted-copy outcomes:
+  see logs/STAGE101_FINAL_VALIDATION.txt.
+- Code development has reached 100/100 scope, NOT real product completion.
+
+v102 maintenance (2026-10-14, no new roadmap stage): v101 response_records fixture reproduced 5 SQLite ResourceWarnings; explicit closing applied. PRAGMA failure path now closes connection. 2 regression tests added; full test/GUI/extracted retest evidence in logs/MAINTENANCE_20261014_*.log. Windows and actual broadcast remain unverified.
+
+v103 maintenance (2026-10-14): PYTHONPATH=src PYTHONWARNINGS=always::ResourceWarning python -m unittest discover -s tests -v => 2002 tests OK, 0 ResourceWarning. Xvfb GUI smoke 99/99. Original 100-step approvals pending; Windows/OBS/real broadcast not tested. See logs/MAINTENANCE_20261014_V103_*.
+
+
+v104 / original roadmap unchanged, SQLite LocalMemory non-destructive initialization fix:
+- Baseline new safety tests against v103: 2 pass, 5 fail (expected defect reproduction).
+- New regression tests: 12/12 PASS; all unittest: 2014/2014 PASS (ResourceWarning 0, Linux).
+- Linux Xvfb GUI smoke: 99/99 PASS (first 28 plus 20+20+20+11).
+- AST syntax: 313/313 PASS.
+- Final cumulative archive extraction rerun results: see logs/MAINTENANCE_20261014_V104_REEXTRACT_*.log.
+- Real Windows/EXE/live services/long-running streaming/operator approval: NOT VERIFIED.
+
+2026-10-14 v105 유지보수: 실제 v104 누적 ZIP을 열고 Windows 사용자 관점의 오프라인 GUI 흐름 및 SQLite 기억 저장 실패 보고를 점검. 수정 전 신규 3개 테스트 중 1건 오류 재현, 수정 후 3/3 통과. 전체/GUI/재압축 ZIP 독립 압축 해제 시험의 실행 결과는 logs/MAINTENANCE_20261014_V105_*에 기록. 실제 Windows PC/EXE/실제 방송/실제 AI·TTS·아바타·OBS/사용자 승인 미검증·대기. 원본 100단계 추가 없음.
+v105 실제 실행 수치: 전체 unittest 2017/2017 PASS; SQLite ResourceWarning 0; Linux Xvfb GUI 100/100 PASS; Python AST 316/316 PASS; 사용자 흐름 5 체크포인트 PASS; v104 기존 파일 1035/1035 경로 보존; 원본 기획안·로드맵·요구사항 불변. 후보 ZIP 별도 압축 해제 후 unittest 2017/2017 및 GUI 3개 PASS. Windows 실기기/EXE/실제 방송 미검증.

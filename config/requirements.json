@@ -24,13 +24,13 @@
   ],
   "planned_base": "Open-LLM-VTuber (기획안 권장, 설치 전 최신 호환성 검토)",
   "operator_decisions": {
-    "broadcast_platform": null,
-    "content_concept": null,
-    "persona": null,
-    "voice_source_and_consent": null,
-    "avatar_type_and_asset": null,
-    "hosting_option": null,
-    "llm_provider_and_budget": null
+    "broadcast_platform": "runtime_multi_select_optional",
+    "content_concept": "runtime_select_chat_game_both",
+    "persona": "runtime_default_or_custom",
+    "voice_source_and_consent": "runtime_optional_source_no_clone_without_permission",
+    "avatar_type_and_asset": "runtime_choose_2d_or_3d_asset_use_requires_approval",
+    "hosting_option": "local_pc",
+    "llm_provider_and_budget": "free_only"
   },
   "control": {
     "install_without_operator_approval": false,
@@ -41,9 +41,10 @@
     "operator_decisions_require_approval": true
   },
   "development_policy": {
-    "chat_instruction": "사용자가 채팅으로 개발을 지시하면 그때 진행",
-    "scheduled_work": "GitHub Actions: 매시간 30분에 검증 및 다음 단계 Issue 갱신. 이 워크플로 자체는 AI 코드 생성기가 아님",
-    "pc_setup": "사용자가 PC를 켰다고 알리면 필요 프로그램, 설치, 비용과 계정 준비를 한 번에 설명하고 승인 후 진행",
-    "step_continuation": "이미 검증된 단계는 GitHub 기록으로 추적; 운영자 승인 필요한 사항은 보류"
+    "chat_instruction": "사용자가 이 대화에서 개발을 명시적으로 지시한 경우에만 코드 작업",
+    "scheduled_work": "AISTING 앱 내부 예약 실행 비활성. 이 대화의 사용자 요청 개발 예약은 앱 자체 예약 기능과 별개",
+    "source_delivery": "이 대화에 소스 파일 및 ZIP 다운로드로 전달. 외부 버전관리 서비스 연결 없음",
+    "external_automation": "워크플로, 자동 커밋, PR, 원격 업로드 및 병합 사용 안 함",
+    "pc_setup": "PC 가동 시 사양과 설치 비용을 한 번에 설명하고 승인 후 진행"
   }
 }

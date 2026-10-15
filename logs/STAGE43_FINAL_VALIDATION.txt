@@ -1,0 +1,16 @@
+AISTING cumulative v43 | 2026-10-13 KST | original roadmap stage 042 voice material preparation draft
+Baseline: v42 ZIP, 313 files; CRC PASS. Existing files retained: 313/313.
+Modified prior files (5): README.md, TEST_RESULTS.txt, docs/ROADMAP_100.md, docs/STATUS.md, src/ai_broadcaster/desktop.py.
+Original project plan SHA256 unchanged: d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c.
+Actual new feature: source-linked voice material metadata-only draft (alias + declared seconds + note); manual save/load/delete; explicit read-only operator rights attestation lookup.
+Data: no audio files, names, paths, recording, transcript, biometric inputs or consent documents collected; no training/streaming authorized.
+Unit test baseline 744 + new 18 = 762/762 PASS; Linux GUI scripts 41/41 PASS; Python AST syntax 136/136 PASS.
+No Windows EXE or real Windows PC tests; no audio quality or proof of rights, real TTS/model, live platform/chat/OBS, installation or account tested.
+No GitHub, external service, cloud AI, payment, user PC auto-inventory or remote access.
+Original stage 010 final approval PENDING; stage 011+ user-PC facts require approval; stage 042 real voice samples and operator permissions PENDING.
+Source testing evidence: logs/STAGE43_UNITTEST.log, logs/STAGE43_GUI_ALL.log, logs/STAGE43_SYNTAX.log.
+Initial v43 ZIP (322 files): CRC PASS; safe extraction into a fresh directory.
+Fresh extraction: unittest 762/762 PASS, new GUI 1/1 PASS Linux Xvfb, AST 136/136 PASS.
+GUI source-tree regression: 41/41 PASS, including the new stage 042 tab.
+Final ZIP re-packed solely to incorporate this validation report; code unchanged.
+

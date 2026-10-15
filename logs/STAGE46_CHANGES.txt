@@ -1,0 +1,15 @@
+BASE: v45 cumulative ZIP 343 files
+ORIGINAL PLAN SHA256: d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c
+UNCHANGED ORIGINAL PATHS: 343 / 343
+MODIFIED ORIGINAL FILES (5):
+README.md
+TEST_RESULTS.txt
+docs/ROADMAP_100.md
+docs/STATUS.md
+src/ai_broadcaster/desktop.py
+NEW FILES:
+src/ai_broadcaster/voice_output_validation.py
+tests/test_voice_output_validation.py
+scripts/gui_voice_output_validation_smoke.py
+docs/STAGE46_KOREAN_OUTPUT_PATH.md
+New logs in logs/STAGE46_*.

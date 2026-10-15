@@ -1,0 +1,30 @@
+test_all_fifo (test_offline_development.TestCore.test_all_fifo) ... ok
+test_context_for_following_messages (test_offline_development.TestCore.test_context_for_following_messages) ... ok
+test_delivery_failure_reply_cached (test_offline_development.TestCore.test_delivery_failure_reply_cached) ... ok
+test_duplicate_reply (test_offline_development.TestCore.test_duplicate_reply) ... ok
+test_generator_failure_no_drop (test_offline_development.TestCore.test_generator_failure_no_drop) ... ok
+test_mock_offline (test_offline_development.TestCore.test_mock_offline) ... ok
+test_no_generator_before_click (test_offline_development.TestCore.test_no_generator_before_click) ... ok
+test_cannot_set_external_hostname (test_offline_development.TestLocalModel.test_cannot_set_external_hostname) ... ok
+test_manual_trigger_only (test_offline_development.TestLocalModel.test_manual_trigger_only) ... ok
+test_clear_and_closed_database (test_offline_development.TestMemory.test_clear_and_closed_database) ... ok
+test_failed_output_no_memory (test_offline_development.TestMemory.test_failed_output_no_memory) ... ok
+test_history_zero_and_limit (test_offline_development.TestMemory.test_history_zero_and_limit) ... ok
+test_persist (test_offline_development.TestMemory.test_persist) ... ok
+test_bad_platform_rejected (test_offline_development.TestOfflineSettings.test_bad_platform_rejected) ... ok
+test_cannot_enable_schedule_or_broadcast (test_offline_development.TestOfflineSettings.test_cannot_enable_schedule_or_broadcast) ... ok
+test_default_restricts_real_actions (test_offline_development.TestOfflineSettings.test_default_restricts_real_actions) ... ok
+test_exe_build_is_manual_only (test_offline_development.TestOfflineSettings.test_exe_build_is_manual_only) ... ok
+test_no_automation_config_files (test_offline_development.TestOfflineSettings.test_no_automation_config_files) ... ok
+test_save_roundtrip_no_network (test_offline_development.TestOfflineSettings.test_save_roundtrip_no_network) ... ok
+test_batch_limit (test_offline_development.TestScript.test_batch_limit) ... ok
+test_invalid_all_or_nothing (test_offline_development.TestScript.test_invalid_all_or_nothing) ... ok
+test_invalid_limits (test_offline_development.TestScript.test_invalid_limits) ... ok
+test_nonstring_rejected (test_offline_development.TestScript.test_nonstring_rejected) ... ok
+test_normal_script (test_offline_development.TestScript.test_normal_script) ... ok
+test_same_message_kept (test_offline_development.TestScript.test_same_message_kept) ... ok
+
+----------------------------------------------------------------------
+Ran 25 tests in 0.522s
+
+OK

@@ -1,0 +1,11 @@
+AISTING v69 / original roadmap 068 / multiple viewers offline mock.
+BASE v68: 564 relative files, original plan and roadmap reviewed, original 067 completed as code scope only.
+ADDED: src/ai_broadcaster/offline_multi_viewer.py, tests/test_offline_multi_viewer.py,
+  scripts/gui_offline_multi_viewer_smoke.py, docs/STAGE69_MULTI_VIEWER_DIALOGUE.md,
+  logs/STAGE69_* validation/test evidence.
+MODIFIED: src/ai_broadcaster/desktop.py (one new Tk tab), README.md,
+  docs/ROADMAP_100.md, TEST_RESULTS.txt.
+PRESERVED: all previous files/paths, original plan, config/roadmap.json,
+  original 010/068 pending, previous user settings and selections.
+No live platform, external AI, GitHub, remote repository, payments, installs,
+  OBS, broadcasting, PC access or unauthorized data collection.

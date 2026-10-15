@@ -1,0 +1,6 @@
+PASS gui_operator_boundaries_smoke.py exit=0
+PASS gui_operator_feedback_smoke.py exit=0
+PASS gui_os_readiness_smoke.py exit=0
+PASS gui_persona_drafts_smoke.py exit=0
+PASS gui_persona_input_smoke.py exit=0
+GUI SLICE 65:70 — 5/5 PASS

@@ -1,0 +1,6 @@
+PASS gui_smoke.py exit=0
+PASS gui_software_cost_guide_smoke.py exit=0
+PASS gui_style_consistency_smoke.py exit=0
+PASS gui_synthesis_environment_smoke.py exit=0
+PASS gui_voice_final_verification_smoke.py exit=0
+GUI SLICE 80:85 — 5/5 PASS

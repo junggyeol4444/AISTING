@@ -1,0 +1,13 @@
+AISTING v82 | Original 081: broadcast start schedule management | OFFLINE ONLY
+Date: 2026-10-14 KST
+SOURCE: AISTING_Offline_Development_v81.zip (709 files, read and extracted).
+Reviewed before changes: docs/ORIGINAL_PLAN.txt, docs/ROADMAP_100.md, config/roadmap.json, README.md, logs/STAGE81_FINAL_VALIDATION.txt and prior schedule/closing/desktop source and tests.
+IMPLEMENTED: dedicated user-operated '방송 시작 일정 초안' tab; immutable KST weekly weekday/HH:MM draft up to 14 entries, validated add/remove and next 5 occurrences after user-entered reference datetime, explicit manual save/load/delete to isolated local JSON. Corrupted/symlink/authorization tampering rejected. scheduled_execution, broadcasting_authorized, obs_connected, final_approval are always false in record. Nothing runs at actual scheduled time. No system time/user hardware query.
+NEW UNIT: 21/21 PASS (logs/STAGE82_NEW_UNITTEST.log).
+FULL UNIT: 1525/1525 PASS (logs/STAGE82_UNITTEST.log).
+GUI: 80/80 PASS (logs/STAGE82_GUI_ALL.log). First 28 passed in initial xvfb-run batch before time limit; next 29 and last 23 passed with reused Linux Xvfb server. First batch time limit was tooling throughput, not failed GUI checks.
+AST: 252/252 Python src/tests/scripts PASS (logs/STAGE82_SYNTAX.log).
+PREVIOUS PATHS: 709/709 preserved. Intentional edits to README, docs/ROADMAP_100.md, docs/REAL_DEVICE_ACCEPTANCE_CHECKLIST.md, src/ai_broadcaster/desktop.py; docs/ORIGINAL_PLAN.txt and config/roadmap.json byte-identical (logs/STAGE82_PRESERVATION.log).
+MISSING REAL VALIDATION: No Windows/EXE test, no scheduler daemon or real auto-start, no TTS/avatar/OBS/account/platform/stream/announcement tested; no operator acceptance. Exact timezone offset only for modern KST; no DST history. Original 081 and 010 final acceptance remain pending. Code development reached 81/100 only, NOT broadcast product readiness.
+PROHIBITED OPERATIONS NOT DONE: no GitHub, remote repository, cloud AI API, external server, purchase, program installation, account link, streaming, PC remote control, hardware inspection, audio/user data collection.
+POST-EXTRACTION: independently extracted v82 ZIP, 1525/1525 full unit test PASS, new GUI smoke PASS (Linux Xvfb). ZIP CRC PASS. See logs/STAGE82_REEXTRACTED_UNITTEST.log and logs/STAGE82_REEXTRACTED_GUI.log.

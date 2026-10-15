@@ -1,0 +1,66 @@
+AISTING v72 / ORIGINAL 071 방송 송출 화면 구성 — OFFLINE COMPOSITION ONLY
+
+BASELINE / DOCUMENT REVIEW (ACTUAL)
+- Latest actually existing cumulative ZIP: /mnt/data/AISTING_Offline_Development_v71.zip,
+  600 relative files, ZIP extracted and inspected before development.
+- Read docs/ORIGINAL_PLAN.txt (operator judges naturalness; all chat; no artificial
+  default delay), docs/ROADMAP_100.md (071 pending), config/roadmap.json (010/071
+  pending), README.md, TEST_RESULTS.txt, docs/STAGE71_CHAT_COMMUNICATION_AUDIT.md,
+  logs/STAGE71_FINAL_VALIDATION.txt, prior stage 058 layout and stage 061-070
+  source/tests and GUI wiring.
+- Stage 059 offline endurance and stage 061-070 mock chat work already exist;
+  neither was reimplemented. Next untouched stage is original 071.
+
+IMPLEMENTED / ONE NEW ORIGINAL STAGE
+- Added src/ai_broadcaster/offline_broadcast_scene.py, a frozen local scene draft
+  validating existing platform/content/avatar/voice selections and the existing
+  stage 058 AvatarLayout. 2D uses draw_layout_preview; 3D/undecided show honest
+  placeholders (no 2D fallback).
+- Added '방송 화면 구성 미리보기' Tk tab: operator-triggered 640x360 16:9 scene,
+  static chat/game/combined/undecided placeholders, title/chat UI toggles,
+  missing-audio/OBS watermark, stale preview invalidation on selection change,
+  non-blocking overlap warning. No save/load/network/capture/broadcast/OBS.
+- Existing settings, persona, avatar and voice selection UI and saved data
+  preserved; no platform automatically chosen and no model/audio/device access.
+
+TESTS ACTUALLY EXECUTED
+- New unit tests: 27/27 PASS. Source-tree full unittest: 1361/1361 PASS
+  with PYTHONPATH=src, log logs/STAGE72_UNITTEST.log.
+- A first full-suite attempt without PYTHONPATH failed at import of the
+  existing test_all_chat_policy.py (environment setup), 1350 tests collected.
+  This was corrected by setting PYTHONPATH=src and rerunning all 1361 tests.
+- Linux Xvfb actual Tk GUI smoke: 69/69 distinct scripts PASS across 3 batches
+  (29 + 21 + 19); first long batch runner timed out after 29 completed PASS
+  scripts, and the remaining 40 were run in two complete batches.
+  Logs: STAGE72_GUI_REGRESSION.log, STAGE72_GUI_BATCH2.log,
+  STAGE72_GUI_BATCH3.log, STAGE72_GUI_SUMMARY.log.
+- Python AST: 223/223 PASS, log logs/STAGE72_SYNTAX.log.
+- Preliminary ZIP: 611 files, CRC PASS. Extracted to a separate directory.
+- Independent re-extraction full unittest: 1361/1361 PASS,
+  log logs/STAGE72_REEXTRACTED_UNITTEST.log.
+- Independent re-extraction GUI: new original 071 scene GUI, previous original
+  070 chat audit GUI and 058 avatar layout GUI all PASS,
+  log logs/STAGE72_REEXTRACTED_GUI.log.
+- Final ZIP adds only validation and re-extraction logs to the tested
+  preliminary package; source/tests/GUI scripts remain unchanged.
+
+PRESERVATION / APPROVAL BOUNDARIES
+- All 600/600 previous relative file paths preserved.
+- Existing modified files ONLY: README.md, TEST_RESULTS.txt,
+  docs/ROADMAP_100.md, src/ai_broadcaster/desktop.py.
+- docs/ORIGINAL_PLAN.txt SHA256 unchanged:
+  d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c
+- config/roadmap.json SHA256 unchanged:
+  bcaee31766fc5db4307f2d6f86becbe7dce28931d55c51ff8b39296beba5d48e
+- Code development reach 71/100 != original 071 completion or final user approval.
+  Original 010/071 remain pending; Windows, EXE, install, rights, actual
+  naturalness and real-device/real-broadcast evaluation remain separate.
+
+PROHIBITIONS / NOT CLAIMED
+- NO actual OBS scene, capture, screen/audio stream, microphone, speaker,
+  remote platform, cloud AI, external server, GitHub, commit/PR/Actions,
+  account connection, payment, unapproved install, remote PC control or
+  user PC information/voice data collection.
+- Linux Xvfb GUI is NOT Windows real-device/EXE verification.
+- No actual viewer messages or audio/visual broadcast naturalness assessed.
+- Next original 072 아바타 화면 연결: offline-only work, not authorized live OBS.

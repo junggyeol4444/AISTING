@@ -1,0 +1,1 @@
+Stage082 new GUI tested with Linux Xvfb. See STAGE82_GUI_ALL.log

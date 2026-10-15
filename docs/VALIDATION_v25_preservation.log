@@ -1,0 +1,11 @@
+Baseline: AISTING_Offline_Development_v24.zip (158 files)
+Preserved: 152 byte-identical, 6 intentionally updated, 0 missing
+Intentionally updated files:
+ - README.md
+ - TEST_RESULTS.txt
+ - config/roadmap.json
+ - docs/ROADMAP_100.md
+ - docs/STATUS.md
+ - src/ai_broadcaster/desktop.py
+Original plan SHA256 unchanged: d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c
+User runtime settings/SQLite are not included in the archive and were not read or modified.

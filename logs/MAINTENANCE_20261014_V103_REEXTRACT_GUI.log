@@ -1,0 +1,12 @@
+=== gui_platform_smoke.py ===
+GUI 플랫폼 미선택/복수 선택/변경/해제 및 로컬 저장: 통과
+EXIT=0
+=== gui_persona_drafts_smoke.py ===
+GUI 성격·말투 예시/수정/저장/기본 전환/스크롤/무통신: 통과
+EXIT=0
+=== gui_voice_source_smoke.py ===
+GUI 목소리 확보 방식 선택·저장·복원·속도/음량 전달·미설치 음성 대체 방지: 통과
+EXIT=0
+=== gui_response_records_smoke.py ===
+28단계 GUI · 미리보기/동의 거절/수동 저장/중복/조회/2회 삭제/무접속: 통과
+EXIT=0

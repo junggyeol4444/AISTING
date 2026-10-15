@@ -1,0 +1,11 @@
+AISTING v70 / original roadmap 069 / offline-only chat connection outage and recovery.
+BASE: v69 cumulative archive, 576 relative files; reviewed original plan, roadmap, config, README, source/tests, logs/STAGE69_FINAL_VALIDATION.txt.
+ADDED: src/ai_broadcaster/offline_chat_recovery.py, tests/test_offline_chat_recovery.py,
+  scripts/gui_offline_chat_recovery_smoke.py, docs/STAGE70_CHAT_CONNECTION_RECOVERY.md,
+  logs/STAGE70_* evidence.
+MODIFIED: src/ai_broadcaster/platform_chat_connector.py (manual mock failure injection only),
+  src/ai_broadcaster/desktop.py (one new Tk tab), README.md, docs/ROADMAP_100.md,
+  TEST_RESULTS.txt.
+PRESERVED: original plan, config/roadmap.json, existing paths/settings/platform-content-character-voice-avatar selections.
+No live platforms, internet, GitHub, remote repos, cloud AI, OBS, actual broadcast, installs, payments,
+  account linking, user PC/voice collection. Operator approval/Windows real-device verification pending.

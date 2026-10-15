@@ -1,0 +1,9 @@
+Staging archive: stage_v25.zip (168 source files)
+Staging ZIP CRC: no bad entries
+Staging ZIP extracted to isolated temporary directory.
+Ran 510 tests in 2.375s
+
+OK
+New v25 GUI smoke from extracted staging ZIP:
+25단계 GUI · 한국어 모의 시험/중복/입력 오류/초기화/무접속: 통과
+Final ZIP is built after these staging checks and verified separately.

@@ -1,0 +1,5 @@
+v82 old files 722; preserved 722/722; missing=[]
+Intentionally modified files: ['README.md', 'docs/REAL_DEVICE_ACCEPTANCE_CHECKLIST.md', 'docs/ROADMAP_100.md', 'src/ai_broadcaster/desktop.py']
+docs/ORIGINAL_PLAN.txt identical=True sha256=d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c
+config/roadmap.json identical=True sha256=bcaee31766fc5db4307f2d6f86becbe7dce28931d55c51ff8b39296beba5d48e
+config/requirements.json identical=True sha256=940e340390061c8acf793a6d3059e64f13aa8bb5d374ec027c12156e84e7d9ab

@@ -1,0 +1,52 @@
+test_clear_missing_does_not_create (test_response_records.ResponseRecordTests.test_clear_missing_does_not_create) ... ok
+test_clear_requires_exact_confirmation (test_response_records.ResponseRecordTests.test_clear_requires_exact_confirmation) ... ok
+test_clear_then_new_save (test_response_records.ResponseRecordTests.test_clear_then_new_save) ... ok
+test_confirm_strict_true (test_response_records.ResponseRecordTests.test_confirm_strict_true) ... ok
+test_conflict_rolls_back_earlier_insert (test_response_records.ResponseRecordTests.test_conflict_rolls_back_earlier_insert) ... ok
+test_conflicting_same_key_rejected_without_overwrite (test_response_records.ResponseRecordTests.test_conflicting_same_key_rejected_without_overwrite) ... ok
+test_construct_store_no_files (test_response_records.ResponseRecordTests.test_construct_store_no_files) ... ok
+test_corrupted_table_schema_refused (test_response_records.ResponseRecordTests.test_corrupted_table_schema_refused) ... ok
+test_directory_target_refused (test_response_records.ResponseRecordTests.test_directory_target_refused) ... ok
+test_duplicate_snapshot_turn_refused (test_response_records.ResponseRecordTests.test_duplicate_snapshot_turn_refused) ... ok
+test_existing_foreign_sqlite_not_modified (test_response_records.ResponseRecordTests.test_existing_foreign_sqlite_not_modified) ... ok
+test_failed_pending_not_archived (test_response_records.ResponseRecordTests.test_failed_pending_not_archived) ... ok
+test_foreign_db_clear_refused (test_response_records.ResponseRecordTests.test_foreign_db_clear_refused) ... ok
+test_incremental_save_only_new_rows (test_response_records.ResponseRecordTests.test_incremental_save_only_new_rows) ... ok
+test_invalid_record_fields_refused (test_response_records.ResponseRecordTests.test_invalid_record_fields_refused) ... ok
+test_invalid_snapshot_shape_refused (test_response_records.ResponseRecordTests.test_invalid_snapshot_shape_refused) ... ok
+test_limit_refuses_without_auto_prune (test_response_records.ResponseRecordTests.test_limit_refuses_without_auto_prune) ... ok
+test_no_automatic_snapshot_on_core_execution (test_response_records.ResponseRecordTests.test_no_automatic_snapshot_on_core_execution) ... ok
+test_no_existing_file_read_does_not_create (test_response_records.ResponseRecordTests.test_no_existing_file_read_does_not_create) ... ok
+test_no_network_process_pc_info_or_other_db (test_response_records.ResponseRecordTests.test_no_network_process_pc_info_or_other_db) ... ok
+test_original_settings_not_changed (test_response_records.ResponseRecordTests.test_original_settings_not_changed) ... ok
+test_path_computation_no_folder_creation (test_response_records.ResponseRecordTests.test_path_computation_no_folder_creation) ... ok
+test_persist_reopen_korean (test_response_records.ResponseRecordTests.test_persist_reopen_korean) ... ok
+test_recent_invalid_limit_no_io (test_response_records.ResponseRecordTests.test_recent_invalid_limit_no_io) ... ok
+test_recent_limit_and_descending (test_response_records.ResponseRecordTests.test_recent_limit_and_descending) ... ok
+test_repeated_save_idempotent (test_response_records.ResponseRecordTests.test_repeated_save_idempotent) ... ok
+test_session_selection_changes_preserved (test_response_records.ResponseRecordTests.test_session_selection_changes_preserved) ... ok
+test_snapshot_after_history_cap_preserves_original_indices (test_response_records.ResponseRecordTests.test_snapshot_after_history_cap_preserves_original_indices) ... <string>:2: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f6977e213f0>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+<string>:2: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f6977e21990>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+<string>:2: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f6977e21d50>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+<string>:2: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f6978074d60>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+<string>:2: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f69781bba60>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_snapshot_after_reset_new_key (test_response_records.ResponseRecordTests.test_snapshot_after_reset_new_key) ... ok
+test_snapshot_description_is_preview_only (test_response_records.ResponseRecordTests.test_snapshot_description_is_preview_only) ... ok
+test_snapshot_empty_refused_without_side_effects (test_response_records.ResponseRecordTests.test_snapshot_empty_refused_without_side_effects) ... ok
+test_snapshot_invalid_session (test_response_records.ResponseRecordTests.test_snapshot_invalid_session) ... ok
+test_snapshot_only_successful_fifo_duplicates (test_response_records.ResponseRecordTests.test_snapshot_only_successful_fifo_duplicates) ... ok
+test_snapshot_over_five_truncates_preview_not_data (test_response_records.ResponseRecordTests.test_snapshot_over_five_truncates_preview_not_data) ... ok
+test_symlink_file_refused (test_response_records.ResponseRecordTests.test_symlink_file_refused) ... ok
+test_symlink_parent_refused (test_response_records.ResponseRecordTests.test_symlink_parent_refused) ... ok
+test_unknown_file_not_overwritten (test_response_records.ResponseRecordTests.test_unknown_file_not_overwritten) ... ok
+
+----------------------------------------------------------------------
+Ran 37 tests in 0.036s
+
+OK

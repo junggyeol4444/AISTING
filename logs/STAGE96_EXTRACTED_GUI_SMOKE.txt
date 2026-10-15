@@ -1,0 +1,1 @@
+STAGE 095 GUI PASS: six synthetic safety states, no real broadcast or external I/O

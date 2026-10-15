@@ -1,0 +1,17 @@
+AISTING v76 FINAL VALIDATION — original 075 broadcast output settings connection (offline review only)
+Baseline: AISTING_Offline_Development_v75.zip, 642 files, ZIP CRC PASS.
+Original plan docs/ORIGINAL_PLAN.txt reviewed, SHA256 d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c, unchanged.
+Original config/roadmap.json reviewed, SHA256 bcaee31766fc5db4307f2d6f86becbe7dce28931d55c51ff8b39296beba5d48e, unchanged.
+Reviewed README.md, docs/ROADMAP_100.md, prior stage docs and test/development logs; did not reimplement existing scene, voice, or output auditor.
+Implemented: offline_broadcast_output_settings.py, corresponding GUI manual preparation/read-only JSON window/invalidation, and stage 074 report virtual-voice preparation/cursor fingerprint for stale-proof checking.
+18 NEW unittest methods; initial development test had 1 failure exposing a stale voice-audit metadata omission. Fixed and reran; final 18/18 PASS.
+Source-tree full tests: PYTHONPATH=src:tests python -m unittest discover -s tests -v -> 1412/1412 PASS, 0 failures (see STAGE76_UNITTEST.log).
+Source-tree full GUI smoke: 74/74 PASS, Linux Xvfb, individually launched with 22s safety timeout and parallel workers (see STAGE76_GUI_ALL.log).
+Source-tree AST syntax: 234/234 Python source files PASS (see STAGE76_SYNTAX.log).
+Safety: no stream start, OBS, account, key, URL, network, device, file persistence, GitHub, remote AI, user PC access, installation, background schedule or authorization bypass.
+No Windows physical hardware, actual audio, broadcast quality, production OBS, external models, real streaming, rights or operator final approval verified.
+Original step 075 approval pending, step 010 final approval pending; code-development scope reaches 75/100 only.
+Post-extraction isolated directory check from first built ZIP: 650/650 files extracted; full unittest 1412/1412 PASS, 0 failures; new Tk Xvfb smoke PASS.
+Verified original ZIP 642/642 relative files preserved in v76; all bytes identical for docs/ORIGINAL_PLAN.txt and config/roadmap.json.
+Final cumulative source ZIP regenerated with this validation report included, final ZIP CRC verified; total 650 files.
+Next roadmap step: 076 비공개 방송 테스트 — physical/private streaming is NOT permitted without operator approval; only future offline mock tests may proceed.

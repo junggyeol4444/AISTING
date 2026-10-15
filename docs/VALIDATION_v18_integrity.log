@@ -1,0 +1,9 @@
+AISTING v18 integrity checks
+v17 original plan SHA256: d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c
+v18 original plan SHA256: d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c
+Original plan unchanged: yes
+Python compile() files: 60 success
+Unit tests: 316/316 passed
+GUI smoke scripts: 17/17 passed (Linux Xvfb)
+Roadmap completed: 9/100, 10-18 pending
+Windows EXE and user PC: not tested

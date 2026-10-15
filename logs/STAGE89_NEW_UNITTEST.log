@@ -1,0 +1,33 @@
+test_all_styles_have_distinct_openings (tests.test_offline_notice_variation.NoticeVariationTests.test_all_styles_have_distinct_openings) ... ok
+test_all_variant_numbers_distinct (tests.test_offline_notice_variation.NoticeVariationTests.test_all_variant_numbers_distinct) ... ok
+test_blank_topic (tests.test_offline_notice_variation.NoticeVariationTests.test_blank_topic) ... ok
+test_context_included (tests.test_offline_notice_variation.NoticeVariationTests.test_context_included) ... ok
+test_default_persona_ignores_custom_draft (tests.test_offline_notice_variation.NoticeVariationTests.test_default_persona_ignores_custom_draft) ... ok
+test_default_review_only (tests.test_offline_notice_variation.NoticeVariationTests.test_default_review_only) ... ok
+test_emoji_explicit_only (tests.test_offline_notice_variation.NoticeVariationTests.test_emoji_explicit_only) ... ok
+test_empty_context_allowed (tests.test_offline_notice_variation.NoticeVariationTests.test_empty_context_allowed) ... ok
+test_fake_published_base_rejected (tests.test_offline_notice_variation.NoticeVariationTests.test_fake_published_base_rejected) ... ok
+test_invalid_emoji_type (tests.test_offline_notice_variation.NoticeVariationTests.test_invalid_emoji_type) ... ok
+test_invalid_lead (tests.test_offline_notice_variation.NoticeVariationTests.test_invalid_lead) ... ok
+test_invalid_styles_and_lengths (tests.test_offline_notice_variation.NoticeVariationTests.test_invalid_styles_and_lengths) ... ok
+test_invalid_variant_type_and_range (tests.test_offline_notice_variation.NoticeVariationTests.test_invalid_variant_type_and_range) ... ok
+test_lead_time_date_boundary (tests.test_offline_notice_variation.NoticeVariationTests.test_lead_time_date_boundary) ... ok
+test_lead_time_disabled (tests.test_offline_notice_variation.NoticeVariationTests.test_lead_time_disabled) ... ok
+test_lead_time_ten_minutes (tests.test_offline_notice_variation.NoticeVariationTests.test_lead_time_ten_minutes) ... ok
+test_length_modes (tests.test_offline_notice_variation.NoticeVariationTests.test_length_modes) ... ok
+test_long_mode_persona_style (tests.test_offline_notice_variation.NoticeVariationTests.test_long_mode_persona_style) ... ok
+test_long_mode_unsafe_persona_rejected (tests.test_offline_notice_variation.NoticeVariationTests.test_long_mode_unsafe_persona_rejected) ... ok
+test_no_io_or_external_process (tests.test_offline_notice_variation.NoticeVariationTests.test_no_io_or_external_process) ... ok
+test_preserves_base_draft (tests.test_offline_notice_variation.NoticeVariationTests.test_preserves_base_draft) ... ok
+test_preview_immutable (tests.test_offline_notice_variation.NoticeVariationTests.test_preview_immutable) ... ok
+test_rejects_control_url_mass_mentions (tests.test_offline_notice_variation.NoticeVariationTests.test_rejects_control_url_mass_mentions) ... ok
+test_repeatable_for_same_settings (tests.test_offline_notice_variation.NoticeVariationTests.test_repeatable_for_same_settings) ... ok
+test_settings_mutation_rejected (tests.test_offline_notice_variation.NoticeVariationTests.test_settings_mutation_rejected) ... ok
+test_tampered_base_rejected (tests.test_offline_notice_variation.NoticeVariationTests.test_tampered_base_rejected) ... ok
+test_time_is_never_scheduled (tests.test_offline_notice_variation.NoticeVariationTests.test_time_is_never_scheduled) ... ok
+test_unsafe_settings_blocked (tests.test_offline_notice_variation.NoticeVariationTests.test_unsafe_settings_blocked) ... ok
+
+----------------------------------------------------------------------
+Ran 28 tests in 0.006s
+
+OK

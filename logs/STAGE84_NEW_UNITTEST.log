@@ -1,0 +1,28 @@
+test_close_notice_failure_does_not_claim_end (tests.test_offline_full_cycle_audit.CycleAuditTests.test_close_notice_failure_does_not_claim_end) ... ok
+test_close_skips_notice_is_failure (tests.test_offline_full_cycle_audit.CycleAuditTests.test_close_skips_notice_is_failure) ... ok
+test_custom_minutes_handled (tests.test_offline_full_cycle_audit.CycleAuditTests.test_custom_minutes_handled) ... ok
+test_equal_minimum_and_maximum_handled (tests.test_offline_full_cycle_audit.CycleAuditTests.test_equal_minimum_and_maximum_handled) ... ok
+test_existing_auto_execution_flag_blocks (tests.test_offline_full_cycle_audit.CycleAuditTests.test_existing_auto_execution_flag_blocks) ... ok
+test_existing_streaming_enabled_blocks (tests.test_offline_full_cycle_audit.CycleAuditTests.test_existing_streaming_enabled_blocks) ... ok
+test_external_publish_blocks (tests.test_offline_full_cycle_audit.CycleAuditTests.test_external_publish_blocks) ... ok
+test_factory_crashes_report_failed (tests.test_offline_full_cycle_audit.CycleAuditTests.test_factory_crashes_report_failed) ... ok
+test_happy_path_four_ordered_events_and_14_checks (tests.test_offline_full_cycle_audit.CycleAuditTests.test_happy_path_four_ordered_events_and_14_checks) ... ok
+test_invalid_factory_rejected (tests.test_offline_full_cycle_audit.CycleAuditTests.test_invalid_factory_rejected) ... ok
+test_invalid_minimum_and_maximum_rejected (tests.test_offline_full_cycle_audit.CycleAuditTests.test_invalid_minimum_and_maximum_rejected) ... ok
+test_invalid_persona_fails_closed (tests.test_offline_full_cycle_audit.CycleAuditTests.test_invalid_persona_fails_closed) ... ok
+test_missing_off_switch_blocks (tests.test_offline_full_cycle_audit.CycleAuditTests.test_missing_off_switch_blocks) ... ok
+test_never_accesses_clock_disk_network_sleep_or_process (tests.test_offline_full_cycle_audit.CycleAuditTests.test_never_accesses_clock_disk_network_sleep_or_process) ... ok
+test_rejected_finish_not_called_success (tests.test_offline_full_cycle_audit.CycleAuditTests.test_rejected_finish_not_called_success) ... ok
+test_repeated_invocations_isolated (tests.test_offline_full_cycle_audit.CycleAuditTests.test_repeated_invocations_isolated) ... ok
+test_report_is_explicitly_virtual_only (tests.test_offline_full_cycle_audit.CycleAuditTests.test_report_is_explicitly_virtual_only) ... ok
+test_report_is_immutable (tests.test_offline_full_cycle_audit.CycleAuditTests.test_report_is_immutable) ... ok
+test_schedule_missing_is_failure_not_fake_pass (tests.test_offline_full_cycle_audit.CycleAuditTests.test_schedule_missing_is_failure_not_fake_pass) ... ok
+test_start_controller_wrong_status_is_failure (tests.test_offline_full_cycle_audit.CycleAuditTests.test_start_controller_wrong_status_is_failure) ... ok
+test_user_draft_and_settings_unchanged (tests.test_offline_full_cycle_audit.CycleAuditTests.test_user_draft_and_settings_unchanged) ... ok
+test_wrong_minute_fails (tests.test_offline_full_cycle_audit.CycleAuditTests.test_wrong_minute_fails) ... ok
+test_wrong_weekday_fails (tests.test_offline_full_cycle_audit.CycleAuditTests.test_wrong_weekday_fails) ... ok
+
+----------------------------------------------------------------------
+Ran 23 tests in 0.003s
+
+OK

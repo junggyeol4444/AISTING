@@ -1,0 +1,8 @@
+ZIP: /mnt/data/AISTING_Offline_Development_v91.zip
+v90_paths_retained: 829 / 829
+v91_paths: 839 new: 10 modified prior: 4
+modified: ['README.md', 'docs/REAL_DEVICE_ACCEPTANCE_CHECKLIST.md', 'docs/ROADMAP_100.md', 'src/ai_broadcaster/desktop.py']
+original_plan_sha256: d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c
+roadmap_json_sha256: bcaee31766fc5db4307f2d6f86becbe7dce28931d55c51ff8b39296beba5d48e
+ZIP_sha256: d228c06ff7804f194088d23717221e3639d62a95d06fce1f8ee29a08c16f6307
+ZIP_crc: PASS

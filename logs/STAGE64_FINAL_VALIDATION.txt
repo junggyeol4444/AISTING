@@ -1,0 +1,16 @@
+AISTING v64 · original stage 063 · offline mock chat FIFO ordering
+Source: AISTING_Offline_Development_v63.zip (511 files)
+Reviewed: docs/ORIGINAL_PLAN.txt, docs/ROADMAP_100.md, config/roadmap.json, README, docs/STAGE63_OFFLINE_CHAT_RECEIVE.md, existing tests/logs.
+Implementation: src/ai_broadcaster/offline_chat_order.py, desktop.py integration; new manual GUI tab.
+No real network, account login, streaming, cloud, Github, PC data collection, auto processing, or installation.
+Unit command: PYTHONPATH=src python -m unittest discover -s tests -q
+Unit result: Ran 1171 tests; OK (new stage tests 21).
+GUI command: 61 scripts/gui_*_smoke.py via xvfb-run (some run in split batches after initial overall timeout).
+GUI result: 61 distinct scripts PASS, 0 FAIL. See STAGE64_GUI_REGRESSION.log.
+Syntax result: 198 Python source/test/script files compile.
+Actual Windows/EXE/real platform, natural AI reply, operator approval not tested.
+Original stage 063 remains pending; code reach 63/100 only.
+PRELIM ZIP CRC: PASS; 511/511 old paths preserved; original plan SHA256 identical.
+Re-extracted PRELIM: 1171/1171 unittest PASS; new GUI smoke PASS.
+PRELIM ZIP CRC: PASS; 511/511 old paths preserved; original plan SHA256 identical.
+Re-extracted PRELIM: 1171/1171 unittest PASS; new GUI smoke PASS.

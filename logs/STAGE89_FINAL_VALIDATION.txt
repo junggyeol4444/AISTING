@@ -1,0 +1,23 @@
+AISTING v89 — original roadmap 088 (notice wording variations and operator settings)
+
+SOURCE INSPECTED: AISTING_Offline_Development_v88.zip; ZIP CRC passed, 800 existing file paths.
+REVIEWED: docs/ORIGINAL_PLAN.txt section 5-3, docs/ROADMAP_100.md, config/roadmap.json, README.md, v88 source, test and development logs.
+
+CODE MODIFIED: src/ai_broadcaster/desktop.py; source added src/ai_broadcaster/offline_notice_variation.py.
+NEW TESTS: tests/test_offline_notice_variation.py (28 unit tests), scripts/gui_offline_notice_variation_smoke.py.
+APP UI: separate '공지 문구 변주 (오프라인)' tab. Explicit operator selection of style, length, variant number, emoji, contextual note, optional suggested early notice time. Existing stage 084 draft remains unmodified and upstream for Discord/Cafe reviews. No auto saving.
+
+NEW UNIT: 28/28 PASS — logs/STAGE89_NEW_UNITTEST.log
+FULL UNIT: 1686/1686 PASS — logs/STAGE89_UNITTEST.log
+GUI REGRESSION: 87/87 PASS Linux Xvfb; batches 22+22+22+21 — logs/STAGE89_GUI_BATCH_1.log through _4.log and STAGE89_GUI_REGRESSION.log
+NEW GUI: PASS — scripts/gui_offline_notice_variation_smoke.py (also included in GUI regression)
+PYTHON SYNTAX: 275/275 PASS — logs/STAGE89_SYNTAX.log
+OLD PATH PRESERVATION: 800/800 retained — logs/STAGE89_PRESERVATION.log
+ORIGINAL PLAN, ROADMAP JSON: byte-identical to v88
+
+REEXTRACT FULL UNIT: 1686/1686 PASS — logs/STAGE89_REEXTRACTED_UNITTEST.log
+REEXTRACT NEW GUI: PASS on Linux Xvfb — logs/STAGE89_REEXTRACTED_GUI.log
+FINAL ARCHIVE: 816 files (after final repack); CRC and 800 old paths verified. New Python bytecode caches excluded.
+
+LIMITATIONS: Rules-based deterministic 3-variant text only (no true language model or probabilistic dynamic creativity), no actual time scheduler, external AI server, Discord/Naver API, authentication, posting, OBS, broadcast, network, installation, user PC/voice information collection or remote operations. Linux Xvfb GUI passing does not verify actual Windows 10/11/EXE, runtime audio/avatar/stream integration, natural voice/notice quality, policy/rights or operational reliability. These remain operator/user validation work.
+Original stage 088 and mandatory final approval 010 remain pending in unchanged original roadmap. Code reach only 88/100 (NOT product completion percentage). Next original 089 end-of-broadcast notice and results logging.

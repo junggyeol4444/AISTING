@@ -1,0 +1,7 @@
+PASS gui_voice_material_smoke.py exit=0
+PASS gui_voice_output_validation_smoke.py exit=0
+PASS gui_voice_quality_smoke.py exit=0
+PASS gui_voice_rights_smoke.py exit=0
+PASS gui_voice_source_smoke.py exit=0
+PASS gui_workspace_setup_smoke.py exit=0
+GUI SLICE 85:91 — 6/6 PASS

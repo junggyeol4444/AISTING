@@ -1,0 +1,17 @@
+AISTING v66 / original roadmap 065 / offline manual all-chat reaction structure
+Source: AISTING_Offline_Development_v65.zip (530 files; source CRC valid).
+Reviewed: docs/ORIGINAL_PLAN.txt, docs/ROADMAP_100.md, config/roadmap.json, README, docs/STAGE63_OFFLINE_CHAT_RECEIVE.md, docs/STAGE64_CHAT_ORDER.md, docs/STAGE65_CHAT_INTEGRITY.md, prior source/tests/logs.
+Original plan principle: respond to every accepted chat; no default filtering or artificial response delay.
+Implementation: src/ai_broadcaster/offline_chat_reactions.py, existing desktop.py (new GUI tab), tests/test_offline_chat_reactions.py, scripts/gui_offline_chat_reactions_smoke.py, docs/STAGE66_ALL_CHAT_REACTIONS.md.
+Scope: explicit manual FIFO response for synthetic 062/063 events using existing MockCoreReplyPort; preserve duplicate text, blocked head and tail on failure, explicit resume, bounded batch, no background actions.
+Unit command: PYTHONPATH=src python -m unittest discover -s tests -q
+Unit result: Ran 1220 tests; OK (25 new tests, previous 1195).
+GUI regression: all 63 scripts/gui_*_smoke.py under Linux Xvfb; 63 PASS / 0 FAIL; see STAGE66_GUI_REGRESSION.log.
+Python AST syntax: 205/205 PASS.
+Original plan SHA256: d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c (unchanged).
+Prior v65 relative file paths preserved: 530/530; modified prior files only README.md, TEST_RESULTS.txt, docs/ROADMAP_100.md, src/ai_broadcaster/desktop.py. All other prior files byte-for-byte preserved.
+Roadmap 065 remains pending; code-development reach 65/100, not live platform or user acceptance.
+Not verified: Windows PC/EXE, live platform messages, real LLM, actual voice/avatar, OBS, streaming, operator approval.
+FINAL ZIP: AISTING_Offline_Development_v66.zip; 540 files; ZIP CRC PASS.
+Extracted PRELIM ZIP to a separate folder: 1220/1220 unit tests PASS and stage 065 real Tk GUI smoke PASS. See STAGE66_REEXTRACTED_UNITTEST.log and STAGE66_REEXTRACTED_GUI.log.
+Final archive differs from tested PRELIM archive only in appended validation evidence logs and this validation text; source/test/code content unchanged.

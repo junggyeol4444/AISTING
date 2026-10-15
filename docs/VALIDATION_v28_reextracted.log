@@ -1,0 +1,6 @@
+28단계 ZIP 후보 압축 해제 후 재검증 (Linux Python 3.13 + Xvfb)
+- 후보 ZIP 파일 수: 206개, CRC testzip: 통과.
+- ZIP을 별도 임시 폴더로 압축 해제한 뒤 PYTHONPATH=src unittest: 609/609 통과.
+- 압축 해제된 소스에서 Xvfb Tkinter GUI smoke 전체: 27/27 통과.
+- 압축 해제 검증 중 사용자 PC/외부 서버/실제 AI/OBS 접속 없음.
+- 최종 ZIP에는 이 검증 로그를 포함하고 재압축 후 CRC/자동 테스트를 다시 확인합니다.

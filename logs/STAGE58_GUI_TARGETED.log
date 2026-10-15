@@ -1,0 +1,28 @@
+PASS gui_avatar_display_validation_smoke.py exit=0 GUI stage 053 existing avatar display: PASS
+
+PASS gui_avatar_expressions_smoke.py exit=0 GUI 054 expressions selection/render/save/load/delete: PASS
+
+PASS gui_avatar_voice_mouth_smoke.py exit=0 GUI 055 voice-to-mouth simulated routing and manual preview: PASS
+
+PASS gui_avatar_voice_sync_smoke.py exit=0 GUI 056 virtual voice/mouth timing timeline: PASS
+
+PASS gui_avatar_selection_smoke.py exit=0 GUI 아바타 미정/2D/3D 전환, 샘플 차단, 별도 창 종료, 저장 및 복원: 통과
+
+PASS gui_avatar_smoke.py exit=0 GUI별도창/중복방지/동기화/배경전환/독립닫기/전체종료: 통과
+
+PASS gui_platform_smoke.py exit=0 GUI 플랫폼 미선택/복수 선택/변경/해제 및 로컬 저장: 통과
+
+PASS gui_persona_smoke.py exit=0 GUI 캐릭터 기본값/직접 만들기/아바타 이름/저장/초안 보존: 통과
+
+PASS gui_voice_source_smoke.py exit=0 GUI 목소리 확보 방식 선택·저장·복원·속도/음량 전달·미설치 음성 대체 방지: 통과
+
+PASS gui_selected_voice_routing_smoke.py exit=0 GUI 046 voice routing, selection, invalidation, stop, error, offline: PASS
+
+PASS gui_voice_final_verification_smoke.py exit=0 GUI stage 050 PASS: virtual voice final checklist, invalidation, safety gates
+
+PASS gui_emotion_expression_smoke.py exit=0 GUI stage048 manual emotion-expression review: PASS
+
+PASS gui_pronunciation_review_smoke.py exit=0 GUI 047 manual pronunciation + intonation: PASS
+
+PASS gui_avatar_motion_review_smoke.py exit=0 GUI stage 057 avatar expression/motion preview: PASS
+

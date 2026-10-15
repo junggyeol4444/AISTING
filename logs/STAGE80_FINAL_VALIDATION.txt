@@ -1,0 +1,18 @@
+AISTING v80 · original stage 079 closing/farewell/automatic termination SIMULATION ONLY
+DATE: 2026-10-14 Asia/Seoul
+SOURCE: /mnt/data/AISTING_Offline_Development_v79.zip, 682 files, ZIP CRC good.
+Reviewed actual source docs/ORIGINAL_PLAN.txt (§2-2, §4-3, §4-4), docs/ROADMAP_100.md, config/roadmap.json, README.md, docs/STAGE79_BROADCAST_DURATION_RULES.md, existing stage logs and source code.
+
+IMPLEMENTED: new offline_broadcast_closing.py validates already-approved simulated max-duration decision, explicit local notice text acknowledgement, local farewell text acknowledgement, and automatic IN-MEMORY virtual_ended terminal bit only. No TTS or actual broadcast stop; scripts are deterministic examples not naturalness-tested AI output. GUI has explicit manual preparation and two step buttons; input/scene/volume/voice/persona changes invalidate session. Text display failure does not mark delivered; no automatic retry, no external resources.
+
+EVIDENCE TESTED:
+NEW unit: 18/18 PASS (logs/STAGE80_NEW_UNITTEST.log).
+FULL unittest: 1486/1486 PASS, source tree (logs/STAGE80_UNITTEST.log).
+GUI Linux virtual Xvfb: 77/77 independent existing+new GUI scripts PASS. First sequential run yielded 27 PASS then environment wall-time; remaining 50 separately run, all passed. See logs/STAGE80_GUI_ALL.log, logs/STAGE80_GUI_REMAINING.log, logs/STAGE80_GUI_SUMMARY.log.
+AST: 246 Python files PASS (logs/STAGE80_SYNTAX.log).
+SOURCE PRESERVATION: all 682/682 previous ZIP file paths present. Source plan sha256 d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c identical. Roadmap JSON sha256 bcaee31766fc5db4307f2d6f86becbe7dce28931d55c51ff8b39296beba5d48e identical.
+
+UNVERIFIED: Windows 10/11 real device/EXE, actual Korean speech, audio device, approved/available avatar model, AI-generated dialogue naturalness, OBS WebSocket/stream, real elapsed clock, auto-stop safety, platform state, broadcast rights and user final approval. Original stages 010/079 remain pending. CODE DEVELOPED THROUGH 079/100, which IS NOT product completion %.
+PROHIBITED ACTIONS: No GitHub, remote repo, cloud/other-server/API, real OBS, account, payment, install, user PC access, voice material collection, actual broadcast operation.
+
+POST-EXTRACTION: independent extracted-folder unittest 1486/1486 PASS (logs/STAGE80_REEXTRACTED_UNITTEST.log); stage079 actual Tk GUI smoke PASS (logs/STAGE80_REEXTRACTED_GUI.log); CRC PASS.

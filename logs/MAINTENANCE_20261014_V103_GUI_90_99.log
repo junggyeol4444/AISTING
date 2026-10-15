@@ -1,0 +1,10 @@
+[91/99] gui_style_consistency_smoke.py: PASS
+[92/99] gui_synthesis_environment_smoke.py: PASS
+[93/99] gui_voice_final_verification_smoke.py: PASS
+[94/99] gui_voice_material_smoke.py: PASS
+[95/99] gui_voice_output_validation_smoke.py: PASS
+[96/99] gui_voice_quality_smoke.py: PASS
+[97/99] gui_voice_rights_smoke.py: PASS
+[98/99] gui_voice_source_smoke.py: PASS
+[99/99] gui_workspace_setup_smoke.py: PASS
+GUI TOTAL 9/9 passed; elapsed=11.92s; failed=[]

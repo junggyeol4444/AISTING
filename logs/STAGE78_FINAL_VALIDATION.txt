@@ -1,0 +1,18 @@
+AISTING v78 · original stage 077 (offline mock chat -> mock reply -> silent voice text -> Tk Canvas)
+SOURCE: /mnt/data/AISTING_Offline_Development_v77.zip (660 original entries, valid ZIP CRC)
+SOURCE REVIEW: docs/ORIGINAL_PLAN.txt, docs/ROADMAP_100.md, config/roadmap.json, README.md, TEST_RESULTS.txt, logs/STAGE77_FINAL_VALIDATION.txt and applicable source/tests reviewed.
+SCOPE: manual-only, three synthetic messages, existing 061/062/063/065/073/074 classes; isolated Canvas, no playback, no broadcast, no OS/network service or user data access.
+NEW CODE: src/ai_broadcaster/offline_chat_voice_screen_integration.py, desktop.py GUI button, tests/test_offline_chat_voice_screen_integration.py, scripts/gui_offline_chat_voice_screen_integration_smoke.py.
+NEW UNIT TESTS: 17/17 PASS. Command: PYTHONPATH=src:tests python -m unittest discover -s tests -p 'test_offline_chat_voice_screen_integration.py' -q.
+ALL SOURCE UNIT TESTS: 1447/1447 PASS. Command: PYTHONPATH=src:tests python -m unittest discover -s tests -q. Log: logs/STAGE78_UNITTEST.log.
+ALL SOURCE GUI SMOKE SCRIPTS: 75/75 PASS, zero test failures; 29 individually under Xvfb until runner time limit, 46 remaining executed separately under isolated Xvfb processes. Log: logs/STAGE78_GUI_ALL.log. NOT Windows.
+AST PARSE: 240/240 src/tests/scripts Python files PASS. Log: logs/STAGE78_SYNTAX.log.
+NEW REAL Tk BUG CAUGHT AND FIXED: TclError unknown option "-text" caused by querying a text property on a Canvas rectangle sharing the virtual-voice tag. Fixed by checking Canvas.type(item_id)=='text' before itemcget. Initial failed attempts were NOT passed or concealed; rerun GUI and unit tests PASS.
+SOURCE PRESERVATION: previous 660/660 file paths present. Changed previous files: README.md, TEST_RESULTS.txt, docs/ROADMAP_100.md, src/ai_broadcaster/desktop.py. Original plan SHA256 d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c unchanged. config/roadmap.json SHA256 bcaee31766fc5db4307f2d6f86becbe7dce28931d55c51ff8b39296beba5d48e unchanged.
+APPROVAL: original step 077 status remains PENDING; stage 010 user final approval PENDING. Code scope reached 77/100, not product-ready percentage.
+UNVERIFIED: Windows 10/11 device and EXE, actual LLM live reply, installed TTS and sound, real 2D/3D model, streaming/OBS, actual private broadcast/viewer visibility, timing and long-duration stability, installation/rights and operator subjective naturalness. Explicit operator approval required for relevant hardware/service/broadcast checks.
+OFFLINE AND PROHIBITIONS: no GitHub, external server, cloud API, platform account, user PC, paid use, OBS, actual broadcast, microphone collection or program installation during this work.
+POST-EXTRACTION VERIFICATION: see appended results below.
+POST-EXTRACTION (first archive contents separately unpacked to /mnt/data/aisting_verify78): full 1447/1447 unittest PASS, Linux Xvfb new Tk GUI PASS, AST 240/240 PASS. Logs: logs/STAGE78_REEXTRACTED_UNITTEST.log and logs/STAGE78_REEXTRACTED_GUI.log. No Windows real-device verification.
+PRELIMINARY ARCHIVE: 669 files, ZIP testzip() == None.
+FINAL ARCHIVE: includes this report plus 2 post-extraction run logs; CRC/preservation checked after final build below.

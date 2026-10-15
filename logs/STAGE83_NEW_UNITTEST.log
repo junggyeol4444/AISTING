@@ -1,0 +1,27 @@
+test_duplicate_same_occurrence_rejected_even_after_finish (test_offline_start_control.OfflineStartControlTests.test_duplicate_same_occurrence_rejected_even_after_finish) ... ok
+test_empty_draft_not_due (test_offline_start_control.OfflineStartControlTests.test_empty_draft_not_due) ... ok
+test_exact_second_check (test_offline_start_control.OfflineStartControlTests.test_exact_second_check) ... ok
+test_invalid_draft_rejected (test_offline_start_control.OfflineStartControlTests.test_invalid_draft_rejected) ... ok
+test_invalid_settings_type_blocks (test_offline_start_control.OfflineStartControlTests.test_invalid_settings_type_blocks) ... ok
+test_manual_math_without_clock_file_or_network (test_offline_start_control.OfflineStartControlTests.test_manual_math_without_clock_file_or_network) ... ok
+test_manual_mock_start_and_finish (test_offline_start_control.OfflineStartControlTests.test_manual_mock_start_and_finish) ... ok
+test_manually_changed_draft_new_controller_does_not_mutate_previous (test_offline_start_control.OfflineStartControlTests.test_manually_changed_draft_new_controller_does_not_mutate_previous) ... ok
+test_matching_time_is_mock_ready_only (test_offline_start_control.OfflineStartControlTests.test_matching_time_is_mock_ready_only) ... ok
+test_missing_policy_flags_block (test_offline_start_control.OfflineStartControlTests.test_missing_policy_flags_block) ... ok
+test_mock_display_failure_keeps_event_available (test_offline_start_control.OfflineStartControlTests.test_mock_display_failure_keeps_event_available) ... ok
+test_mock_display_success_receives_occurrence (test_offline_start_control.OfflineStartControlTests.test_mock_display_success_receives_occurrence) ... ok
+test_mock_finish_without_active_is_noop (test_offline_start_control.OfflineStartControlTests.test_mock_finish_without_active_is_noop) ... ok
+test_naive_datetime_rejected (test_offline_start_control.OfflineStartControlTests.test_naive_datetime_rejected) ... ok
+test_non_bool_policy_flag_blocks (test_offline_start_control.OfflineStartControlTests.test_non_bool_policy_flag_blocks) ... ok
+test_non_kst_datetime_rejected (test_offline_start_control.OfflineStartControlTests.test_non_kst_datetime_rejected) ... ok
+test_off_schedule_not_due (test_offline_start_control.OfflineStartControlTests.test_off_schedule_not_due) ... ok
+test_same_clock_time_wrong_weekday_not_due (test_offline_start_control.OfflineStartControlTests.test_same_clock_time_wrong_weekday_not_due) ... ok
+test_second_mock_while_active_blocked (test_offline_start_control.OfflineStartControlTests.test_second_mock_while_active_blocked) ... ok
+test_second_week_same_slot_allowed (test_offline_start_control.OfflineStartControlTests.test_second_week_same_slot_allowed) ... ok
+test_settings_rechecked_between_inspection_and_start (test_offline_start_control.OfflineStartControlTests.test_settings_rechecked_between_inspection_and_start) ... ok
+test_unapproved_streaming_setting_blocks (test_offline_start_control.OfflineStartControlTests.test_unapproved_streaming_setting_blocks) ... ok
+
+----------------------------------------------------------------------
+Ran 22 tests in 0.002s
+
+OK

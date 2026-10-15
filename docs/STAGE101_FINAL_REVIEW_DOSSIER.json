@@ -1,0 +1,130 @@
+{
+  "schema": "aisting_final_review_dossier_v1",
+  "type": "unapproved_offline_review_only",
+  "review_items": [
+    {
+      "id": "requirements",
+      "subject": "원본 기획안·100단계 로드맵 보존",
+      "evidence_scope": "동봉 문서만 점검"
+    },
+    {
+      "id": "program",
+      "subject": "누적 소스·자동/GUI 회귀 시험",
+      "evidence_scope": "개발 환경 기록만 있음"
+    },
+    {
+      "id": "settings",
+      "subject": "설정·사용자 데이터 보존",
+      "evidence_scope": "샘플 경로 시험만 있음"
+    },
+    {
+      "id": "windows",
+      "subject": "Windows 10/11 실행·EXE",
+      "evidence_scope": "실기기 미검증"
+    },
+    {
+      "id": "chat",
+      "subject": "실제 플랫폼 채팅·재연결",
+      "evidence_scope": "실제 연결 미구현·미검증"
+    },
+    {
+      "id": "ai",
+      "subject": "실제 AI 모델·안전한 대화",
+      "evidence_scope": "실모델 미검증"
+    },
+    {
+      "id": "voice",
+      "subject": "실제 TTS·음성 품질·권리",
+      "evidence_scope": "실장치·품질 미검증"
+    },
+    {
+      "id": "avatar",
+      "subject": "실제 2D/3D 아바타·립싱크",
+      "evidence_scope": "실모델 미검증"
+    },
+    {
+      "id": "obs",
+      "subject": "OBS·비공개/실제 송출 및 종료",
+      "evidence_scope": "실제 송출 미검증"
+    },
+    {
+      "id": "notices",
+      "subject": "디스코드·카페 공지 실제 게시",
+      "evidence_scope": "계정·권한·게시 미검증"
+    },
+    {
+      "id": "endurance",
+      "subject": "실시간 장시간·다회차 안정성",
+      "evidence_scope": "가속 모의만 검증"
+    },
+    {
+      "id": "resources",
+      "subject": "SQLite 미종료 경고 및 자원 안정성",
+      "evidence_scope": "미해결 경고 있음"
+    },
+    {
+      "id": "rights",
+      "subject": "콘텐츠/아바타/음성 권리 확인",
+      "evidence_scope": "운영자 직접 확인 대기"
+    },
+    {
+      "id": "approval",
+      "subject": "운영자 명시적 최종 검수·승인",
+      "evidence_scope": "승인 대기"
+    }
+  ],
+  "archived_project_files": [
+    {
+      "path": "docs/ORIGINAL_PLAN.txt",
+      "status": "보관 파일 존재(실제 동작 증거 아님)",
+      "sha256": "d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c"
+    },
+    {
+      "path": "docs/ROADMAP_100.md",
+      "status": "보관 파일 존재(실제 동작 증거 아님)",
+      "sha256": "b4d511539924046ff68d3748e9515cc091b76c19d245a8a16f664859a4ac211e"
+    },
+    {
+      "path": "config/roadmap.json",
+      "status": "보관 파일 존재(실제 동작 증거 아님)",
+      "sha256": "bcaee31766fc5db4307f2d6f86becbe7dce28931d55c51ff8b39296beba5d48e"
+    },
+    {
+      "path": "docs/REAL_DEVICE_ACCEPTANCE_CHECKLIST.md",
+      "status": "보관 파일 존재(실제 동작 증거 아님)",
+      "sha256": "20124e393949a84b21262fbdbe2d72f04a79b5b8a19c20d8f3c178870dad95cb"
+    },
+    {
+      "path": "logs/STAGE100_FINAL_VALIDATION.txt",
+      "status": "보관 파일 존재(실제 동작 증거 아님)",
+      "sha256": "0e8f418d982aee607dce88bd78de116ff7fcbb1c4f782fdeae431429103660fc"
+    },
+    {
+      "path": "logs/STAGE100_UNITTEST.log",
+      "status": "보관 파일 존재(실제 동작 증거 아님)",
+      "sha256": "a28365091ad49d611dd3796d3608746bd28a0814155b217072a807cdfbe9de5f"
+    }
+  ],
+  "operator_self_report_count": 0,
+  "blockers": [
+    "Windows 10/11 실행·EXE: 실기기 미검증",
+    "실제 플랫폼 채팅·재연결: 실제 연결 미구현·미검증",
+    "실제 AI 모델·안전한 대화: 실모델 미검증",
+    "실제 TTS·음성 품질·권리: 실장치·품질 미검증",
+    "실제 2D/3D 아바타·립싱크: 실모델 미검증",
+    "OBS·비공개/실제 송출 및 종료: 실제 송출 미검증",
+    "디스코드·카페 공지 실제 게시: 계정·권한·게시 미검증",
+    "실시간 장시간·다회차 안정성: 가속 모의만 검증",
+    "SQLite 미종료 경고 및 자원 안정성: 미해결 경고 있음",
+    "콘텐츠/아바타/음성 권리 확인: 운영자 직접 확인 대기",
+    "운영자 명시적 최종 검수·승인: 승인 대기",
+    "기존 offline_chat.py 관련 SQLite 미종료 ResourceWarning: 원인 추적·수정·실기기 재검증 대기"
+  ],
+  "roadmap_010_100_pending": true,
+  "hardware_verified": false,
+  "actual_broadcast_verified": false,
+  "approval_granted": false,
+  "can_release": false,
+  "external_posted": false,
+  "user_pc_autocollected": false
+}

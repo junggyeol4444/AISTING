@@ -1,0 +1,16 @@
+AISTING v39 actual implementation and local test record | 2026-10-13 KST
+Baseline: AISTING_Offline_Development_v38.zip; entries=278; CRC=PASS
+Implemented ORIGINAL roadmap 038: 채팅이 없을 때 자발적 발화 구현 (OFFLINE SIMULATION)
+Previous files preserved: 273 byte-identical, 5 modified, 0 deleted
+Modified prior files: README.md, TEST_RESULTS.txt, docs/ROADMAP_100.md, docs/STATUS.md, src/ai_broadcaster/desktop.py
+New files prior to validation log: 8 (docs/STAGE39_IDLE_SPEECH.md, logs/STAGE39_GUI_NEW.log, logs/STAGE39_GUI_REGRESSION.log, logs/STAGE39_SYNTAX.log, logs/STAGE39_UNITTEST.log, scripts/gui_idle_speech_smoke.py, src/ai_broadcaster/idle_speech.py, tests/test_idle_speech.py)
+Original plan SHA256: d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c (unchanged)
+config/roadmap.json: original bytes preserved, final approval remains pending
+Automated: 702/702 PASS, logs/STAGE39_UNITTEST.log
+GUI new: 1/1 PASS, logs/STAGE39_GUI_NEW.log
+GUI regression: 12/12 PASS, logs/STAGE39_GUI_REGRESSION.log
+Python syntax AST: 124/124 PASS, logs/STAGE39_SYNTAX.log
+Environment: local Linux Python 3.13.5, Xvfb virtual display (NOT Windows hardware)
+User permission required: 010 final approval, 011+ actual user PC validation, Windows EXE, real AI naturalness and streaming.
+Nonactions: no GitHub, network connection, external server/API, account login, OBS, installation, actual PC access/inventory, payments or remote control.
+Scope: Manual virtual time and explicit-activation text preview. NO autonomous real-time timer, real LLM text generation or audio/broadcast output.

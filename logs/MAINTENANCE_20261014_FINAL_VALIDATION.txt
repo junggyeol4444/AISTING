@@ -1,0 +1,64 @@
+AISTING v102 MAINTENANCE VALIDATION — 2026-10-14 (KST)
+=======================================================
+Archive version v102 is a MAINTENANCE REVISION, NOT original roadmap stage 101/102.
+Original roadmap code reach remains 100/100, real operator acceptance PENDING.
+Source base: AISTING_Offline_Development_v101.zip (989 files; CRC passed).
+
+REAL DIAGNOSIS (offline Python 3.13, not Windows)
+- v101 tests/test_response_records.py baseline: 37/37 tests PASS but
+  5 actual SQLite ResourceWarning: unclosed database warnings.
+- Root cause: five test fixture `with sqlite3.connect(...) as db` blocks.
+  SQLite context manager handles transactions, NOT connection closure.
+  Earlier `offline_chat.py` blame was not supported by this reproduction;
+  LocalMemory._connection() already had finally: db.close().
+- Corrected five test fixtures using contextlib.closing around sqlite3.connect.
+- Added source safeguard: response_records._readonly() closes a newly opened
+  connection if PRAGMA query_only=ON raises, then propagates the exception.
+- Added 2 unit tests: production save/read/clear handles all closed;
+  read-only PRAGMA error closes connection.
+- Updated operator/final review blocker wording to distinguish resolved
+  test fixture warnings from UNVERIFIED real-device DB resource stability.
+  No release/approval flags were changed.
+
+TESTS ACTUALLY EXECUTED IN DEVELOPMENT TREE
+- Before patch, targeted suite: 37/37 PASS, 5 unclosed SQLite warnings.
+- After patch, targeted suite: 39/39 PASS, 0 unclosed SQLite warnings.
+- Full suite with PYTHONWARNINGS=always::ResourceWarning:
+  1998/1998 PASS, 0 ResourceWarning messages (7.447 s on final source).
+- Linux/Xvfb GUI scripts: 99/99 PASS, verified in 6 slices.
+- Python AST syntax: 310/310 source, test and script files PASS.
+
+FIRST ZIP INDEPENDENT EXTRACTION TESTS
+- Extracted /mnt/data/AISTING_Offline_Development_v102.zip to an isolated directory.
+- PYTHONPATH=src PYTHONWARNINGS=always::ResourceWarning
+  python -m unittest discover -s tests -q: 1998/1998 PASS, 0 warnings.
+- Xvfb final-acceptance GUI: PASS.
+- Xvfb operator-maintenance GUI: PASS.
+
+PRESERVATION AND SAFETY
+- All 989 original v101 relative file paths preserved; no deletions.
+- Exactly 9 pre-existing files modified (tests, SQLite handling,
+  operator status and maintenance notes); remaining v101 files unchanged.
+- Original docs/ORIGINAL_PLAN.txt SHA256:
+  d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c
+- Original config/roadmap.json SHA256:
+  bcaee31766fc5db4307f2d6f86becbe7dce28931d55c51ff8b39296beba5d48e
+- Original stage 010 and 100 approvals: pending, unchanged.
+- No user PC, installation, OBS, live chat, account, payment, external AI,
+  cloud, GitHub, or actual broadcast access was performed.
+
+NOT VERIFIED / NOT A RELEASE AUTHORIZATION
+- Windows 10/11 real device or EXE; long-duration file locking and memory/RSS;
+  actual TTS, avatar, local AI model quality, OBS, live streaming or chat;
+  operator final approval. Test-warning fix does not prove production stability.
+
+Logs inside archive:
+  logs/MAINTENANCE_20261014_SQLITE_BASELINE.log
+  logs/MAINTENANCE_20261014_SQLITE_AFTER.log
+  logs/MAINTENANCE_20261014_UNITTEST.log
+  logs/MAINTENANCE_20261014_GUI.log
+  logs/MAINTENANCE_20261014_SYNTAX.log
+  logs/MAINTENANCE_20261014_REEXTRACT_UNITTEST.log
+  logs/MAINTENANCE_20261014_REEXTRACT_GUI_FINAL.log
+  logs/MAINTENANCE_20261014_REEXTRACT_GUI_MAINTENANCE.log
+  docs/MAINTENANCE_20261014_SQLITE.md

@@ -1,0 +1,8 @@
+test_normal_save_has_no_error (test_memory_failure_reporting.MemoryFailureReportingTests.test_normal_save_has_no_error) ... ok
+test_replaced_db_after_delivery_is_preserved_and_reported (test_memory_failure_reporting.MemoryFailureReportingTests.test_replaced_db_after_delivery_is_preserved_and_reported) ... ok
+test_sqlite_error_after_delivery_is_reported (test_memory_failure_reporting.MemoryFailureReportingTests.test_sqlite_error_after_delivery_is_reported) ... ok
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.004s
+
+OK

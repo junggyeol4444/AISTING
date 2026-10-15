@@ -1,0 +1,16 @@
+[76/99] gui_os_readiness_smoke.py: PASS
+[77/99] gui_persona_drafts_smoke.py: PASS
+[78/99] gui_persona_input_smoke.py: PASS
+[79/99] gui_persona_smoke.py: PASS
+[80/99] gui_platform_chat_connector_smoke.py: PASS
+[81/99] gui_platform_smoke.py: PASS
+[82/99] gui_pronunciation_review_smoke.py: PASS
+[83/99] gui_reaction_directions_smoke.py: PASS
+[84/99] gui_response_error_smoke.py: PASS
+[85/99] gui_response_records_smoke.py: PASS
+[86/99] gui_response_speed_smoke.py: PASS
+[87/99] gui_runtime_profile_smoke.py: PASS
+[88/99] gui_selected_voice_routing_smoke.py: PASS
+[89/99] gui_smoke.py: PASS
+[90/99] gui_software_cost_guide_smoke.py: PASS
+GUI TOTAL 15/15 passed; elapsed=20.13s; failed=[]

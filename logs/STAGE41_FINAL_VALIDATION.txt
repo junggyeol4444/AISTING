@@ -1,0 +1,17 @@
+AISTING cumulative source v41 / Original roadmap stage 040 character dialogue first review
+Baseline: AISTING_Offline_Development_v40.zip / 295 files / ZIP CRC valid.
+Original roadmap stage: 040 캐릭터 대화 1차 검증.
+Implementation: isolated mock core structure test + selected character/preferences/reaction directions/boundaries guidance preview + operator per-turn manual judgements (in-memory only).
+NOTE: Persona guidance is NOT injected into mock generator; mock outputs are NOT evidence of human-like naturalness, actual AI persona compliance or boundary enforcement.
+Automatic tests: 728/728 PASS (v40: 714; stage040 new: 14).
+GUI: NEW 1/1 PASS; previous GUI REGRESSION 15/15 PASS. Linux Xvfb ONLY, NOT Windows.
+Python syntax: 130/130 PASS (AST compile parse, no bytecode install).
+Baseline file preservation: 295/295 paths retained. Modified 5: README.md; TEST_RESULTS.txt; docs/ROADMAP_100.md; docs/STATUS.md; src/ai_broadcaster/desktop.py.
+Original plan SHA256 unchanged: d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c.
+Source ZIP re-extraction: 728/728 unit tests PASS; new GUI smoke PASS; Python syntax 130/130 PASS; ZIP CRC PASS. Retest source: extracted v41 archive; final log text was then updated without other code changes.
+Stage 010 operator final approval: PENDING; stage011+ user-PC information inspection: PENDING.
+Windows real-PC/EXE execution, live AI and voice, human naturalness and actual streaming NOT VERIFIED.
+No GitHub/remote access/web/cloud/API/installation/payment/account/OBS streaming/PC inventory.
+
+ZIP entries: 304; ZIP post-final-log CRC: PASS; all previously provided files retained.
+Development-work scope: original stage 040/100; NOT 40 officially user-approved stages.

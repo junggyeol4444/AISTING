@@ -1,0 +1,61 @@
+AISTING v91 — original roadmap stage 090: broadcast automation end-to-end verification (OFFLINE PARTIAL ONLY)
+Date: 2026-10-14 KST
+
+SOURCE REVIEWED:
+- /mnt/data/AISTING_Offline_Development_v90.zip (829 file entries; ZIP CRC valid)
+- docs/ORIGINAL_PLAN.txt sections 4,5,7; docs/ROADMAP_100.md, config/roadmap.json,
+  README.md, docs/REAL_DEVICE_ACCEPTANCE_CHECKLIST.md, existing stage docs and development/test logs.
+- Existing stage 077 chat/voice/scene; 078/079 duration/closing; 081/082 schedule/start;
+  084..089 pre-notice, Discord/Naver review, variation, fake posting, virtual-end notices.
+
+IMPLEMENTATION:
+- ADDED src/ai_broadcaster/offline_broadcast_automation_audit.py
+  15 fail-closed, single virtual occurrence checks. Actual settings/platform/voice/scene selections
+  are not substituted; synthetic chat->response->silent voice text->Tk Canvas, fake posts, start,
+  duration, farewell, virtual stop, end record and duplicates are examined.
+- MODIFIED src/ai_broadcaster/desktop.py; added operator-triggered isolated Tk canvas tab
+  "방송 자동화 전체 모의 감사", invalidating status on manual time/topic, schedule,
+  screen setting or volume changes. No connection/streaming/scheduler/file persistence.
+- ADDED tests/test_offline_broadcast_automation_audit.py (24 new unit cases),
+  scripts/gui_offline_broadcast_automation_audit_smoke.py,
+  docs/STAGE91_OFFLINE_AUTOMATION_INTEGRATION_AUDIT.md.
+- UPDATED README.md, docs/ROADMAP_100.md, docs/REAL_DEVICE_ACCEPTANCE_CHECKLIST.md.
+- IMPORTANT: original 090 status and final operator approval 010 remain pending; no
+  config/roadmap.json change and no 090 checkmark. Code development reach 90/100
+  is NOT a claim of 90% product completeness, Windows compatibility or real live operation.
+
+ACTUAL TEST COMMANDS AND RESULTS:
+- PYTHONPATH=src python -m unittest discover -s tests -q
+  => 1729/1729 PASS, logs/STAGE91_UNITTEST.log; previous 1705 + 24 new.
+- PYTHONPATH=src python -m unittest discover -s tests -p test_offline_broadcast_automation_audit.py -v
+  => 24/24 PASS (ran before full suite).
+- xvfb-run -a python scripts/gui_offline_broadcast_automation_audit_smoke.py
+  => PASS (Tkinter actual Xvfb canvas, isolated mock, no network/process).
+- xvfb-run -a python scripts/run_stage88_gui_regression.py 0 30
+  => 30/30 PASS, logs/STAGE91_GUI_BATCH_0_30.log
+- xvfb-run -a python scripts/run_stage88_gui_regression.py 30 60
+  => 30/30 PASS, logs/STAGE91_GUI_BATCH_30_60.log
+- xvfb-run -a python scripts/run_stage88_gui_regression.py 60 89
+  => 29/29 PASS, logs/STAGE91_GUI_BATCH_60_89.log
+- ALL GUI smoke scripts: 89/89 PASS on Linux Xvfb (NOT Windows).
+- Python AST parsed src/tests/scripts 280/280 PASS, logs/STAGE91_SYNTAX.log.
+
+ARCHIVE PRESERVATION:
+- v90 file paths retained: 829/829. Original user plan docs/ORIGINAL_PLAN.txt, requirements JSON,
+  config/roadmap.json byte-identical; 4 existing files legitimately modified:
+  README.md, docs/ROADMAP_100.md, docs/REAL_DEVICE_ACCEPTANCE_CHECKLIST.md, src/ai_broadcaster/desktop.py.
+- Archive ZIP CRC checked. Independent fresh unzip and full unittest discover rerun:
+  1729/1729 PASS; logs/STAGE91_REEXTRACTED_UNITTEST.log.
+- Independent fresh unzip GUI 090 Tk smoke rerun: PASS;
+  logs/STAGE91_REEXTRACTED_GUI.log.
+
+NOT IMPLEMENTED OR NOT VERIFIED:
+- Real OS scheduled start, background operation, 1–3 hour unattended live stream,
+  OBS scene/source/output and end, actual platform chat, real live AI, real TTS voice
+  and audio output, physical Live2D/VRM, real Discord/Naver messages/permissions,
+  public/private real broadcast, real audience reception, real-world duplicates,
+  Windows 10/11 EXE/device correctness, model rights/naturalness, final user signoff.
+- No external/GitHub/remote network/API, paid service, installation, account login,
+  OBS launch/streaming/PC remote control, PC user data or voice-material collection performed.
+- Original approval/real-device verification remain PENDING. Next original stage 091:
+  broadcast dialogue/event record storage (only local opt-in implementation permitted).

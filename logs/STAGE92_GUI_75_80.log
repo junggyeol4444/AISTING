@@ -1,0 +1,6 @@
+PASS gui_response_records_smoke.py exit=0
+PASS gui_response_speed_smoke.py exit=0
+PASS gui_runtime_profile_smoke.py exit=0
+PASS gui_selected_voice_routing_smoke.py exit=0
+PASS gui_smoke.py exit=0
+GUI SLICE 75:80 — 5/5 PASS

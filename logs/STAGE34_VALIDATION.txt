@@ -1,0 +1,5 @@
+v33 ZIP 238 entries inspected and extracted locally.
+Unit tests: 639/639 PASS (PYTHONPATH=src python -m unittest discover -s tests -q).
+GUI stage34: PASS (PYTHONPATH=src xvfb-run -a python scripts/gui_reaction_directions_smoke.py).
+No GitHub/network calls, installation, OBS or user PC access.
+Windows physical GUI and EXE build not tested.

@@ -1,0 +1,59 @@
+AISTING v93 / ORIGINAL STAGE 092 — OFFLINE PAST BROADCAST MEMORY CARDS
+
+BASELINE ACTUALLY INSPECTED: /mnt/data/AISTING_Offline_Development_v92.zip
+- Original archive ZIP.testzip() = None (CRC OK); 860 actual files.
+- Reviewed docs/ORIGINAL_PLAN.txt, docs/ROADMAP_100.md, config/roadmap.json,
+  README.md, docs/STAGE92_OFFLINE_BROADCAST_JOURNAL.md, recent log and existing tests.
+- Original 092 = 과거 방송을 기억하는 기능 구현; original 093 = 기억 검색과 다음 방송 연동.
+
+IMPLEMENTED OFFLINE ONLY:
+- src/ai_broadcaster/offline_past_broadcast_memory.py: operator-selected verified 091 synthetic journal
+  -> compact memory cards; max 20 cards/12 excerpts per card; no duplicate source digest;
+  mock chat contents excluded unless explicit opt-in; explicit JSON save/load with strict
+  structure flags and SHA-256 checksum validation; no file overwrite.
+- src/ai_broadcaster/desktop.py: manual past broadcast memory card tab, import, inspect,
+  remove with confirmation, export, load with confirmation and fail-closed handling.
+- tests/test_offline_past_broadcast_memory.py; scripts/gui_offline_past_broadcast_memory_smoke.py.
+- docs/STAGE93_OFFLINE_PAST_BROADCAST_MEMORY.md, README, roadmap progress note and
+  docs/REAL_DEVICE_ACCEPTANCE_CHECKLIST.md; original roadmap statuses untouched.
+
+ACTUAL TESTS PERFORMED IN LOCAL LINUX ENVIRONMENT:
+- PYTHONPATH=src python -m unittest discover -s tests -p 'test_offline_past_broadcast_memory.py' -q:
+  26/26 PASS (first attempt detected JSON tuple/list roundtrip bug, fixed & rerun).
+- xvfb-run -a python scripts/gui_offline_past_broadcast_memory_smoke.py: PASS
+  (first attempt detected missing pathlib.Path desktop import, fixed & rerun).
+- PYTHONPATH=src python -m unittest discover -s tests -q: 1781/1781 PASS;
+  exit 0, logs/STAGE93_UNITTEST.log.
+- Python AST parsing of src/**/*.py, tests/**/*.py, scripts/**/*.py: 286/286 PASS,
+  logs/STAGE93_SYNTAX.log.
+- Existing 91 Tk GUI smoke scripts, Linux Xvfb: 0:30 PASS 30/30; 30:60 PASS 30/30;
+  initial 60:91 attempt timed out at command level, NO SUCCESS CLAIM FOR INTERRUPTED RUN;
+  retry 60:65 PASS 5/5, 65:70 PASS 5/5, 70:75 PASS 5/5, 75:80 PASS 5/5,
+  80:85 PASS 5/5, 85:91 PASS 6/6. Aggregate per-file confirmed 91/91 PASS.
+- Existing SQLite connection ResourceWarning observed in full unit logs; not fixed in this
+  stage and warrants investigation for long-lived actual Windows operation.
+
+LIMITATIONS:
+- NO actual broadcasts/OBS/Discord/Cafe/real chat or voice recordings/remote PC/GitHub/
+  cloud AI/server/paid software installations or credentials used.
+- NO autonomous AI recollection, semantic search, vector DB or insertion into a future
+  chat: original 093 NOT started. Past sessions all MOCK and manually selected.
+- JSON memory plaintext; SHA-256 checksum neither encryption nor authentication.
+- NO Windows/EXE hardware, actual speech/avatar/stream, rights/privacy retention policy,
+  natural-language accuracy, actual long-term memory, operator acceptance or stage 010 approval.
+- Stage 092 remains pending in original roadmap. Code development reached original 92/100;
+  this is NOT a measured product completion percentage.
+
+FINAL PACKAGING / INDEPENDENT REEXTRACTION: see validation addendum below.
+
+
+FINAL ARCHIVE RESULT (independent re-extraction, verified):
+- Baseline v92 860/860 file paths present in v93. Modified existing 5 files only:
+  README.md, TEST_RESULTS.txt, docs/ROADMAP_100.md,
+  docs/REAL_DEVICE_ACCEPTANCE_CHECKLIST.md, src/ai_broadcaster/desktop.py.
+- Byte-identical: docs/ORIGINAL_PLAN.txt, config/roadmap.json, config/requirements.json.
+- New archive 878 files, CRC testzip() None (PASS). Python generated cache excluded.
+- Independent ZIP extract to a new folder: full unittest 1781/1781 PASS,
+  scripts/gui_offline_past_broadcast_memory_smoke.py PASS (actual Linux Xvfb).
+  Evidence copied to logs/STAGE93_REEXTRACT_UNITTEST.log, logs/STAGE93_REEXTRACT_GUI.log.
+- No real Windows/OBS/audio/avatar/memory semantics or user final acceptance performed.

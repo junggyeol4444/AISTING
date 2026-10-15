@@ -1,0 +1,23 @@
+AISTING v104 / 2026-10-14 / Offline maintenance — LocalMemory SQLite safe initialization
+Input: AISTING_Offline_Development_v103.zip (1018 entries, CRC PASS)
+Original planning documents: docs/ORIGINAL_PLAN.txt, docs/ROADMAP_100.md,
+config/roadmap.json reviewed; all remain byte-identical to v103.
+Baseline: newly added 7 regression tests on v103: 2 pass, 5 fail (foreign DB/schema/symlink defects).
+Fix: src/ai_broadcaster/offline_chat.py LocalMemory checks existing legacy schema before
+any write, rejects foreign DBs, symlinks and junctions, creates new DB exclusively,
+checks path and schema per operation, closes SQLite handles, refuses missing DB recreation.
+New regression tests: 12/12 PASS.
+Full unittest: 2014/2014 PASS, ResourceWarning count 0 (Linux Python 3.13).
+Linux Xvfb GUI smoke: 99/99 PASS (28 + 20 + 20 + 20 + 11).
+Python AST syntax: 313/313 PASS.
+Original plan/roadmap and existing user selections unchanged. No PC/account/OBS/network access.
+No actual Windows EXE/AI/TTS/avatar/OBS/live platform chat/long broadcast/operator approval tests.
+Operator final approval remains pending. 100-stage roadmap not extended.
+Post-extraction verification: see separate REEXTRACT logs and outside validation report.
+Independent extraction of first v104 ZIP: 2014/2014 unittest PASS, ResourceWarning 0.
+Independent extraction GUI selection: 8/8 PASS (virtual Linux Xvfb).
+Baseline v103 files: 1018/1018 relative paths preserved; changed existing:
+ README.md, TEST_RESULTS.txt, src/ai_broadcaster/offline_chat.py only.
+Original docs/ORIGINAL_PLAN.txt SHA256 d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c
+Original config/roadmap.json SHA256 bcaee31766fc5db4307f2d6f86becbe7dce28931d55c51ff8b39296beba5d48e
+Original docs/ROADMAP_100.md SHA256 d9f49d8ef8b9697fbcfaf6331ef4ce9e95b75effeeb11656de87fdc9d63428cc

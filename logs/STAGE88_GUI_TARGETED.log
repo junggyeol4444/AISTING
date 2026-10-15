@@ -1,0 +1,19 @@
+RUN scripts/gui_offline_naver_cafe_review_smoke.py
+GUI stage 087 PASS — offline review only; no Naver authentication or publishing
+EXIT 0
+RUN scripts/gui_offline_prebroadcast_notice_smoke.py
+GUI stage 084 PASS — review-only local notice preview; no external publishing
+EXIT 0
+RUN scripts/gui_offline_discord_notice_link_smoke.py
+GUI stage 085 PASS — local Discord-shape preview only; no login/delivery
+EXIT 0
+RUN scripts/gui_offline_notice_posting_rehearsal_smoke.py
+GUI stage 086 PASS — virtual notice display only, no Discord or OBS activity
+EXIT 0
+RUN scripts/gui_offline_start_control_smoke.py
+082 local-only GUI: due/dedup/manual mock/invalid input/no network PASS
+EXIT 0
+RUN scripts/gui_offline_broadcast_schedule_smoke.py
+Stage 081 GUI schedule add/remove/save/load/manual preview/no auto-start/no network PASS
+EXIT 0
+GUI TARGETED: 6/6 PASS

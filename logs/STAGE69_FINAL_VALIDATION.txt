@@ -1,0 +1,60 @@
+AISTING v69 / ORIGINAL 068 여러 시청자 대화 처리 · OFFLINE MOCK ONLY
+
+BASELINE / REVIEW
+- Latest available cumulative source: AISTING_Offline_Development_v68.zip, 564 relative files.
+- Actually reviewed docs/ORIGINAL_PLAN.txt (core all-chat/no default delay/operator-judged naturalness),
+  docs/ROADMAP_100.md (original 068), config/roadmap.json (010/068 pending),
+  README.md, prior 062-067 source/tests/docs and logs/STAGE68_FINAL_VALIDATION.txt.
+- Original 068: multiple-viewer conversation handling. Original 069 connection recovery is NEXT.
+- v68 baseline automated tests: 1261/1261 PASS (as reported in its archive validation).
+
+IMPLEMENTED (one original stage; no real service connection)
+- src/ai_broadcaster/offline_multi_viewer.py: OfflineMultiViewerDialogue uses existing 062
+  memory-only receiver, 063 global FIFO order, 065 mock reply port, 067 opt-in viewer
+  history; explicit activate/sync/reply_next/reply_batch/manual resume; no new queue.
+- Read-only per-(platform, synthetic nickname) accepted/staged/responded/pending/unsynced
+  ordinal accounting and global FIFO head; 15-viewer DISPLAY truncation only, never
+  drops other viewer messages; max 50 replies per manual batch, existing 500 ingress cap.
+- Cross-viewer history isolation, repeated same text retained, failure head and ALL other
+  viewers retained, no implicit retry, no viewer prioritization, no deliberate delay.
+- Tk tab '여러 시청자 대화 모의' with explicit manual controls, status and viewer summary.
+- Added 29 unit tests and a new actual Tk GUI smoke; docs/README/roadmap/test log updated.
+
+TESTS EXECUTED ON SOURCE TREE
+- PYTHONPATH=src python -m unittest discover -s tests -q: 1290/1290 PASS
+  (29 new vs baseline 1261). logs/STAGE69_UNITTEST.log
+- All 66/66 scripts/gui_*_smoke.py PASS on Linux Xvfb (including new 068 GUI).
+  logs/STAGE69_GUI_REGRESSION.log
+- AST parse: 214/214 Python source/test/script files PASS.
+  logs/STAGE69_SYNTAX.log
+
+PRELIMINARY ZIP / POST-EXTRACTION TESTS
+- Preliminary ZIP CRC PASS, 572 files, extracted in a separate directory.
+- Extracted unittest: 1290/1290 PASS. logs/STAGE69_REEXTRACTED_UNITTEST.log
+- Extracted new GUI: PASS. logs/STAGE69_REEXTRACTED_GUI.log
+- Extracted ALL GUI regression: 66/66 PASS. logs/STAGE69_REEXTRACTED_GUI_REGRESSION.log
+- Final archive rebuild only adds these post-extraction logs and this validation file;
+  source, test, GUI script, original plan and settings are unchanged from the tested
+  preliminary ZIP. Final archive CRC/path checks are performed after packaging.
+
+PRESERVATION / APPROVAL SEPARATION
+- All 564 v68 relative paths preserved. Modified old paths ONLY: README.md,
+  TEST_RESULTS.txt, docs/ROADMAP_100.md, src/ai_broadcaster/desktop.py.
+- New relative files (12): docs/STAGE69_MULTI_VIEWER_DIALOGUE.md,
+  src/ai_broadcaster/offline_multi_viewer.py, tests/test_offline_multi_viewer.py,
+  scripts/gui_offline_multi_viewer_smoke.py, logs/STAGE69_CHANGES.txt,
+  logs/STAGE69_UNITTEST.log, logs/STAGE69_GUI_REGRESSION.log,
+  logs/STAGE69_SYNTAX.log, logs/STAGE69_REEXTRACTED_UNITTEST.log,
+  logs/STAGE69_REEXTRACTED_GUI.log, logs/STAGE69_REEXTRACTED_GUI_REGRESSION.log,
+  logs/STAGE69_FINAL_VALIDATION.txt.
+- Final ZIP expected 576 relative files, original plan SHA256
+  d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c.
+- config/roadmap.json byte-identical, original 068 and 010 still pending.
+- Code development reach 68/100 is NOT roadmap acceptance or user final approval.
+
+LIMITATIONS / PROHIBITIONS
+- No real viewer identity, live multi-user chat, actual AI semantics/memory, parallel
+  throughput, audio/avatar, OBS, real broadcasting or Windows EXE/real-device tests.
+- No GitHub, remote repositories, external server/cloud AI API, paid service,
+  account linking, installs, PC remote control, unauthorized user PC/voice data collection.
+- GUI tests ran only on Linux Xvfb; operator naturalness and rights evaluation pending.

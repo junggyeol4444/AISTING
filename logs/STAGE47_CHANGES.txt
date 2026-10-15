@@ -1,0 +1,19 @@
+v46 original paths: 354
+missing: 0
+unchanged: 350
+modified: 4
+MODIFIED README.md
+MODIFIED TEST_RESULTS.txt
+MODIFIED docs/ROADMAP_100.md
+MODIFIED src/ai_broadcaster/desktop.py
+added: 9
+NEW docs/STAGE47_SELECTED_VOICE_ROUTING.md
+NEW logs/STAGE47_GUI_ALL.log
+NEW logs/STAGE47_GUI_NEW.log
+NEW logs/STAGE47_GUI_REMAINING.log
+NEW logs/STAGE47_SYNTAX.log
+NEW logs/STAGE47_UNITTEST.log
+NEW scripts/gui_selected_voice_routing_smoke.py
+NEW src/ai_broadcaster/selected_voice_routing.py
+NEW tests/test_selected_voice_routing.py
+Original plan SHA256: d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c (equal)

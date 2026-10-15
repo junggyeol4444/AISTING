@@ -1,0 +1,65 @@
+===== gui_operator_feedback_smoke.py =====
+GUI stage 039 operator feedback: PASS
+
+PASS gui_operator_feedback_smoke.py (exit=0)
+===== gui_idle_speech_smoke.py =====
+GUI original roadmap 038 idle speech simulation: PASS
+
+PASS gui_idle_speech_smoke.py (exit=0)
+===== gui_all_chat_policy_smoke.py =====
+GUI original roadmap 037 all-chat response policy: PASS
+
+PASS gui_all_chat_policy_smoke.py (exit=0)
+===== gui_operator_boundaries_smoke.py =====
+GUI stage35 operator boundaries smoke: PASS
+
+PASS gui_operator_boundaries_smoke.py (exit=0)
+===== gui_reaction_directions_smoke.py =====
+GUI stage34 smoke: PASS
+
+PASS gui_reaction_directions_smoke.py (exit=0)
+===== gui_style_consistency_smoke.py =====
+GUI stage33 smoke: PASS
+
+PASS gui_style_consistency_smoke.py (exit=0)
+===== gui_persona_input_smoke.py =====
+GUI persona input smoke: PASS
+
+PASS gui_persona_input_smoke.py (exit=0)
+===== gui_platform_smoke.py =====
+GUI 플랫폼 미선택/복수 선택/변경/해제 및 로컬 저장: 통과
+
+PASS gui_platform_smoke.py (exit=0)
+===== gui_content_smoke.py =====
+GUI 콘텐츠 미선택/수다/게임/둘 다/변경 및 복수 플랫폼 혼합: 통과
+
+PASS gui_content_smoke.py (exit=0)
+===== gui_persona_smoke.py =====
+GUI 캐릭터 기본값/직접 만들기/아바타 이름/저장/초안 보존: 통과
+
+PASS gui_persona_smoke.py (exit=0)
+===== gui_voice_source_smoke.py =====
+GUI 목소리 확보 방식 선택·저장·복원·속도/음량 전달·미설치 음성 대체 방지: 통과
+
+PASS gui_voice_source_smoke.py (exit=0)
+===== gui_avatar_selection_smoke.py =====
+GUI 아바타 미정/2D/3D 전환, 샘플 차단, 별도 창 종료, 저장 및 복원: 통과
+
+PASS gui_avatar_selection_smoke.py (exit=0)
+===== gui_response_records_smoke.py =====
+28단계 GUI · 미리보기/동의 거절/수동 저장/중복/조회/2회 삭제/무접속: 통과
+
+PASS gui_response_records_smoke.py (exit=0)
+===== gui_response_speed_smoke.py =====
+GUI roadmap 036 mock reply time observation: PASS
+
+PASS gui_response_speed_smoke.py (exit=0)
+===== gui_basic_reaction_smoke.py =====
+GUI original stage035 basic reaction: PASS
+
+PASS gui_basic_reaction_smoke.py (exit=0)
+===== gui_character_dialogue_review_smoke.py =====
+GUI stage 040 character dialogue review: PASS
+
+PASS gui_character_dialogue_review_smoke.py (exit=0)
+RESULT passed=16 failed=0

@@ -21,66 +21,119 @@
       "title": "반드시 구현할 핵심 기능 정리",
       "status": "completed",
       "evidence": [
-        "docs/FEATURE_SCOPE.md",
-        "config/features.json",
-        "tests/test_features.py"
+        "docs/REQUIREMENTS.md",
+        "docs/STATUS.md",
+        "src/ai_broadcaster/offline_settings.py",
+        "src/ai_broadcaster/offline_chat.py"
       ]
     },
     {
       "number": 3,
       "phase": "기획 및 개발 기준 확정",
-      "title": "방송 플랫폼 결정",
-      "status": "pending",
-      "evidence": []
+      "title": "방송 플랫폼 선택 방식 확정 (프로그램 내 자유로운 복수 선택)",
+      "status": "completed",
+      "evidence": [
+        "src/ai_broadcaster/offline_settings.py",
+        "src/ai_broadcaster/desktop.py",
+        "tests/test_offline_development.py",
+        "tests/test_platform_selection.py",
+        "scripts/gui_platform_smoke.py"
+      ]
     },
     {
       "number": 4,
       "phase": "기획 및 개발 기준 확정",
-      "title": "방송 콘텐츠 방향 결정",
-      "status": "pending",
-      "evidence": []
+      "title": "방송 콘텐츠 선택형 설정 검증 (수다·게임·둘 다·미선택)",
+      "status": "completed",
+      "evidence": [
+        "src/ai_broadcaster/offline_settings.py",
+        "src/ai_broadcaster/content_modes.py",
+        "src/ai_broadcaster/offline_chat.py",
+        "src/ai_broadcaster/desktop.py",
+        "tests/test_content_selection.py",
+        "scripts/gui_content_smoke.py"
+      ]
     },
     {
       "number": 5,
       "phase": "기획 및 개발 기준 확정",
-      "title": "AI 방송인 캐릭터 기본 설정",
-      "status": "pending",
-      "evidence": []
+      "title": "AI 방송인 캐릭터 기본값/직접 만들기 선택형 설정 구현·검증",
+      "status": "completed",
+      "evidence": [
+        "src/ai_broadcaster/offline_settings.py",
+        "src/ai_broadcaster/persona_modes.py",
+        "src/ai_broadcaster/offline_chat.py",
+        "src/ai_broadcaster/desktop.py",
+        "tests/test_persona_selection.py",
+        "scripts/gui_persona_smoke.py"
+      ]
     },
     {
       "number": 6,
       "phase": "기획 및 개발 기준 확정",
-      "title": "성격과 말투 초안 작성",
-      "status": "pending",
-      "evidence": []
+      "title": "성격과 말투 편집 가능한 초안 작성 (운영자 선택형·예시 수동 적용)",
+      "status": "completed",
+      "evidence": [
+        "src/ai_broadcaster/persona_drafts.py",
+        "src/ai_broadcaster/desktop.py",
+        "src/ai_broadcaster/offline_chat.py",
+        "tests/test_persona_drafts.py",
+        "scripts/gui_persona_drafts_smoke.py"
+      ]
     },
     {
       "number": 7,
       "phase": "기획 및 개발 기준 확정",
-      "title": "사용할 목소리의 확보 방식 결정",
-      "status": "pending",
-      "evidence": []
+      "title": "목소리 확보 방식 선택형 설정 (Windows 무료·본인·동의·라이선스·미정)",
+      "status": "completed",
+      "evidence": [
+        "src/ai_broadcaster/offline_settings.py",
+        "src/ai_broadcaster/voice_choices.py",
+        "src/ai_broadcaster/desktop.py",
+        "tests/test_voice_source_selection.py",
+        "scripts/gui_voice_source_smoke.py"
+      ]
     },
     {
       "number": 8,
       "phase": "기획 및 개발 기준 확정",
-      "title": "아바타 형태 결정",
-      "status": "pending",
-      "evidence": []
+      "title": "아바타 형태 선택형 설정 (미정·2D·3D/VRM, 3D 미구현 명시)",
+      "status": "completed",
+      "evidence": [
+        "src/ai_broadcaster/offline_settings.py",
+        "src/ai_broadcaster/avatar_choices.py",
+        "src/ai_broadcaster/avatar_renderer.py",
+        "src/ai_broadcaster/desktop.py",
+        "tests/test_avatar_selection.py",
+        "scripts/gui_avatar_selection_smoke.py"
+      ]
     },
     {
       "number": 9,
       "phase": "기획 및 개발 기준 확정",
-      "title": "PC 운영 방식 결정",
-      "status": "pending",
-      "evidence": []
+      "title": "PC 로컬 운영 방식 확정 및 실행 경계 검증 (GitHub 실행 서버 미사용)",
+      "status": "completed",
+      "evidence": [
+        "src/ai_broadcaster/local_runtime.py",
+        "src/ai_broadcaster/offline_settings.py",
+        "src/ai_broadcaster/desktop.py",
+        "docs/PC_LOCAL_OPERATION.md",
+        "tests/test_local_operation.py",
+        "scripts/gui_local_operation_smoke.py"
+      ]
     },
     {
       "number": 10,
       "phase": "기획 및 개발 기준 확정",
       "title": "전체 개발 기준 최종 승인",
       "status": "pending",
-      "evidence": []
+      "evidence": [
+        "src/ai_broadcaster/development_review.py",
+        "src/ai_broadcaster/desktop.py",
+        "docs/DEVELOPMENT_REVIEW.md",
+        "tests/test_development_review.py",
+        "scripts/gui_development_review_smoke.py"
+      ]
     },
     {
       "number": 11,
@@ -122,28 +175,52 @@
       "phase": "PC 환경 및 개발 준비",
       "title": "개발용 폴더와 작업 공간 구성",
       "status": "pending",
-      "evidence": []
+      "evidence": [
+        "src/ai_broadcaster/workspace_setup.py",
+        "src/ai_broadcaster/desktop.py",
+        "docs/WORKSPACE_SETUP.md",
+        "tests/test_workspace_setup.py",
+        "scripts/gui_workspace_setup_smoke.py"
+      ]
     },
     {
       "number": 17,
       "phase": "PC 환경 및 개발 준비",
       "title": "기본 실행 환경 설정",
       "status": "pending",
-      "evidence": []
+      "evidence": [
+        "src/ai_broadcaster/runtime_profile.py",
+        "src/ai_broadcaster/desktop.py",
+        "docs/RUNTIME_PROFILE.md",
+        "tests/test_runtime_profile.py",
+        "scripts/gui_runtime_profile_smoke.py"
+      ]
     },
     {
       "number": 18,
       "phase": "PC 환경 및 개발 준비",
       "title": "기획안과 설정 파일 보관",
       "status": "pending",
-      "evidence": []
+      "evidence": [
+        "src/ai_broadcaster/manual_archive.py",
+        "src/ai_broadcaster/desktop.py",
+        "docs/MANUAL_ARCHIVE.md",
+        "tests/test_manual_archive.py",
+        "scripts/gui_manual_archive_smoke.py"
+      ]
     },
     {
       "number": 19,
       "phase": "PC 환경 및 개발 준비",
       "title": "복구 및 백업 체계 준비",
       "status": "pending",
-      "evidence": []
+      "evidence": [
+        "src/ai_broadcaster/backup_recovery.py",
+        "src/ai_broadcaster/desktop.py",
+        "docs/BACKUP_RECOVERY.md",
+        "tests/test_backup_recovery.py",
+        "scripts/gui_backup_recovery_smoke.py"
+      ]
     },
     {
       "number": 20,
@@ -157,56 +234,109 @@
       "phase": "AI 두뇌 구축",
       "title": "방송 코어 기반 프로젝트 준비",
       "status": "pending",
-      "evidence": []
+      "evidence": [
+        "src/ai_broadcaster/core_ports.py",
+        "src/ai_broadcaster/core_foundation.py",
+        "src/ai_broadcaster/desktop.py",
+        "docs/CORE_FOUNDATION.md",
+        "tests/test_core_foundation.py",
+        "scripts/gui_core_foundation_smoke.py"
+      ]
     },
     {
       "number": 22,
       "phase": "AI 두뇌 구축",
       "title": "기본 코어 실행",
       "status": "pending",
-      "evidence": []
+      "evidence": [
+        "src/ai_broadcaster/core_execution.py",
+        "src/ai_broadcaster/desktop.py",
+        "docs/CORE_EXECUTION.md",
+        "tests/test_core_execution.py",
+        "scripts/gui_core_execution_smoke.py"
+      ]
     },
     {
       "number": 23,
       "phase": "AI 두뇌 구축",
       "title": "AI 모델 연결 방식 설정",
       "status": "pending",
-      "evidence": []
+      "evidence": [
+        "src/ai_broadcaster/core_ai_connection.py",
+        "src/ai_broadcaster/core_execution.py",
+        "src/ai_broadcaster/desktop.py",
+        "docs/CORE_AI_CONNECTION.md",
+        "tests/test_core_ai_connection.py",
+        "scripts/gui_core_ai_connection_smoke.py"
+      ]
     },
     {
       "number": 24,
       "phase": "AI 두뇌 구축",
       "title": "AI 연결 테스트",
       "status": "pending",
-      "evidence": []
+      "evidence": [
+        "src/ai_broadcaster/core_ai_probe.py",
+        "src/ai_broadcaster/desktop.py",
+        "docs/CORE_AI_PROBE.md",
+        "tests/test_core_ai_probe.py",
+        "scripts/gui_core_ai_probe_smoke.py"
+      ]
     },
     {
       "number": 25,
       "phase": "AI 두뇌 구축",
       "title": "한국어 대화 테스트",
       "status": "pending",
-      "evidence": []
+      "evidence": [
+        "src/ai_broadcaster/korean_dialogue_test.py",
+        "src/ai_broadcaster/desktop.py",
+        "docs/KOREAN_DIALOGUE_TEST.md",
+        "tests/test_korean_dialogue_test.py",
+        "scripts/gui_korean_dialogue_test_smoke.py"
+      ]
     },
     {
       "number": 26,
       "phase": "AI 두뇌 구축",
       "title": "대화 맥락 유지 기능 확인",
       "status": "pending",
-      "evidence": []
+      "evidence": [
+        "src/ai_broadcaster/context_retention_test.py",
+        "src/ai_broadcaster/core_execution.py",
+        "src/ai_broadcaster/desktop.py",
+        "docs/CONTEXT_RETENTION_TEST.md",
+        "tests/test_context_retention_test.py",
+        "scripts/gui_context_retention_smoke.py"
+      ]
     },
     {
       "number": 27,
       "phase": "AI 두뇌 구축",
       "title": "기본 응답 오류 처리",
       "status": "pending",
-      "evidence": []
+      "evidence": [
+        "src/ai_broadcaster/core_execution.py",
+        "src/ai_broadcaster/response_error_test.py",
+        "src/ai_broadcaster/desktop.py",
+        "tests/test_response_error_handling.py",
+        "scripts/gui_response_error_smoke.py",
+        "docs/RESPONSE_ERROR_HANDLING.md"
+      ]
     },
     {
       "number": 28,
       "phase": "AI 두뇌 구축",
       "title": "응답 기록 저장",
       "status": "pending",
-      "evidence": []
+      "evidence": [
+        "src/ai_broadcaster/response_records.py",
+        "src/ai_broadcaster/desktop.py",
+        "tests/test_response_records.py",
+        "scripts/gui_response_records_smoke.py",
+        "docs/RESPONSE_RECORDS.md",
+        "docs/CHANGELOG_v28.md"
+      ]
     },
     {
       "number": 29,

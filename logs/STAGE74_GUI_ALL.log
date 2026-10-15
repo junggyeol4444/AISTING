@@ -1,0 +1,87 @@
+[01/72] PASS exit=0 elapsed=1.16s scripts/gui_all_chat_policy_smoke.py
+GUI original roadmap 037 all-chat response policy: PASS
+
+[02/72] PASS exit=0 elapsed=1.14s scripts/gui_avatar_display_validation_smoke.py
+GUI stage 053 existing avatar display: PASS
+
+[03/72] PASS exit=0 elapsed=1.23s scripts/gui_avatar_endurance_smoke.py
+GUI stage 059 virtual 24h, bounded canvas, invalidation, 3D refusal: PASS
+
+[04/72] PASS exit=0 elapsed=1.11s scripts/gui_avatar_expressions_smoke.py
+GUI 054 expressions selection/render/save/load/delete: PASS
+
+[05/72] PASS exit=0 elapsed=1.18s scripts/gui_avatar_integration_smoke.py
+GUI stage 060 2D integration, voice interruption, invalidation, 3D refusal: PASS
+
+[06/72] PASS exit=0 elapsed=1.12s scripts/gui_avatar_layout_smoke.py
+GUI original 058 layout preview/save/load/refusal/delete: PASS
+
+[07/72] PASS exit=0 elapsed=1.11s scripts/gui_avatar_motion_review_smoke.py
+GUI stage 057 avatar expression/motion preview: PASS
+
+[08/72] PASS exit=0 elapsed=1.17s scripts/gui_avatar_preparation_smoke.py
+GUI original stage 051 avatar preparation: PASS
+
+[09/72] PASS exit=0 elapsed=1.23s scripts/gui_avatar_runtime_environment_smoke.py
+GUI 052 avatar offline runtime environment: PASS
+
+[10/72] PASS exit=0 elapsed=1.63s scripts/gui_avatar_selection_smoke.py
+GUI 아바타 미정/2D/3D 전환, 샘플 차단, 별도 창 종료, 저장 및 복원: 통과
+
+[11/72] PASS exit=0 elapsed=1.13s scripts/gui_avatar_smoke.py
+GUI별도창/중복방지/동기화/배경전환/독립닫기/전체종료: 통과
+
+[12/72] PASS exit=0 elapsed=1.11s scripts/gui_avatar_voice_mouth_smoke.py
+GUI 055 voice-to-mouth simulated routing and manual preview: PASS
+
+[13/72] PASS exit=0 elapsed=1.12s scripts/gui_avatar_voice_sync_smoke.py
+GUI 056 virtual voice/mouth timing timeline: PASS
+
+[14/72] PASS exit=0 elapsed=1.08s scripts/gui_backup_recovery_smoke.py
+19단계 GUI · 탭 이동/검사/취소/수동 복구/중복 차단/원본 보존: 통과
+
+[15/72] PASS exit=0 elapsed=1.15s scripts/gui_basic_reaction_smoke.py
+GUI original stage035 basic reaction: PASS
+
+[16/72] PASS exit=0 elapsed=1.14s scripts/gui_brain_stage_review_smoke.py
+30단계 GUI 모의 점검 통과
+
+[17/72] PASS exit=0 elapsed=1.11s scripts/gui_character_dialogue_review_smoke.py
+GUI stage 040 character dialogue review: PASS
+
+[18/72] PASS exit=0 elapsed=1.09s scripts/gui_content_smoke.py
+GUI 콘텐츠 미선택/수다/게임/둘 다/변경 및 복수 플랫폼 혼합: 통과
+
+[19/72] PASS exit=0 elapsed=1.09s scripts/gui_context_retention_smoke.py
+26단계 GUI · 맥락 전달/잘림/중복/오류/초기화/무접속: 통과
+
+[20/72] PASS exit=0 elapsed=1.16s scripts/gui_conversation_continuity_smoke.py
+29단계 GUI 수동 조회·연속성 검증 통과
+
+[21/72] PASS exit=0 elapsed=1.23s scripts/gui_core_ai_connection_smoke.py
+23단계 GUI · 모의/로컬 계획 선택/미리보기/적용/오류/초기화/무전송: 통과
+
+[22/72] PASS exit=0 elapsed=1.20s scripts/gui_core_ai_probe_smoke.py
+24단계 GUI · 가상 응답/오류/승인 취소/가짜 승인/무접속: 통과
+
+[23/72] PASS exit=0 elapsed=1.20s scripts/gui_core_execution_smoke.py
+22단계 GUI · 수동 모의 코어 FIFO/재시도/선택값/오류/무전송: 통과
+
+[24/72] PASS exit=0 elapsed=1.21s scripts/gui_core_foundation_smoke.py
+21단계 GUI · 선택형 코어 구성도/미구현 구분/오류/무연결: 통과
+
+[25/72] PASS exit=0 elapsed=1.21s scripts/gui_development_review_smoke.py
+10단계 승인 검토 GUI · 체크/확인/기록/무효화/취소 · 네트워크 없음: 통과
+
+[26/72] PASS exit=0 elapsed=1.09s scripts/gui_development_scope_smoke.py
+13단계 범위 검토 GUI · 사용자 입력/미검증 표시/입력 오류/무조회/무전송: 통과
+
+[27/72] PASS exit=0 elapsed=1.15s scripts/gui_dialogue_voice_link_smoke.py
+GUI stage 049 PASS: mock dialogue -> virtual speech FIFO, duplicate, interrupt, no side effects
+
+[28/72] PASS exit=0 elapsed=1.12s scripts/gui_emotion_expression_smoke.py
+GUI stage048 manual emotion-expression review: PASS
+
+[29/72] PASS exit=0 elapsed=1.21s scripts/gui_execution_selfcheck_smoke.py
+20단계 GUI · 수동 자가점검/오류/탭 이동/기존 데이터 보존: 통과
+

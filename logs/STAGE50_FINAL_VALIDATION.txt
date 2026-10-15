@@ -1,0 +1,31 @@
+AISTING v50 actual validation record (2026-10-13, Asia/Seoul)
+Source ZIP: AISTING_Offline_Development_v49.zip, 391 original entries, ZIP CRC OK
+New development: original roadmap 049 / AI simulated dialogue -> virtual Korean voice output
+Original v49 entries preserved: 391/391
+Existing files modified (5): README.md, TEST_RESULTS.txt, docs/ROADMAP_100.md, docs/STATUS.md, src/ai_broadcaster/desktop.py
+Additional files before this record: 11
+Original plan SHA256 v49: d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c
+Original plan SHA256 v50: d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c, MATCH
+
+AUTOMATED UNITTEST: 888/888 PASS; original v49 872 + new 16.
+Command: PYTHONPATH=src python -m unittest discover -s tests -q
+Evidence: logs/STAGE50_UNITTEST.log
+
+GUI TESTS (Linux virtual Xvfb display): 48/48 PASS
+Original first batch: 34/34 PASS. Runner stopped by tool wall-time after 34th passed; logs/STAGE50_GUI_FIRST_BATCH.log records output seen.
+Remaining batch: 14/14 PASS; logs/STAGE50_GUI_REMAINING.log
+New GUI: 1/1 PASS; logs/STAGE50_GUI_NEW.log
+This set is 47 original GUI scripts plus the new script.
+
+PYTHON SYNTAX: 157/157 PASS (compile(), no PC inspection); logs/STAGE50_SYNTAX.log
+
+PRELIMINARY ZIP: 400 files, ZIP testzip() returned None.
+PRELIMINARY ZIP extracted to a different directory (aisting_v50_verify).
+REEXTRACTED UNITTEST: 888/888 PASS; logs/STAGE50_EXTRACTED_UNITTEST.log
+REEXTRACTED NEW GUI: PASS; logs/STAGE50_EXTRACTED_GUI.log
+FINAL ZIP: ZIP integrity and file counts verified after packing; final separate validation report is identical to this record.
+
+No actual audio, LLM/Ollama, PC OS/hardware lookup, OBS, streaming, account, installation, payment, GitHub, remote, cloud service.
+No Windows real-device execution or EXE build. No operator naturalness/acoustic approval.
+Stage 010 final user approval PENDING; 011+ user PC details PENDING.
+Development work reached original 049/100; this is not an approval-completed percentage.

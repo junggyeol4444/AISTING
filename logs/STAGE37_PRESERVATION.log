@@ -1,0 +1,19 @@
+Previous files: 259
+Byte-identical: 254
+Modified existing files:
+README.md
+TEST_RESULTS.txt
+docs/ROADMAP_100.md
+docs/STATUS.md
+src/ai_broadcaster/desktop.py
+Added before preservation log:
+docs/STAGE37_RESPONSE_SPEED_OBSERVATION.md
+logs/STAGE37_FINAL_VALIDATION.txt
+logs/STAGE37_GUI_NEW.log
+logs/STAGE37_GUI_REGRESSION.log
+logs/STAGE37_SYNTAX.log
+logs/STAGE37_UNITTEST.log
+scripts/gui_response_speed_smoke.py
+src/ai_broadcaster/response_speed_test.py
+tests/test_response_speed_test.py
+Original plan SHA256: d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c

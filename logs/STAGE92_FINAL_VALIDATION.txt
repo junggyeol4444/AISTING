@@ -1,0 +1,56 @@
+AISTING v92 / ORIGINAL STAGE 091 — OFFLINE MOCK JOURNAL VALIDATION
+
+Scope: explicitly operator-triggered import of local 062 synthetic messages, manual synthetic event input,
+exclusive JSON export, integrity-checked JSON reload. No actual chat or event collection, no live memory.
+
+BASELINE VERIFIED: AISTING_Offline_Development_v91.zip, 842 files. Original plan, roadmap JSON,
+README, earlier implementation/tests/logs and acceptance checklist were reviewed before implementation.
+Original project plan preserved byte-for-byte. Original roadmap status 091 pending and approval 010 pending.
+
+IMPLEMENTATION:
+- src/ai_broadcaster/offline_broadcast_journal.py: bounded synthetic journal (500), ordinal checks,
+  duplicate text retention, source-prefix conflict rejection, SHA-256 checksum and fail-closed JSON validation,
+  user-only explicit open('xb') save, never overwrite existing file.
+- src/ai_broadcaster/desktop.py: added manual journal GUI without changing user options.
+- tests/test_offline_broadcast_journal.py: 26 new test methods.
+- scripts/gui_offline_broadcast_journal_smoke.py: new Tkinter user flow smoke.
+
+ACTUAL EXECUTION (Linux, local environment):
+- PYTHONPATH=src python -m unittest discover -s tests -q
+  => 1755/1755 PASS, logs/STAGE92_UNITTEST.log (26 new; baseline 1729).
+  NOTE: previously existing SQLite connection ResourceWarning observed; this is NOT a test failure,
+  but resource lifetime/leak stability should be inspected in later hardening/actual Windows tests.
+- Python ast.parse for src/**/*.py, tests/**/*.py, scripts/**/*.py => 283/283 PASS,
+  logs/STAGE92_SYNTAX.log.
+- xvfb-run -a env PYTHONPATH=src python scripts/gui_offline_broadcast_journal_smoke.py
+  => PASS on actual Linux Tkinter virtual display.
+- xvfb-run -a env PYTHONPATH=src python scripts/run_stage88_gui_regression.py 0 30
+  => 30/30 PASS.
+- xvfb-run -a env PYTHONPATH=src python scripts/run_stage88_gui_regression.py 30 60
+  => 30/30 PASS.
+- GUI 60:90 original batch interrupted due to execution timeout; NOT counted as successful.
+  Independently re-run 60:65,65:70,70:75,75:80,80:85,85:90 all 5/5 PASS.
+  TOTAL GUI 90/90 PASS from verified logs. Stage 091 GUI also included in the 90.
+- Developer-stage bug found: rejecting PosixPath via `type(path) is Path` was fixed to isinstance.
+- GUI data-loss risk reduced: nonempty journal reset requires confirmation; failed JSON load preserves journal.
+
+PRESERVATION:
+- Existing v91 ZIP paths retained: 842/842 (no removals).
+- Byte-identical unchanged: docs/ORIGINAL_PLAN.txt, config/roadmap.json, config/requirements.json.
+- Modified existing: README.md, TEST_RESULTS.txt, docs/ROADMAP_100.md,
+  docs/REAL_DEVICE_ACCEPTANCE_CHECKLIST.md, src/ai_broadcaster/desktop.py.
+- New docs/tests/GUI/code/logs included. Archive ZIP CRC + independent extraction re-test: see below.
+
+NOT VERIFIED / NOT IMPLEMENTED:
+Real broadcasting/OBS/actual platform chat or donations/game events; Windows 10/11 and EXE;
+actual AI, TTS, avatar, naturalness; memory retrieval, long-term memory providers;
+real personal-data retention consent, encryption/privacy deletion, concurrent writes,
+crash-atomic write, production file permission or capacity. No new account or external connection.
+Simulated data only; explicitly opt-in local plain JSON; checksum is not authentication or encryption.
+Original stage 091 remains PENDING for real functionality; code development reached 91/100 only.
+
+INDEPENDENT FRESH ZIP EXTRACTION VALIDATION:
+Independent fresh extraction of v92 source ZIP into a separate folder:
+- PYTHONPATH=src python -m unittest discover -s tests -q => 1755/1755 PASS, logs/STAGE92_REEXTRACTED_UNITTEST.log.
+- xvfb-run -a env PYTHONPATH=src python scripts/gui_offline_broadcast_journal_smoke.py => PASS, logs/STAGE92_REEXTRACTED_GUI.log.
+- ZIP CRC member integrity PASS. Existing 842 v91 member paths retained.

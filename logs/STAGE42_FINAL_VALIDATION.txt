@@ -1,0 +1,17 @@
+AISTING cumulative v42 / Original roadmap stage 041 voice rights and consent self-review
+Source: v41 ZIP (304 original files), source ZIP CRC valid.
+Scope: user-selectable source-linked rights checklist, optional short note, preview, explicit save, explicit load, two-confirm delete.
+All rights flags are operator SELF-REPORT, not verified legal rights. Training and streaming authorized flags remain FALSE.
+Voice selection change clears visible checks and note; mismatched saved source never loaded into another voice.
+No audio file collected, played, recorded or cloned; no provider account, broadcast, external server, GitHub, installation, device inventory or user PC access.
+Original roadmap 041 code work implemented; operator evidence and use approval pending; original stage 010 final approval pending; stage 011+ real PC data pending.
+Previous v41 automated tests: 728; added 16 new stage041 tests.
+Automatic tests: 744/744 PASS (unittest Linux environment).
+New GUI: 1/1 PASS; existing 16 GUI regression scripts: 16/16 PASS (Linux Xvfb, NOT Windows).
+Python AST syntax: 132/132 PASS.
+Original plan SHA256 unchanged: d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c.
+Existing entries retained: 304/304; modified 5 existing files: README.md; TEST_RESULTS.txt; docs/ROADMAP_100.md; docs/STATUS.md; src/ai_broadcaster/desktop.py.
+New files: 9: docs/STAGE42_VOICE_RIGHTS.md; logs/STAGE42_GUI_NEW.log; logs/STAGE42_GUI_REGRESSION.log; logs/STAGE42_SYNTAX.log; logs/STAGE42_UNITTEST.log; scripts/gui_voice_rights_smoke.py; src/ai_broadcaster/voice_rights_review.py; tests/test_voice_rights_review.py; logs/STAGE42_FINAL_VALIDATION.txt.
+Windows real-device/EXE build and real legal rights evidence examination: NOT VERIFIED.
+Provisional ZIP re-extraction: ZIP CRC PASS (313 files), unittest 744/744 PASS, new GUI 1/1 PASS, syntax 132/132 PASS.
+Final ZIP re-extraction after updated validation log: verified separately; no source code changes since tests.

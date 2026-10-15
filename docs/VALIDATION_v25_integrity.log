@@ -1,0 +1,4 @@
+v24 input ZIP: 158 files; zipfile.testzip() returned None (CRC OK).
+v25 staging ZIP: 168 files; zipfile.testzip() returned None (CRC OK).
+v25 final ZIP: verify CRC and extracted unittest after building (external verification output).
+No remote repository or external service used.

@@ -1,0 +1,60 @@
+AISTING v70 / ORIGINAL 069 채팅 연결 장애 복구 테스트 · OFFLINE MOCK ONLY
+
+BASELINE / ACTUAL REVIEW
+- Most recent existing cumulative source: AISTING_Offline_Development_v69.zip, 576 relative files.
+- Read docs/ORIGINAL_PLAN.txt (all chats, no default artificial delay, operator decides naturalness),
+  docs/ROADMAP_100.md (original 069 pending), config/roadmap.json (010/069 pending),
+  README.md, logs/STAGE69_CHANGES.txt, logs/STAGE69_FINAL_VALIDATION.txt,
+  and existing 061/062/063/065/068 code and unit/GUI tests.
+- Original 059-068 previously developed as offline mock code; this run did not repeat them.
+
+IMPLEMENTATION / ONE STAGE
+- src/ai_broadcaster/offline_chat_recovery.py orchestrates existing 061 connection, 062
+  receiver, 063 FIFO, 065 mock response state; does not create another queue/receiver.
+- Operator manually injects mock outage (disconnect and detach); ingress is blocked while
+  all previously accepted chats, ordered events and successful replies remain in memory.
+- Operator can deliberately fail one synthetic handshake; attempts/failures are counted,
+  no automatic retry; explicit manual reconnect does not auto-reattach the receiver.
+- Separate operator button reattaches after append-only source/order/reply prefix checks.
+  Same-connection-session identity enforced; platform selection change invalidates test.
+- GUI tab '채팅 연결 장애 복구 모의' added, with explicit controls and status.
+- No background polling, sleeps, sockets, cloud, disk writes or actual platform connections.
+
+TESTS EXECUTED ON SOURCE TREE
+- PYTHONPATH=src python -m unittest discover -s tests -q: 1313/1313 PASS
+  (23 new vs v69 1290). logs/STAGE70_UNITTEST.log
+- 67/67 scripts/gui_*_smoke.py PASS on Linux Xvfb, including new 069 Tk GUI.
+  logs/STAGE70_GUI_REGRESSION.log
+- AST parse: 216/216 Python source/test/script files PASS.
+  logs/STAGE70_SYNTAX.log
+
+PRELIMINARY ZIP / POST-EXTRACTION TESTS
+- Preliminary archive 584 files; CRC PASS, extracted in a separate directory.
+- Extracted full unittest 1313/1313 PASS: logs/STAGE70_REEXTRACTED_UNITTEST.log
+- Extracted new Tk GUI PASS: logs/STAGE70_REEXTRACTED_GUI.log
+- Extracted full GUI regression 67/67 PASS: logs/STAGE70_REEXTRACTED_GUI_REGRESSION.log
+- Final archive adds only post-extraction test logs and this validation file; tested
+  source/test/GUI scripts unchanged. Final CRC/path check performed after packaging.
+
+PRESERVATION / USER APPROVAL
+- All 576 v69 relative paths preserved. Existing paths modified ONLY: README.md,
+  TEST_RESULTS.txt, docs/ROADMAP_100.md, src/ai_broadcaster/desktop.py,
+  src/ai_broadcaster/platform_chat_connector.py.
+- Added 12 paths: docs/STAGE70_CHAT_CONNECTION_RECOVERY.md,
+  src/ai_broadcaster/offline_chat_recovery.py, tests/test_offline_chat_recovery.py,
+  scripts/gui_offline_chat_recovery_smoke.py, logs/STAGE70_CHANGES.txt,
+  logs/STAGE70_UNITTEST.log, logs/STAGE70_GUI_REGRESSION.log, logs/STAGE70_SYNTAX.log,
+  logs/STAGE70_REEXTRACTED_UNITTEST.log, logs/STAGE70_REEXTRACTED_GUI.log,
+  logs/STAGE70_REEXTRACTED_GUI_REGRESSION.log, logs/STAGE70_FINAL_VALIDATION.txt.
+- Expected final 588 files. docs/ORIGINAL_PLAN.txt unchanged, SHA256:
+  d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c
+- config/roadmap.json byte-identical, original 010 and 069 status remain pending.
+- Code development reach 69/100 is NOT official roadmap approval or user final signoff.
+
+LIMITATIONS / FORBIDDEN OPERATIONS
+- This is not actual network fault recovery, live message replay/loss detection, real
+  platform chat, LLM/TTS/avatar/OBS/broadcast integration, Windows EXE or user PC test.
+- No GitHub/remote repo, external server/cloud AI, account connection, payment,
+  program installation, actual broadcasting, remote PC access, PC/voice data collection.
+- GUI ran on Linux Xvfb; Windows, actual naturalness/rights and final user approval pending.
+- Next original stage: 070 real-time chat communication verification (offline mock scope first).

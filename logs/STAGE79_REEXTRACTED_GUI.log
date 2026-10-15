@@ -1,0 +1,4 @@
+command: xvfb-run -a python scripts/gui_offline_broadcast_duration_smoke.py
+exit=0
+Stage 078 Tk GUI time bounds/invalidation/3D/no IO: PASS
+

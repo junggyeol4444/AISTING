@@ -1,0 +1,24 @@
+AISTING v77 FINAL VALIDATION — 원본 076 비공개 방송 테스트 (오프라인 절차 리허설 전용)
+Baseline: AISTING_Offline_Development_v76.zip (650 files, ZIP CRC PASS), original plan and roadmap reviewed.
+Original plan: docs/ORIGINAL_PLAN.txt, SHA256 d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c.
+Original status JSON: config/roadmap.json, SHA256 bcaee31766fc5db4307f2d6f86becbe7dce28931d55c51ff8b39296beba5d48e.
+Reviewed: README.md; docs/ROADMAP_100.md; docs/STAGE76_BROADCAST_OUTPUT_SETTINGS_BRIDGE.md; logs/STAGE76_FINAL_VALIDATION.txt; previously implemented offline Canvas/voice/volume/output-draft code and tests.
+Implementation: src/ai_broadcaster/offline_private_broadcast_rehearsal.py, desktop.py new manual action + invalidation.
+Scope: manual memory-only preflight / fake start / virtual scene & silent-voice check / fake stop / output-disconnected checks. Simulated failures abort. No video/audio stream, no privacy verification.
+New unit tests: 18/18 PASS; command PYTHONPATH=src:tests python -m unittest discover -s tests -p test_offline_private_broadcast_rehearsal.py -v.
+Whole source unit suite: 1430/1430 PASS, zero failures; command PYTHONPATH=src:tests python -m unittest discover -s tests -v; output logs/STAGE77_UNITTEST.log.
+Source GUI regressions: 74/74 PASS; all scripts/gui_*_smoke.py invoked individually under Linux Xvfb with timeout and PYTHONPATH=src:tests; output logs/STAGE77_GUI_ALL.log.
+Source Python syntax: 238/238 AST parsed, errors 0; logs/STAGE77_SYNTAX.log.
+Original plan and official roadmap JSON must remain byte-for-byte unchanged. Existing platform/content/character/voice/avatar selection modes and settings stay untouched.
+No GitHub, remote storage, cloud AI, network, server, OBS broadcast, accounts, devices, unauthorized install/collection, or user-PC access.
+Pending: original step 076 real private broadcast test; step 010 final user approval; Windows physical device/EXE; external rights, screen/audio naturalness and actual platform privacy/OBS checks.
+Code development scope: 76/100 only (NOT full product completion / real broadcast validation).
+Next original step: 077 시청자 채팅·음성·화면 통합 테스트.
+Post-extraction verification will be appended after archive test.
+Post-extraction isolated directory: 658/658 entries from preliminary ZIP extracted; ZIP CRC PASS.
+Full re-extracted unittest: 1430/1430 PASS, 0 failures; command PYTHONPATH=src:tests python -m unittest discover -s tests -v; logs/STAGE77_REEXTRACTED_UNITTEST.log.
+Re-extracted new real Tk GUI smoke: PASS (Linux Xvfb); logs/STAGE77_REEXTRACTED_GUI.log.
+Re-extracted Python AST: 238/238 PASS.
+Existing v76 file paths preserved: 650/650; 646 original files byte-identical; 4 edited by this stage: README.md, TEST_RESULTS.txt, docs/ROADMAP_100.md, src/ai_broadcaster/desktop.py.
+New files: stage 076 code/unit test/GUI smoke/docs, 6 development/reextracted validation logs. No existing file paths removed.
+Actual Windows/OBS/private broadcast/audio/video/output connections and final approval: NOT TESTED.

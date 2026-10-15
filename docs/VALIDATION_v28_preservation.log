@@ -1,0 +1,26 @@
+v27 원본 파일 수: 194
+누락: 0 byte 동일: 187 의도적 수정: 7 신규(검증 로그 포함): 12
+누락 파일:
+
+변경된 기존 파일:
+  README.md
+  TEST_RESULTS.txt
+  config/roadmap.json
+  docs/ROADMAP_100.md
+  docs/STATUS.md
+  src/ai_broadcaster/core_execution.py
+  src/ai_broadcaster/desktop.py
+신규 파일:
+  docs/CHANGELOG_v28.md
+  docs/RESPONSE_RECORDS.md
+  docs/VALIDATION_v28_gui.log
+  docs/VALIDATION_v28_integrity.log
+  docs/VALIDATION_v28_preservation.log
+  docs/VALIDATION_v28_reextracted.log
+  docs/VALIDATION_v28_selfcheck.log
+  docs/VALIDATION_v28_syntax.log
+  docs/VALIDATION_v28_unittest.log
+  scripts/gui_response_records_smoke.py
+  src/ai_broadcaster/response_records.py
+  tests/test_response_records.py
+원본 기획안 SHA256: d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c == d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c

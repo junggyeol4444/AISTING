@@ -1,0 +1,27 @@
+AISTING v47 FINAL VALIDATION — 2026-10-13 KST
+BASE: v46 cumulative ZIP / 354 entries / ZIP CRC passed before extracting.
+ORIGINAL ROADMAP: 046 선택한 목소리 적용 (offline, virtual synthesis route only).
+
+ACTUAL IMPLEMENTATION
+- selected_voice_routing.py: exact operator-chosen Korean voice name, rate and volume forwarded to virtual speaking backend for every sentence chunk; no fallback to another named voice.
+- Voice source/profile mismatch, missing/duplicate voice, unconfigured voice source and malformed input rejected; stop/error retains all remaining chunks, no retries, errors do not expose internal text.
+- Tk '선택 목소리 적용 모의' tab; manual-only simulation; result invalidates on source, selected voice, rate/volume, mode and edited script changes.
+- Existing real manual Windows TTS path guarded so non-Windows voice source cannot reuse cached voice or manually play when that source is not selected; Windows playback remains explicitly user initiated only.
+
+ACTUAL TESTS
+- Full unittest run: 832 / 832 PASS (v46 814, 18 new): logs/STAGE47_UNITTEST.log
+- Linux Xvfb GUI: 45 / 45 PASS (first batch 31, remaining 14; a combined first attempt stopped after 31 due to execution limit): logs/STAGE47_GUI_ALL.log and STAGE47_GUI_REMAINING.log
+- New GUI: PASS, includes mock selected voice, stop/error/invalidations, no database/network/audio/PC query: logs/STAGE47_GUI_NEW.log
+- Python AST parse: 148 / 148 PASS: logs/STAGE47_SYNTAX.log
+- v46 file paths: all 354 preserved, four previous files updated, 350 byte-identical, original plan SHA256 preserved: logs/STAGE47_CHANGES.txt
+- Preliminary ZIP: 364 entries and ZIP CRC passed.
+- Re-extracted preliminary ZIP: 832 / 832 unittest PASS; new GUI PASS: logs/STAGE47_REEXTRACTED_UNITTEST.log and logs/STAGE47_REEXTRACTED_GUI.log
+
+LIMITATIONS / PERMISSION BOUNDARY
+- NOT actual Windows PC audio, real voice installation/enumeration, EXE, speech naturalness or identity matching proof.
+- NOT voice recording, cloning, TTS model installation, network/paid/cloud/GitHub, user PC information collection/remote access, accounts/OBS/live streaming.
+- Stage 010 final user approval PENDING; stage 011+ user PC inspection PENDING until user approval.
+- Operator remains free to select/change platforms, contents, persona, voice, avatar.
+- Original roadmap 046 implemented offline dev portion (code work range 46/100), not fully operator-approved/Windows-validated 46 steps.
+
+NEXT: Original 047 발음 및 억양 확인 — offline preparation only until operator acoustic quality evaluation.

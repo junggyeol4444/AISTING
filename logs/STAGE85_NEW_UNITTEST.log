@@ -1,0 +1,28 @@
+test_all_content_modes (tests.test_offline_prebroadcast_notice.NoticeTests.test_all_content_modes) ... ok
+test_basic_kst_notice (tests.test_offline_prebroadcast_notice.NoticeTests.test_basic_kst_notice) ... ok
+test_bool_flags_block_broadcast_permission (tests.test_offline_prebroadcast_notice.NoticeTests.test_bool_flags_block_broadcast_permission) ... ok
+test_control_character_rejected (tests.test_offline_prebroadcast_notice.NoticeTests.test_control_character_rejected) ... ok
+test_custom_persona (tests.test_offline_prebroadcast_notice.NoticeTests.test_custom_persona) ... ok
+test_default_persona_ignores_unsaved_custom (tests.test_offline_prebroadcast_notice.NoticeTests.test_default_persona_ignores_unsaved_custom) ... ok
+test_external_urls_rejected (tests.test_offline_prebroadcast_notice.NoticeTests.test_external_urls_rejected) ... ok
+test_immutable_output (tests.test_offline_prebroadcast_notice.NoticeTests.test_immutable_output) ... ok
+test_mass_mentions_rejected (tests.test_offline_prebroadcast_notice.NoticeTests.test_mass_mentions_rejected) ... ok
+test_naive_time_rejected (tests.test_offline_prebroadcast_notice.NoticeTests.test_naive_time_rejected) ... ok
+test_newline_rejected (tests.test_offline_prebroadcast_notice.NoticeTests.test_newline_rejected) ... ok
+test_no_connect_or_process (tests.test_offline_prebroadcast_notice.NoticeTests.test_no_connect_or_process) ... ok
+test_no_external_publish_stub (tests.test_offline_prebroadcast_notice.NoticeTests.test_no_external_publish_stub) ... ok
+test_no_fake_url (tests.test_offline_prebroadcast_notice.NoticeTests.test_no_fake_url) ... ok
+test_no_settings_mutation (tests.test_offline_prebroadcast_notice.NoticeTests.test_no_settings_mutation) ... ok
+test_not_ai_or_published (tests.test_offline_prebroadcast_notice.NoticeTests.test_not_ai_or_published) ... ok
+test_overlong_topic_rejected (tests.test_offline_prebroadcast_notice.NoticeTests.test_overlong_topic_rejected) ... ok
+test_repeat_is_deterministic (tests.test_offline_prebroadcast_notice.NoticeTests.test_repeat_is_deterministic) ... ok
+test_selected_platform_order (tests.test_offline_prebroadcast_notice.NoticeTests.test_selected_platform_order) ... ok
+test_topic_explicit (tests.test_offline_prebroadcast_notice.NoticeTests.test_topic_explicit) ... ok
+test_topic_optional (tests.test_offline_prebroadcast_notice.NoticeTests.test_topic_optional) ... ok
+test_type_invalid_topic_rejected (tests.test_offline_prebroadcast_notice.NoticeTests.test_type_invalid_topic_rejected) ... ok
+test_wrong_timezone_rejected (tests.test_offline_prebroadcast_notice.NoticeTests.test_wrong_timezone_rejected) ... ok
+
+----------------------------------------------------------------------
+Ran 23 tests in 0.003s
+
+OK

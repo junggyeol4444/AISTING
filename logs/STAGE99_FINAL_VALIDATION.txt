@@ -1,0 +1,61 @@
+AISTING v99 / ORIGINAL 098 / OFFLINE MULTI-EPISODE STABILITY
+Date: 2026-10-14 Asia/Seoul
+Baseline: AISTING_Offline_Development_v98.zip (943 files; ZIP CRC pass).
+Original stage: 098 여러 차례 방송 반복 안정성 확인.
+Reviewed actual original source: docs/ORIGINAL_PLAN.txt, docs/ROADMAP_100.md,
+config/roadmap.json, README.md, TEST_RESULTS.txt, docs/STAGE98_OFFLINE_UNATTENDED_ENDURANCE.md,
+logs/STAGE98_FINAL_VALIDATION.txt, 097 source/test/GUI, prior validations.
+
+NEW CODE:
+ src/ai_broadcaster/offline_multisession_stability.py
+   existing independent 097 accelerated 1h/3h mock broadcast repeatedly run in
+   3/5/10 independent virtual episodes; FIFO/replies/ticks/end-state checked.
+   Results bounded to <=10 episode summaries. Failures are recorded permanently
+   for this audit and never automatically retried; later independent test rounds
+   do not erase earlier failure. Test-only four error injection modes.
+ src/ai_broadcaster/desktop.py
+   new operator-click-only '다회차 방송 안정성 모의 검증' Tk tab; stale result invalidation.
+ tests/test_offline_multisession_stability.py (26 newly added tests)
+ scripts/gui_offline_multisession_stability_smoke.py (new Tk/Xvfb script).
+ docs/STAGE99_OFFLINE_MULTISESSION_STABILITY.md, roadmap note, README,
+ acceptance checklist and TEST_RESULTS updated.
+
+ACTUAL TESTS (working directory project root; PYTHONPATH=src):
+ python -m unittest discover -s tests -p test_offline_multisession_stability.py -v
+   26/26 PASS.
+ python -m unittest discover -s tests -q
+   1944/1944 PASS (logs/STAGE99_UNITTEST.log).
+ python AST parse src/tests/scripts .py: 304/304 PASS (logs/STAGE99_SYNTAX.log).
+ xvfb-run -a env PYTHONPATH=src python scripts/gui_offline_multisession_stability_smoke.py
+   PASS (logs/STAGE99_GUI_NEW.log).
+ xvfb-run -a env PYTHONPATH=src python scripts/run_stage88_gui_regression.py START END
+   0:24 24 PASS, 24:48 24 PASS, 48:72 24 PASS, 72:90 18 PASS,
+   90:97 7 PASS -> 97/97 GUI scripts PASS on Linux Xvfb.
+ Virtual consecutive test (logs/STAGE99_VIRTUAL_REPEATS.log):
+   3 x 1h => 10803 virtual ticks, 39 synthetic chats, ~0.12s elapsed.
+   5 x 3h => 54005 virtual ticks, 185 synthetic chats, ~0.75s elapsed.
+   10 x 3h => 108010 virtual ticks, 370 synthetic chats, ~1.40s elapsed.
+   Fault injection reply/corrupt/clock/closing on round 2 => all 4
+   correctly produce overall FAIL, followed by independent round 3 PASS.
+   5 tracemalloc repeats recorded ONLY short-lived Python allocations, NOT
+   genuine OS RSS or long-running memory leak detection.
+
+KNOWN ISSUE NOT RESOLVED:
+ Legacy SQLite unclosed database ResourceWarning still reproduced in unit suite.
+ Not a real 1/3/30-hour test. No Windows/EXE/OBS/platform/TTS/AI/avatar,
+ live streaming, crash recovery or operating-system scheduling was verified.
+ No GitHub/external access, user PC inspection, software install or payment.
+
+PRESERVATION:
+ All 943 v98 relative file paths retained. Modified pre-existing files:
+ README.md, TEST_RESULTS.txt, docs/REAL_DEVICE_ACCEPTANCE_CHECKLIST.md,
+ docs/ROADMAP_100.md, src/ai_broadcaster/desktop.py.
+ SHA256 docs/ORIGINAL_PLAN.txt: d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c (UNCHANGED)
+ SHA256 config/roadmap.json: bcaee31766fc5db4307f2d6f86becbe7dce28931d55c51ff8b39296beba5d48e (UNCHANGED)
+ 098 stage checklist & roadmap JSON remain pending; 010 final user approval pending.
+ Code reach 98/100, NOT 98% real product completion.
+ Next original 099: 운영자 점검 및 유지보수 체계 확정.
+
+POST-EXTRACTION VALIDATION:
+ Final standalone extraction and reruns reported in STAGE99_REEXTRACTED_UNITTEST.log
+ and STAGE99_REEXTRACTED_GUI.log.

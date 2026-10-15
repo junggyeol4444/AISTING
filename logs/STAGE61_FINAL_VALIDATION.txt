@@ -1,0 +1,35 @@
+AISTING v61 — ORIGINAL ROADMAP 060 "캐릭터 전체 작동 확인"
+Local offline implementation and test evidence | 2026-10-13 KST
+
+BASELINE:
+- Input archive: AISTING_Offline_Development_v60.zip, CRC PASS, 483 file paths.
+- docs/ORIGINAL_PLAN.txt SHA256: d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c (UNCHANGED).
+- docs/ROADMAP_100.md and config/roadmap.json checked; original stage 060 remains unchecked/pending until operator and real-device acceptance.
+- All 483 baseline file paths retained; 4 changed existing files (README.md, TEST_RESULTS.txt, docs/ROADMAP_100.md, src/ai_broadcaster/desktop.py).
+
+IMPLEMENTED (code development reached 60/100, NOT 60 approved stages):
+- Manual "캐릭터 통합 작동 시험" Tk tab, built-in 2D only.
+- Existing 4 expressions / mouth / blink / name / background / operator-chosen preview layout tested together on real Tk Canvas.
+- Existing virtual 2-chat voice pipeline, simulated interruption/pending preservation/manual resume, virtual timeline / mouth structure audited; NO audio playback.
+- Existing accelerated virtual 1-hour (3,600 frames, 12 checkpoints) and 60 actual Tk Canvas redraws integrated.
+- 3D/undecided and unsupported voice source refused without silent fallback; selection changes invalidate result; idle preview restored on success/error.
+- No account, external services, installation, Windows hardware queries, OBS, broadcasting, recording or local data persistence.
+
+ACTUAL VERIFICATION:
+- New unit tests: 18/18 PASS.
+- All unit tests: 1108/1108 PASS (previous v60: 1090), logs/STAGE61_UNITTEST.log.
+- AST parse: 190/190 Python files PASS.
+- GUI Linux Xvfb: 59/59 unique scripts PASS, logs/STAGE61_GUI_REGRESSION.log.
+  58 passed in the parallel batch; gui_avatar_layout_smoke.py first failed at Xvfb display connection before Tk init, then PASSED on isolated rerun. This was environment contention, not a code assertion failure.
+- Preliminary ZIP: 489 files, CRC PASS; extracted into separate folder; 1108/1108 unit tests PASS and new GUI smoke PASS; logs/STAGE61_EXTRACTED_UNITTEST.log.
+- Final archive includes this log and extracted-unit log; final archive CRC and clean extraction verified separately.
+
+NOT VERIFIED:
+- Windows 10/11 real PC, EXE build, real speaker/microphone/TTS, actual waveform/phoneme lip sync, external Live2D/VRM, actual 24h continuous execution or memory leak trend, OBS, live broadcasting, subjective human-like naturalness.
+- Original stage 010 final operator approval and 011+ PC inspections remain pending; original 060 acceptance remains pending.
+
+NEXT: original stage 061 "방송 플랫폼 채팅 연결". Develop only offline mock adapter contracts without real platform login or network, until user authorizes otherwise.
+FINAL PACKAGE POST-EXTRACTION:
+- Final ZIP 491 entries, CRC PASS, unpacked to /mnt/data/aisting_v61_finalcheck.
+- Full unittest on extracted final ZIP: 1108/1108 PASS; new GUI smoke on extracted final ZIP: PASS (Linux Xvfb).
+- The last packaging update adds only this validation note; no source/test behavior changed.

@@ -1,0 +1,15 @@
+AISTING v71 / original roadmap 070 / isolated offline chat communication audit.
+BASE: existing v70 cumulative ZIP, 588 relative files; reviewed original plan,
+  100-stage roadmap, config/roadmap.json, README, TEST_RESULTS.txt, prior stage 061-069
+  code/tests/docs, logs/STAGE70_FINAL_VALIDATION.txt and STAGE70_CHANGES.txt.
+ADDED: src/ai_broadcaster/offline_chat_communication_audit.py,
+  tests/test_offline_chat_communication_audit.py,
+  scripts/gui_offline_chat_communication_audit_smoke.py,
+  docs/STAGE71_CHAT_COMMUNICATION_AUDIT.md, logs/STAGE71_* validation artifacts.
+MODIFIED: src/ai_broadcaster/desktop.py, README.md, docs/ROADMAP_100.md,
+  TEST_RESULTS.txt.
+PRESERVED: original plan, config/roadmap.json, existing files/settings and
+  platform/content/character/voice/avatar selection behavior.
+No GitHub/remote repo/cloud AI/external server/real platforms/OBS/broadcast,
+  installations, payments, account linkage or user PC/voice collection.
+Operator final approval and Windows real-device tests remain pending.

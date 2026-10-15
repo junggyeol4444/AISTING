@@ -1,0 +1,56 @@
+AISTING v96 FINAL VALIDATION — 2026-10-14 Asia/Seoul
+Official original stage 095: 방송 중 이상 상황 감지 및 안전 제어.
+Source baseline: /mnt/data/AISTING_Offline_Development_v95.zip (CRC PASS, 899 files).
+Actually reviewed: original plan, ROADMAP_100.md, config/roadmap.json, README.md, prior STAGE95 log,
+ existing 061/062/063/065/094 modules, current GUI, tests, and acceptance checklist.
+
+Implemented:
+ - src/ai_broadcaster/offline_broadcast_safety.py safety gate on existing synthetic session;
+   detects virtual-time stall/backlog, mock connector change/disconnect, snapshot/FIFO/reply corruption,
+   blocked response and explicit incident report; latch with manual acknowledgement only.
+ - src/ai_broadcaster/desktop.py new operator manual *isolated* audit tab, 6 scenarios.
+ - tests/test_offline_broadcast_safety.py (29 unit tests).
+ - scripts/gui_offline_broadcast_safety_smoke.py actual Tk under Linux Xvfb.
+ - docs/STAGE96_OFFLINE_BROADCAST_SAFETY.md, README, roadmap note, acceptance checklist.
+
+Errors discovered and corrected DURING DEVELOPMENT:
+ - Initial cursor corruption test failed: cursor past queue end was not detected because
+   snapshot slicing normalized an impossible cursor; added strict private cursor range guard.
+ - Added explicit connector identity/session change check to avoid unsafe release after reconnect.
+ - Last all-GUI one-shot command exceeded execution limit after verified first three slices;
+   remaining 22 were re-run in two small slices, both PASS.
+
+Test commands (cwd source folder, PYTHONPATH=src):
+ python -m unittest discover -s tests -p test_offline_broadcast_safety.py -q
+   => 29/29 PASS.
+ python -m unittest discover -s tests -q
+   => 1863/1863 PASS (logs/STAGE96_UNIT_TEST_RUN.txt).
+ python ast.parse all .py in src/tests/scripts => 295/295 PASS.
+ xvfb-run -a env PYTHONPATH=src python scripts/run_stage88_gui_regression.py 0 24
+   => 24/24 PASS.
+ same runner 24 48 => 24/24 PASS.
+ same runner 48 72 => 24/24 PASS.
+ same runner 72 83 => 11/11 PASS.
+ same runner 83 94 => 11/11 PASS.
+ GUI UNION 94/94 PASS. Each slice log saved logs/STAGE96_GUI_*.txt.
+
+Prior source relative paths preserved 899/899.
+Original plan SHA256: d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c (UNCHANGED).
+config/roadmap.json byte-for-byte UNCHANGED; 095 and final user approval 010 PENDING.
+Previous files changed before finalization: README.md, docs/REAL_DEVICE_ACCEPTANCE_CHECKLIST.md, docs/ROADMAP_100.md, src/ai_broadcaster/desktop.py; TEST_RESULTS.txt updated for v96.
+
+UNRESOLVED: full suite emits SQLite ResourceWarning for unclosed sqlite3.Connection.
+NO ACTUAL SAFETY CONTROL: gate is not attached to running broadcast and cannot interrupt
+real AI/TTS/OBS output. This is a manual synthetic simulation, NOT a production monitor.
+No Windows EXE, platform account/connector, network, cloud, GitHub, installs,
+real chat data collection, audio, OBS broadcast or remote access.
+User PC/integration/rights/naturalness/final approval must be checked by the user later.
+Code development scope reached original 95/100 only; not 95% of working broadcast product.
+Next original stage 096: API·서버·음성 등 운영 비용 관리.
+
+INDEPENDENT DISTRIBUTION ZIP EXTRACTION RESULTS:
+ Extracted draft ZIP into /mnt/data/aisting_v96_independent_extract/AISTING_Offline_v96.
+ PYTHONPATH=src python -m unittest discover -s tests -q => 1863/1863 PASS.
+ xvfb-run -a env PYTHONPATH=src python scripts/gui_offline_broadcast_safety_smoke.py => PASS.
+ Extracted logs: logs/STAGE96_EXTRACTED_UNIT_TEST_RUN.txt, STAGE96_EXTRACTED_GUI_SMOKE.txt.
+ Final ZIP repacked with extraction evidence. Final CRC and all old-path preservation rechecked.

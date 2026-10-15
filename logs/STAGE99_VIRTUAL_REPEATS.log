@@ -1,0 +1,13 @@
+episodes=3 virtual_hours_each=1 total_virtual_hours=3 wall_seconds=0.11987 passed=True ticks=10803 accepted=39 responded=39 failures=()
+episodes=5 virtual_hours_each=3 total_virtual_hours=15 wall_seconds=0.75351 passed=True ticks=54005 accepted=185 responded=185 failures=()
+episodes=10 virtual_hours_each=3 total_virtual_hours=30 wall_seconds=1.40196 passed=True ticks=108010 accepted=370 responded=370 failures=()
+inject=reply passed=False failed_rounds=(2,) later_session_passed=True
+inject=corrupt passed=False failed_rounds=(2,) later_session_passed=True
+inject=clock passed=False failed_rounds=(2,) later_session_passed=True
+inject=closing passed=False failed_rounds=(2,) later_session_passed=True
+python_alloc_iteration=1 current_bytes=13944 peak_bytes=36178 passed=True
+python_alloc_iteration=2 current_bytes=15146 peak_bytes=39508 passed=True
+python_alloc_iteration=3 current_bytes=15564 peak_bytes=39926 passed=True
+python_alloc_iteration=4 current_bytes=15790 peak_bytes=40152 passed=True
+python_alloc_iteration=5 current_bytes=16016 peak_bytes=40378 passed=True
+These trace measurements are short-run Python allocations, not proven long-duration system memory stability.

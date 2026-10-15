@@ -1,0 +1,16 @@
+[46/99] gui_offline_broadcast_voice_link_smoke.py: PASS
+[47/99] gui_offline_chat_communication_audit_smoke.py: PASS
+[48/99] gui_offline_chat_integrity_smoke.py: PASS
+[49/99] gui_offline_chat_latency_smoke.py: PASS
+[50/99] gui_offline_chat_order_smoke.py: PASS
+[51/99] gui_offline_chat_reactions_smoke.py: PASS
+[52/99] gui_offline_chat_receiver_smoke.py: PASS
+[53/99] gui_offline_chat_recovery_smoke.py: PASS
+[54/99] gui_offline_chat_voice_screen_integration_smoke.py: PASS
+[55/99] gui_offline_discord_notice_link_smoke.py: PASS
+[56/99] gui_offline_end_notice_smoke.py: PASS
+[57/99] gui_offline_final_acceptance_smoke.py: PASS
+[58/99] gui_offline_full_cycle_audit_smoke.py: PASS
+[59/99] gui_offline_memory_recall_smoke.py: PASS
+[60/99] gui_offline_multi_viewer_smoke.py: PASS
+GUI TOTAL 15/15 passed; elapsed=18.79s; failed=[]

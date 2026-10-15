@@ -1,0 +1,6 @@
+PASS gui_offline_prebroadcast_notice_smoke.py exit=0
+PASS gui_offline_private_broadcast_rehearsal_smoke.py exit=0
+PASS gui_offline_start_control_smoke.py exit=0
+PASS gui_offline_viewer_context_smoke.py exit=0
+PASS gui_operator_boundaries_smoke.py exit=0
+GUI SLICE 60:65 — 5/5 PASS

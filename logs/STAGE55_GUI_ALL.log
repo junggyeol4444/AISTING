@@ -1,0 +1,107 @@
+GUI original roadmap 037 all-chat response policy: PASS
+PASS scripts/gui_all_chat_policy_smoke.py
+GUI stage 053 existing avatar display: PASS
+PASS scripts/gui_avatar_display_validation_smoke.py
+GUI 054 expressions selection/render/save/load/delete: PASS
+PASS scripts/gui_avatar_expressions_smoke.py
+GUI original stage 051 avatar preparation: PASS
+PASS scripts/gui_avatar_preparation_smoke.py
+GUI 052 avatar offline runtime environment: PASS
+PASS scripts/gui_avatar_runtime_environment_smoke.py
+GUI 아바타 미정/2D/3D 전환, 샘플 차단, 별도 창 종료, 저장 및 복원: 통과
+PASS scripts/gui_avatar_selection_smoke.py
+GUI별도창/중복방지/동기화/배경전환/독립닫기/전체종료: 통과
+PASS scripts/gui_avatar_smoke.py
+19단계 GUI · 탭 이동/검사/취소/수동 복구/중복 차단/원본 보존: 통과
+PASS scripts/gui_backup_recovery_smoke.py
+GUI original stage035 basic reaction: PASS
+PASS scripts/gui_basic_reaction_smoke.py
+30단계 GUI 모의 점검 통과
+PASS scripts/gui_brain_stage_review_smoke.py
+GUI stage 040 character dialogue review: PASS
+PASS scripts/gui_character_dialogue_review_smoke.py
+GUI 콘텐츠 미선택/수다/게임/둘 다/변경 및 복수 플랫폼 혼합: 통과
+PASS scripts/gui_content_smoke.py
+26단계 GUI · 맥락 전달/잘림/중복/오류/초기화/무접속: 통과
+PASS scripts/gui_context_retention_smoke.py
+29단계 GUI 수동 조회·연속성 검증 통과
+PASS scripts/gui_conversation_continuity_smoke.py
+23단계 GUI · 모의/로컬 계획 선택/미리보기/적용/오류/초기화/무전송: 통과
+PASS scripts/gui_core_ai_connection_smoke.py
+24단계 GUI · 가상 응답/오류/승인 취소/가짜 승인/무접속: 통과
+PASS scripts/gui_core_ai_probe_smoke.py
+22단계 GUI · 수동 모의 코어 FIFO/재시도/선택값/오류/무전송: 통과
+PASS scripts/gui_core_execution_smoke.py
+21단계 GUI · 선택형 코어 구성도/미구현 구분/오류/무연결: 통과
+PASS scripts/gui_core_foundation_smoke.py
+10단계 승인 검토 GUI · 체크/확인/기록/무효화/취소 · 네트워크 없음: 통과
+PASS scripts/gui_development_review_smoke.py
+13단계 범위 검토 GUI · 사용자 입력/미검증 표시/입력 오류/무조회/무전송: 통과
+PASS scripts/gui_development_scope_smoke.py
+GUI stage 049 PASS: mock dialogue -> virtual speech FIFO, duplicate, interrupt, no side effects
+PASS scripts/gui_dialogue_voice_link_smoke.py
+GUI stage048 manual emotion-expression review: PASS
+GUI stage048 manual emotion-expression review: PASS
+PASS scripts/gui_emotion_expression_smoke.py
+20단계 GUI · 수동 자가점검/오류/탭 이동/기존 데이터 보존: 통과
+PASS scripts/gui_execution_selfcheck_smoke.py
+12단계 하드웨어 수동 입력 GUI · 확인/저장/복원/삭제/무조회/무전송: 통과
+PASS scripts/gui_hardware_readiness_smoke.py
+GUI original roadmap 038 idle speech simulation: PASS
+PASS scripts/gui_idle_speech_smoke.py
+25단계 GUI · 한국어 모의 시험/중복/입력 오류/초기화/무접속: 통과
+PASS scripts/gui_korean_dialogue_test_smoke.py
+9단계 PC 로컬 운영 GUI · 수동 점검 · 원본 보존 · 네트워크 미사용: 통과
+PASS scripts/gui_local_operation_smoke.py
+18단계 GUI · 탭 이동/무조회 미리보기/취소/수동 보관/중복 차단/무전송: 통과
+PASS scripts/gui_manual_archive_smoke.py
+GUI stage35 operator boundaries smoke: PASS
+PASS scripts/gui_operator_boundaries_smoke.py
+GUI stage 039 operator feedback: PASS
+PASS scripts/gui_operator_feedback_smoke.py
+11단계 OS 수동 입력 GUI · 평가/저장확인/불러오기/삭제/무조회·무전송: 통과
+PASS scripts/gui_os_readiness_smoke.py
+GUI 성격·말투 예시/수정/저장/기본 전환/스크롤/무통신: 통과
+PASS scripts/gui_persona_drafts_smoke.py
+GUI persona input smoke: PASS
+PASS scripts/gui_persona_input_smoke.py
+GUI 캐릭터 기본값/직접 만들기/아바타 이름/저장/초안 보존: 통과
+PASS scripts/gui_persona_smoke.py
+GUI 플랫폼 미선택/복수 선택/변경/해제 및 로컬 저장: 통과
+PASS scripts/gui_platform_smoke.py
+GUI 047 manual pronunciation + intonation: PASS
+PASS scripts/gui_pronunciation_review_smoke.py
+GUI stage34 smoke: PASS
+PASS scripts/gui_reaction_directions_smoke.py
+27단계 GUI · 오류 8종/수동 재시도/확인 후 제외/무접속: 통과
+PASS scripts/gui_response_error_smoke.py
+28단계 GUI · 미리보기/동의 거절/수동 저장/중복/조회/2회 삭제/무접속: 통과
+PASS scripts/gui_response_records_smoke.py
+GUI roadmap 036 mock reply time observation: PASS
+PASS scripts/gui_response_speed_smoke.py
+17단계 실행 환경 GUI · 계획/취소/수동 저장/불러오기/적용/삭제/연습중 변경차단/무전송: 통과
+PASS scripts/gui_runtime_profile_smoke.py
+GUI 046 voice routing, selection, invalidation, stop, error, offline: PASS
+PASS scripts/gui_selected_voice_routing_smoke.py
+GUI 초기화, 자동 음성 꺼짐, 모의 음성 FIFO 4개: 통과
+PASS scripts/gui_smoke.py
+14단계 프로그램·비용 안내 GUI · 전 항목 표시/조회 없음/설치 없음/결제 없음: 통과
+PASS scripts/gui_software_cost_guide_smoke.py
+GUI stage33 smoke: PASS
+PASS scripts/gui_style_consistency_smoke.py
+GUI original roadmap 044 Korean synthesis environment: PASS
+PASS scripts/gui_synthesis_environment_smoke.py
+GUI stage 050 PASS: virtual voice final checklist, invalidation, safety gates
+PASS scripts/gui_voice_final_verification_smoke.py
+GUI stage 042 voice material metadata draft: PASS
+PASS scripts/gui_voice_material_smoke.py
+GUI original 045 Korean virtual output + interrupted worker: PASS
+PASS scripts/gui_voice_output_validation_smoke.py
+GUI original stage 043 operator quality: PASS
+PASS scripts/gui_voice_quality_smoke.py
+GUI stage 041 voice rights review: PASS
+PASS scripts/gui_voice_rights_smoke.py
+GUI 목소리 확보 방식 선택·저장·복원·속도/음량 전달·미설치 음성 대체 방지: 통과
+PASS scripts/gui_voice_source_smoke.py
+16단계 작업 공간 GUI · 미리보기/취소/수동 생성/재실행/기존 파일 보존/무전송: 통과
+PASS scripts/gui_workspace_setup_smoke.py

@@ -1,0 +1,18 @@
+AISTING v88 FINAL VALIDATION — ORIGINAL STAGE 087, OFFLINE ONLY
+
+Base: /mnt/data/AISTING_Offline_Development_v87.zip (783 source paths; CRC confirmed).
+Documents actually reviewed: docs/ORIGINAL_PLAN.txt part 5, docs/ROADMAP_100.md, config/roadmap.json, README.md, previous implementation/tests/logs.
+Scope implemented: src/ai_broadcaster/offline_naver_cafe_review.py and Tkinter '네이버 카페 공식 연동 검토' tab in desktop.py. Reuses original 084 notice draft; refuses stale/unsafe/posted drafts and displays LOCAL ONLY API-feasibility checklist with all provider support and permissions marked UNVERIFIED.
+No API endpoint, OAuth, token, cafe ID, remote access, browsing, browser automation, account login, posting, scheduling, Github, payment, installation, OBS, actual broadcast, user PC/voice data collection.
+NEW UNIT: 23/23 PASS — tests/test_offline_naver_cafe_review.py.
+FULL UNIT: 1658/1658 PASS — logs/STAGE88_UNITTEST.log.
+GUI REGRESSION: 86/86 PASS Linux Xvfb in four independent batches: 22+22+22+20. logs/STAGE88_GUI_BATCH_1.log through _4.log, and logs/STAGE88_GUI_REGRESSION.log. Initial one-piece GUI run timed out; the complete segmented run passed.
+NEW GUI: PASS — scripts/gui_offline_naver_cafe_review_smoke.py; related prior GUI targeted 6/6 PASS — logs/STAGE88_GUI_TARGETED.log.
+SYNTAX: 271/271 Python files PASS — logs/STAGE88_SYNTAX.log.
+PRESERVATION: 783/783 source v87 paths retained. docs/ORIGINAL_PLAN.txt and config/roadmap.json byte-identical — logs/STAGE88_PRESERVATION.log.
+REEXTRACT UNIT: 1658/1658 PASS — logs/STAGE88_REEXTRACTED_UNITTEST.log.
+REEXTRACT NEW GUI: PASS — logs/STAGE88_REEXTRACTED_GUI.log (Linux Xvfb).
+FINAL ARCHIVE: 800 files including this report, no new Python bytecode caches; ZIP CRC and old-file paths to be checked on final repack.
+NOT VERIFIED: actual Naver Cafe official API support/status/schema/permissions/policy, real posting and deduplication, Windows 10/11/EXE, actual LLM/voice/avatar/OBS, user final acceptance.
+ORIGINAL STAGE 087 remains pending; original final-user-approval 010 remains pending. Code development scope reached 87/100; NOT actual product completion.
+Next: original stage 088, notice wording variation and operator settings (subject to user approval boundaries).

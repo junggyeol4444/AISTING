@@ -1,0 +1,9 @@
+기존 v25 파일: 170 누락: 0 동일: 164 의도적 변경: 6
+변경된 기존 파일:
+  README.md
+  config/roadmap.json
+  docs/ROADMAP_100.md
+  docs/STATUS.md
+  src/ai_broadcaster/core_execution.py
+  src/ai_broadcaster/desktop.py
+원본 기획안 SHA256: d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c 일치

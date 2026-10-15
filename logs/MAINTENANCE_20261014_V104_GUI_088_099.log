@@ -1,0 +1,12 @@
+089/99 PASS scripts/gui_smoke.py 1.44s
+090/99 PASS scripts/gui_software_cost_guide_smoke.py 1.17s
+091/99 PASS scripts/gui_style_consistency_smoke.py 1.16s
+092/99 PASS scripts/gui_synthesis_environment_smoke.py 1.19s
+093/99 PASS scripts/gui_voice_final_verification_smoke.py 1.19s
+094/99 PASS scripts/gui_voice_material_smoke.py 1.26s
+095/99 PASS scripts/gui_voice_output_validation_smoke.py 1.23s
+096/99 PASS scripts/gui_voice_quality_smoke.py 1.27s
+097/99 PASS scripts/gui_voice_rights_smoke.py 1.17s
+098/99 PASS scripts/gui_voice_source_smoke.py 1.46s
+099/99 PASS scripts/gui_workspace_setup_smoke.py 1.15s
+GUI_BATCH 88 99 passed 11 failed 0

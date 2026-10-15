@@ -1,0 +1,23 @@
+test_all_scenarios_named_and_unique (tests.test_offline_broadcast_closing_audit.Stage80ClosingAuditTests.test_all_scenarios_named_and_unique) ... ok
+test_broken_advance_failure_produces_failed_checks (tests.test_offline_broadcast_closing_audit.Stage80ClosingAuditTests.test_broken_advance_failure_produces_failed_checks) ... ok
+test_correct_source_duration_contract (tests.test_offline_broadcast_closing_audit.Stage80ClosingAuditTests.test_correct_source_duration_contract) ... ok
+test_custom_min_max (tests.test_offline_broadcast_closing_audit.Stage80ClosingAuditTests.test_custom_min_max) ... ok
+test_default_all_twelve_cases (tests.test_offline_broadcast_closing_audit.Stage80ClosingAuditTests.test_default_all_twelve_cases) ... ok
+test_empty_report_fails_closed (tests.test_offline_broadcast_closing_audit.Stage80ClosingAuditTests.test_empty_report_fails_closed) ... ok
+test_equal_min_max (tests.test_offline_broadcast_closing_audit.Stage80ClosingAuditTests.test_equal_min_max) ... ok
+test_factory_failure_not_claimed_as_success (tests.test_offline_broadcast_closing_audit.Stage80ClosingAuditTests.test_factory_failure_not_claimed_as_success) ... ok
+test_factory_logic_error_detected_as_incomplete (tests.test_offline_broadcast_closing_audit.Stage80ClosingAuditTests.test_factory_logic_error_detected_as_incomplete) ... ok
+test_factory_must_be_callable (tests.test_offline_broadcast_closing_audit.Stage80ClosingAuditTests.test_factory_must_be_callable) ... ok
+test_invalid_duration_not_silently_changed (tests.test_offline_broadcast_closing_audit.Stage80ClosingAuditTests.test_invalid_duration_not_silently_changed) ... ok
+test_invalid_persona_not_silently_fallback (tests.test_offline_broadcast_closing_audit.Stage80ClosingAuditTests.test_invalid_persona_not_silently_fallback) ... ok
+test_localized_description_never_certifies_real_stop (tests.test_offline_broadcast_closing_audit.Stage80ClosingAuditTests.test_localized_description_never_certifies_real_stop) ... ok
+test_manual_failed_report_describes_failed_check (tests.test_offline_broadcast_closing_audit.Stage80ClosingAuditTests.test_manual_failed_report_describes_failed_check) ... ok
+test_name_spaces_normalized_and_accepted (tests.test_offline_broadcast_closing_audit.Stage80ClosingAuditTests.test_name_spaces_normalized_and_accepted) ... ok
+test_no_remote_process_sleep_or_file_io (tests.test_offline_broadcast_closing_audit.Stage80ClosingAuditTests.test_no_remote_process_sleep_or_file_io) ... ok
+test_report_immutable (tests.test_offline_broadcast_closing_audit.Stage80ClosingAuditTests.test_report_immutable) ... ok
+test_separate_runs_not_shared (tests.test_offline_broadcast_closing_audit.Stage80ClosingAuditTests.test_separate_runs_not_shared) ... ok
+
+----------------------------------------------------------------------
+Ran 18 tests in 0.002s
+
+OK

@@ -1,0 +1,8 @@
+AISTING v20 ZIP re-extraction verification | 2026-10-12
+Initial ZIP archive: 116 files; zipfile.testzip() returned None.
+Extracted to a fresh separate directory and ran:
+- PYTHONPATH=src python -m unittest discover -s tests -q: Ran 362 tests, OK.
+- xvfb-run -a python scripts/gui_execution_selfcheck_smoke.py: passed.
+- PYTHONPATH=src python scripts/run_environment_selfcheck.py: 5/5 passed.
+No Windows real-device or EXE test was run.
+The final ZIP also includes this re-extraction verification record.

@@ -1,0 +1,56 @@
+AISTING v97 FINAL VALIDATION — 2026-10-14 Asia/Seoul
+Original stage 096: API·서버·음성 등 운영 비용 관리.
+Baseline: AISTING_Offline_Development_v96.zip — CRC PASS, 912 files.
+Actually reviewed: docs/ORIGINAL_PLAN.txt, docs/ROADMAP_100.md, config/roadmap.json,
+README.md, docs/PROGRAM_COST_GUIDE.md, existing modules, previous stage logs, tests, GUI scripts.
+
+IMPLEMENTED (offline, manual estimate, not real billing):
+ - src/ai_broadcaster/offline_operating_cost.py: Decimal-based five-component
+   KRW manual cost estimation from LLM input/output tokens, server hours,
+   TTS characters, and kWh; explicit rates, optional manual budget.
+ - Missing values remain UNKNOWN, never assumed 0/free; explicit zero usage only
+   allows the corresponding item to be zero without a rate. Known subtotal with
+   unknown components can warn of overspending but NEVER assert under-budget.
+ - GUI: '운영 비용 수동 예산 계산' tab, manual calculation button, input change
+   invalidation and error rejection; no persistence, external access or scheduling.
+ - tests/test_offline_operating_cost.py: 25 new tests.
+ - scripts/gui_offline_operating_cost_smoke.py: Tk screen, no network/process.
+ - docs/STAGE97_OFFLINE_OPERATING_COST.md, README, roadmap note, checklists.
+
+TEST COMMANDS / VERIFIED RESULTS (cwd source directory; PYTHONPATH=src):
+ python -m unittest discover -s tests -p 'test_offline_operating_cost.py' -v
+  => 25/25 PASS.
+ python -m unittest discover -s tests -q
+  => 1888/1888 PASS (logs/STAGE97_UNITTEST.log).
+ python AST parse all src/tests/scripts .py => 298/298 PASS (logs/STAGE97_SYNTAX.log).
+ xvfb-run -a env PYTHONPATH=src python scripts/gui_offline_operating_cost_smoke.py
+  => PASS.
+ xvfb-run -a env PYTHONPATH=src python scripts/run_stage88_gui_regression.py START END
+  => slices 0:24 (24 PASS), 24:48 (24 PASS), 48:72 (24 PASS),
+     72:80 (8 PASS), 80:88 (8 PASS), 88:95 (7 PASS) => UNION 95/95 PASS.
+  An initial 72:95 batch timed out without results, then all 23 re-run in
+  smaller slices and confirmed PASS. Each final slice log saved in logs/.
+
+ORIGINAL PLAN SHA256 d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c UNCHANGED.
+ROADMAP JSON SHA256 bcaee31766fc5db4307f2d6f86becbe7dce28931d55c51ff8b39296beba5d48e UNCHANGED.
+Original stage 096 and final user approval 010 remain PENDING.
+All 912 prior relative file paths preserved.
+
+UNRESOLVED: previous unclosed sqlite3.Connection ResourceWarning observed in full suite.
+This stage did not fix that legacy problem and does not prove long-running stability.
+NO actual billing/usage/provider pricing, internet account, payment, OBS,
+AI cloud APIs, speech output, Windows EXE/device or streaming were used or verified.
+No user PC configuration or audio data was accessed or collected.
+All costs are manual same-period estimates; taxes/exchange rates/free tiers,
+actual licenses and electricity charges remain operator verification items.
+Code development reaches 96/100 only; NOT percent of real working product.
+Next original stage 097: 장시간 무인 방송 테스트.
+
+POST-EXTRACTION VALIDATION — PASS:
+ Freshly extracted ZIP into /mnt/data/aisting_v97_independent_extract/AISTING_Offline_v97.
+ PYTHONPATH=src python -m unittest discover -s tests -q: 1888/1888 PASS.
+ xvfb-run -a env PYTHONPATH=src python scripts/gui_offline_operating_cost_smoke.py: PASS.
+ Logs included as STAGE97_EXTRACTED_UNITTEST.log / STAGE97_EXTRACTED_GUI.log.
+ Note: these tests validate only offline Python and Linux Xvfb behavior, not
+ Windows operation, actual provider bills, charges, TTS or OBS.
+

@@ -1,0 +1,7 @@
+AISTING v24 archive integrity preflight
+Expected ZIP entries: 158
+v23 source base: 147 files, 140 byte-identical, 7 intentionally updated, 0 removed
+Unit tests: 479/479 pass; GUI Xvfb: 23/23 pass; selfcheck: 5/5; AST: 80 files
+Preflight ZIP extracted and unit tests 479/479 pass, new GUI smoke pass
+Original plan SHA256: d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c
+Actual final ZIP CRC and reextraction verified after packaging.

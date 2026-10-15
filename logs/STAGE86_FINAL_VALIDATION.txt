@@ -1,0 +1,15 @@
+AISTING v86 FINAL VALIDATION — original roadmap 085 디스코드 공지 연결 (OFFLINE PREVIEW ONLY)
+Local date: 2026-10-14 KST
+BASE: AISTING_Offline_Development_v85.zip — 763 file entries, CRC PASS.
+REVIEWED: original docs/ORIGINAL_PLAN.txt section 5-1, docs/ROADMAP_100.md item 085, config/roadmap.json, README, stage 85 logs/tests and previous implementation.
+IMPLEMENTED: src/ai_broadcaster/offline_discord_notice_link.py; additional desktop tab "디스코드 공지 연결 모의"; reuses actual 084 notice draft, rejects stale/edited/config-changed original; validates 2000-char content, mentions, URL and control character. Produces JSON review preview only: destination=null, send_ready=false, allowed_mentions.parse=[], connection=disabled, published=false.
+NEW UNIT: 21/21 PASS (tests/test_offline_discord_notice_link.py, included in full unit log).
+SOURCE FULL UNIT: 1614/1614 PASS (logs/STAGE86_UNITTEST.log).
+SOURCE GUI: 84/84 PASS (logs/STAGE86_GUI_REGRESSION.log); all scripts executed in separate processes under Linux Xvfb, shared virtual display.
+PYTHON AST: 265/265 PASS (logs/STAGE86_SYNTAX.log).
+PRESERVATION: 763/763 previous file paths present; changed previous paths 5: ['README.md', 'TEST_RESULTS.txt', 'docs/REAL_DEVICE_ACCEPTANCE_CHECKLIST.md', 'docs/ROADMAP_100.md', 'src/ai_broadcaster/desktop.py']. Original plan and config/roadmap.json BYTE IDENTICAL.
+POST-EXTRACTION (initial v86 archive, matching source/test code): new empty directory unpack, full unit 1614/1614 PASS and actual Tkinter stage 085 GUI PASS (logs/STAGE86_REEXTRACTED_UNITTEST.log, logs/STAGE86_REEXTRACTED_GUI.log).
+LATEST ARCHIVE: includes full cumulative source, historical logs and docs. ZIP CRC independently checked after final repack.
+CODE DEVELOPMENT REACHED: 85/100 (not product completeness), original 085 status pending, stage 010 final operator approval pending. Next roadmap 086 '방송 시작 공지 자동 게시' not approved for external sending.
+NEVER DONE: Discord account login, bot token/channel/webhook collection, external HTTP/API, actual announcement publishing, automation/scheduler, cloud AI, GitHub, program installation, OBS connection/broadcast, user's PC access or user data/voice collection.
+NOT VERIFIED: Windows 10/11 GUI/EXE, real Discord compatibility, permissions, actual posting and revocation/retry/duplicate handling, actual naturalness, real voice/avatar/OBS, operator final approval. See docs/REAL_DEVICE_ACCEPTANCE_CHECKLIST.md.

@@ -1,0 +1,23 @@
+test_advance_one_notice_then_farewell_pending (tests.test_offline_broadcast_closing.ClosingTests.test_advance_one_notice_then_farewell_pending) ... ok
+test_before_max_not_allowed (tests.test_offline_broadcast_closing.ClosingTests.test_before_max_not_allowed) ... ok
+test_cannot_advance_after_virtual_end (tests.test_offline_broadcast_closing.ClosingTests.test_cannot_advance_after_virtual_end) ... ok
+test_description_never_claims_real_stop (tests.test_offline_broadcast_closing.ClosingTests.test_description_never_claims_real_stop) ... ok
+test_failed_farewell_preserved_not_ended (tests.test_offline_broadcast_closing.ClosingTests.test_failed_farewell_preserved_not_ended) ... ok
+test_failed_notice_preserved (tests.test_offline_broadcast_closing.ClosingTests.test_failed_notice_preserved) ... ok
+test_initial_pending (tests.test_offline_broadcast_closing.ClosingTests.test_initial_pending) ... ok
+test_manual_retry_only (tests.test_offline_broadcast_closing.ClosingTests.test_manual_retry_only) ... ok
+test_name_invalid (tests.test_offline_broadcast_closing.ClosingTests.test_name_invalid) ... ok
+test_name_normalization (tests.test_offline_broadcast_closing.ClosingTests.test_name_normalization) ... ok
+test_no_decision_rejected (tests.test_offline_broadcast_closing.ClosingTests.test_no_decision_rejected) ... ok
+test_no_external_interfaces (tests.test_offline_broadcast_closing.ClosingTests.test_no_external_interfaces) ... ok
+test_reentrant_advance_blocked (tests.test_offline_broadcast_closing.ClosingTests.test_reentrant_advance_blocked) ... ok
+test_requires_callable (tests.test_offline_broadcast_closing.ClosingTests.test_requires_callable) ... ok
+test_second_ack_virtual_ends (tests.test_offline_broadcast_closing.ClosingTests.test_second_ack_virtual_ends) ... ok
+test_separate_instances_do_not_share_state (tests.test_offline_broadcast_closing.ClosingTests.test_separate_instances_do_not_share_state) ... ok
+test_snapshot_immutable_and_no_mutable_leak (tests.test_offline_broadcast_closing.ClosingTests.test_snapshot_immutable_and_no_mutable_leak) ... ok
+test_works_with_operator_changed_duration (tests.test_offline_broadcast_closing.ClosingTests.test_works_with_operator_changed_duration) ... ok
+
+----------------------------------------------------------------------
+Ran 18 tests in 0.002s
+
+OK

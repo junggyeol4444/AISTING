@@ -1,0 +1,43 @@
+AISTING v68 / ORIGINAL 067 시청자와 대화 맥락 연결 · OFFLINE MOCK ONLY
+
+BASELINE
+- Latest available source: AISTING_Offline_Development_v67.zip, 552 relative files.
+- Read docs/ORIGINAL_PLAN.txt, docs/ROADMAP_100.md, config/roadmap.json,
+  README, stage 065/066 design and source/test/validation logs.
+- Original 067: viewer conversation context linking; original 068 multiple viewer conversation is next.
+- v67 baseline: 1240/1240 unittest PASS.
+
+IMPLEMENTED
+- Explicit opt-in same-viewer history on existing 065 reply port (same platform + manual sender name).
+- At most 8 successful previous mock responses, chronological order, excludes failed and pending.
+- No cross-viewer context leakage, no default change or switch after first reply.
+- Added read-only next-pending context preview and new Tk tab; all chats still FIFO and retained.
+- New tests: 21, GUI smoke: 1, documentation and cumulative evidence.
+
+TESTS (on this source tree)
+- unittest: 1261/1261 PASS, logs/STAGE68_UNITTEST.log
+- GUI: 65/65 Linux Xvfb scripts/gui_*_smoke.py PASS, logs/STAGE68_GUI_REGRESSION.log
+- AST: 211/211 Python files parse, logs/STAGE68_SYNTAX.log
+
+PRESERVATION
+- v67 relative files preserved: 552/552; modified prior paths: README.md, TEST_RESULTS.txt, docs/ROADMAP_100.md, src/ai_broadcaster/desktop.py, src/ai_broadcaster/offline_chat_reactions.py.
+- docs/ORIGINAL_PLAN.txt SHA256 d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c, byte-identical.
+- config/roadmap.json unchanged: original 067 and 010 pending.
+- No existing source/user data/configuration removed; stage 068 not started.
+
+LIMITS
+- Code development reach 67/100 (original 067) is not roadmap acceptance.
+- No actual platform, account, real AI memory/meaning, live chat, Windows EXE,
+  speech/avatar/OBS, user PC access, network, GitHub, cloud API or payments.
+- Linux Xvfb GUI != Windows real-device verification; user final approval pending.
+
+ARCHIVE / POST-EXTRACTION
+- Final cumulative archive: AISTING_Offline_Development_v68.zip.
+- Archived files: 564 (v67 552 preserved, 12 new).
+- Modified existing files (5): README.md, TEST_RESULTS.txt, docs/ROADMAP_100.md, src/ai_broadcaster/desktop.py, src/ai_broadcaster/offline_chat_reactions.py.
+- Added files (12): docs/STAGE68_VIEWER_CONTEXT.md, logs/STAGE68_CHANGES.txt, logs/STAGE68_FINAL_VALIDATION.txt, logs/STAGE68_GUI_REGRESSION.log, logs/STAGE68_REEXTRACTED_GUI.log, logs/STAGE68_REEXTRACTED_GUI_REGRESSION.log, logs/STAGE68_REEXTRACTED_UNITTEST.log, logs/STAGE68_SYNTAX.log, logs/STAGE68_UNITTEST.log, scripts/gui_offline_viewer_context_smoke.py, src/ai_broadcaster/offline_viewer_context.py, tests/test_offline_viewer_context.py.
+- Preliminary ZIP CRC PASS, all 552 original relative paths preserved.
+- Re-extracted preliminary archive in a separate folder: 1261/1261 unittest PASS.
+- Re-extracted new GUI: PASS; all 65/65 Linux Xvfb GUI regression PASS.
+- Final ZIP rebuild only adds evidence logs and updates this validation text.
+- After final rebuild: CRC and relative-file preservation checked; code/test files unchanged.

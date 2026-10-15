@@ -1,0 +1,17 @@
+AISTING v38 · 2026-10-13 KST · actual local build and test log
+Baseline: AISTING_Offline_Development_v37.zip (269 entries, CRC passed)
+Original roadmap item implemented in mock-only: 037 채팅 전체 반응 원칙 적용
+Old files byte-for-byte unchanged: 264
+Old files changed (intended): 5 (README.md, TEST_RESULTS.txt, docs/ROADMAP_100.md, docs/STATUS.md, src/ai_broadcaster/desktop.py)
+Old files missing: 0
+New files (before final log): 8
+Original plan SHA256: d4482d539bf733fddc65263566b436e2547d64d43545ac3279581bc21c58180c (identical to v37)
+config/roadmap.json byte-identical: YES (approval/pending statuses preserved)
+Automated unittest: 686/686 PASSED (logs/STAGE38_UNITTEST.log)
+New GUI smoke: 1/1 PASSED (logs/STAGE38_GUI_NEW.log)
+GUI regression smoke: 11/11 PASSED (logs/STAGE38_GUI_REGRESSION.log)
+Python AST syntax: 120/120 PASSED (logs/STAGE38_SYNTAX.log)
+Test environment: Linux Python 3.13 / Xvfb virtual display (NOT Windows hardware)
+Non-actions: no GitHub; no user PC data access/inventory; no network/model/OBS calls; no installation, real streaming, account connection, or payment.
+Approval/user actions pending: 010 final acceptance; 011+ actual PC inspections; Windows EXE; real model/chat and naturalness assessment.
+Implementation covers an isolated memory mock queue; not a real chat platform policy enforcement guarantee.
