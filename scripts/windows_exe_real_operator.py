@@ -287,6 +287,42 @@ def main():
         print("AVATAR_SCROLL_MOVED_PIXELS", moved_pixels, flush=True)
         assert moved_pixels > 6000, "Avatar tab has no usable scrolling to its hidden buttons"
         print("OPERATOR PASS Windows 768p avatar controls are reachable by scrolling", flush=True)
+
+        # Open the actual pop-out via its on-screen mouse button, no app APIs.
+        click_relative(hwnd, 120, 523)
+        deadline = time.monotonic() + 9
+        popout = None
+        while time.monotonic() < deadline:
+            child_windows = [w for w in windows() if "아바타 · 로컬 창 캡처용" in w["title"]]
+            if child_windows:
+                popout = child_windows[0]
+                break
+            time.sleep(0.25)
+        assert popout is not None, "Clicking the real 2D avatar button did not open a Windows child window"
+        pyautogui.screenshot().save(OUTPUT / "18_actual_avatar_popout_full_desktop.png")
+        print("OPERATOR PASS user mouse click opened standalone native avatar window", popout, flush=True)
+
+        # A second click must activate the existing window, not create duplicates.
+        click_relative(hwnd, 120, 523)
+        time.sleep(0.6)
+        children = [w for w in windows() if "아바타 · 로컬 창 캡처용" in w["title"]]
+        assert len(children) == 1, "Second click created duplicate avatar popout windows"
+        print("OPERATOR PASS repeated avatar open click did not duplicate windows", flush=True)
+
+        # Close only the avatar window through its OS window close command.
+        assert u32.PostMessageW(popout["hwnd"], WM_CLOSE, 0, 0), "Avatar child WM_CLOSE could not be sent"
+        deadline = time.monotonic() + 6
+        while time.monotonic() < deadline:
+            if not [w for w in windows() if "아바타 · 로컬 창 캡처용" in w["title"]]:
+                break
+            time.sleep(0.2)
+        assert not [w for w in windows() if "아바타 · 로컬 창 캡처용" in w["title"]], \
+            "Closing avatar window left a native Windows child process or window"
+        assert u32.IsWindow(hwnd), "Closing only the avatar unexpectedly closed AISTING main window"
+        snap("19_after_avatar_child_closed_main_window_preserved", hwnd)
+        assert json.loads(settings_file.read_text(encoding="utf-8")) == saved, \
+            "Opening/closing standalone avatar window changed saved user settings"
+        print("OPERATOR PASS avatar-only close leaves main EXE and settings intact", flush=True)
         close_app()
 
         assert settings_file.is_file()
