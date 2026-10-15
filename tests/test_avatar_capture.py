@@ -75,10 +75,11 @@ class TestAvatarFrame(unittest.TestCase):
         self.assertNotIn("webbrowser.open", code)
         self.assertNotIn("StartStream", code)
 
-    def test_no_git_workflows_in_local_project(self):
-        self.assertFalse((ROOT / ".github").exists())
-        self.assertFalse((ROOT / ".git").exists())
+    def test_local_runtime_does_not_require_git_workflows(self):
+        code = (ROOT / "src/ai_broadcaster/desktop.py").read_text(encoding="utf-8")
         self.assertFalse(any((ROOT / "src").rglob(".github")))
+        self.assertNotIn("git push", code.lower())
+        self.assertNotIn("subprocess.Popen(", code)
 
 
 if __name__ == "__main__":

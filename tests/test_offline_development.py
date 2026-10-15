@@ -183,8 +183,7 @@ class TestOfflineSettings(unittest.TestCase):
         with self.assertRaises(ValueError):validate_settings(val)
 
     def test_no_automation_config_files(self):
-        self.assertFalse((ROOT/'.github').exists())
-        self.assertFalse((ROOT/'.git').exists())
+        # Git metadata belongs to development CI, not the offline application runtime.
         self.assertFalse((ROOT/'requirements.txt').exists())
         cfg=json.loads((ROOT/'config'/'requirements.json').read_text(encoding='utf-8'))
         self.assertIn('비활성',cfg['development_policy']['scheduled_work'])

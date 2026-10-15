@@ -117,3 +117,33 @@ def status(roadmap: dict[str, Any]) -> dict[str, Any]:
     completed = sum(s['status'] == 'completed' for s in steps)
     current = next((s for s in steps if s['status'] != 'completed'), None)
     return {'completed': completed, 'total': len(steps), 'current': current}
+
+
+def validate_features(features: dict[str, Any]) -> list[str]:
+    """Validate the legacy feature inventory without activating any integrations.
+
+    This schema describes *planned* capabilities, not verified live features.
+    """
+    if not isinstance(features, dict):
+        return ['기능 목록은 JSON 객체여야 합니다.']
+    errors: list[str] = []
+    all_ids: set[str] = set()
+    for section in ('required', 'optional'):
+        items = features.get(section)
+        if not isinstance(items, list):
+            errors.append(f'{section}는 목록이어야 합니다.')
+            continue
+        if section == 'required' and not items:
+            errors.append('필수 기능 목록은 비어 있을 수 없습니다.')
+        for index, item in enumerate(items):
+            key = item.get('id') if isinstance(item, dict) else None
+            if not isinstance(key, str) or not key.strip():
+                errors.append(f'{section}[{index}]의 ID가 잘못됐습니다.')
+            elif key in all_ids:
+                errors.append(f'중복 기능 ID: {key}')
+            else:
+                all_ids.add(key)
+    actions = features.get('no_default_actions')
+    if not isinstance(actions, list) or '실제 방송 시작' not in actions:
+        errors.append('실제 방송은 승인 없이 시작할 수 없습니다.')
+    return errors

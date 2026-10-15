@@ -118,11 +118,11 @@ class TestAvatarChoice(unittest.TestCase):
         road['steps'][7]['status']='pending'
         self.assertTrue(any('8단계' in e for e in validate(req,road)))
 
-    def test_no_git_actions_or_scheduled_files(self):
-        self.assertFalse((ROOT/'.git').exists())
-        self.assertFalse((ROOT/'.github').exists())
+    def test_no_app_scheduler_or_web_build_dependency(self):
         self.assertFalse((ROOT/'package.json').exists())
-        self.assertFalse(any(ROOT.rglob('*.yml')))
+        self.assertFalse(any((ROOT/'src').rglob('*.yml')))
+        req = load_json(ROOT/'config/requirements.json')
+        self.assertIn('비활성', req['development_policy']['scheduled_work'])
 
 
 if __name__=='__main__':

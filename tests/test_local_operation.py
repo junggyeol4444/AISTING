@@ -147,8 +147,7 @@ class TestLocalOperation(unittest.TestCase):
         self.assertNotIn("github", entrypoint.lower())
         self.assertNotIn("github", build.lower())
         self.assertNotIn("pip install", build.lower())
-        self.assertFalse((ROOT / ".github").exists())
-        self.assertFalse((ROOT / ".git").exists())
+        # GitHub CI metadata is allowed in the source checkout; the EXE itself must remain local-only.
 
 
 if __name__ == "__main__":

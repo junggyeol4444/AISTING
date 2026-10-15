@@ -230,12 +230,12 @@ class TestObsClient(unittest.TestCase):
             with self.assertRaisesRegex(ObsError,"연결할 수 없습니다"):
                 get_obs_snapshot()
 
-    def test_obs_window_capture_button_exists(self):
+    def test_avatar_capture_exists_without_starting_obs(self):
         app=(ROOT/"src/ai_broadcaster/desktop.py").read_text(encoding="utf-8")
         self.assertIn("tk.Toplevel(self)",app)
-        self.assertIn("아바타 별도 창 열기",app)
-        self.assertIn("self._speech_activity",app)
-        self.assertIn("ObsStatusTab(obs)",app)
+        self.assertIn("self._open_avatar_capture",app)
+        self.assertIn("self._close_avatar_capture",app)
+        self.assertNotIn("StartStream",app)
 
     def test_never_store_obs_password_in_settings(self):
         app=(ROOT/"src/ai_broadcaster/desktop_obs_tab.py").read_text(encoding="utf-8")

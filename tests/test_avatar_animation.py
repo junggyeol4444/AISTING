@@ -108,12 +108,12 @@ class TestAvatarAnimation(unittest.TestCase):
         self.assertNotIn("http://",code)
         self.assertNotIn("PhotoImage(",code)
 
-    def test_desktop_wires_same_activity_to_all_tabs(self):
+    def test_desktop_wires_local_voice_and_avatar_state(self):
         code=(ROOT/"src/ai_broadcaster/desktop.py").read_text(encoding="utf-8")
-        self.assertIn("self._speech_activity = SpeechActivity()",code)
-        self.assertIn("LocalChatTab(chat, activity=self._speech_activity)",code)
-        self.assertIn("VoicePreviewTab(voice_preview, activity=self._speech_activity)",code)
-        self.assertIn("activity=self._speech_activity,",code)
+        self.assertIn("self._speaker = WindowsKoreanSpeech()",code)
+        self.assertIn("self._speech_pending: deque[str] = deque()",code)
+        self.assertIn("self._avatar_capture_window",code)
+        self.assertIn("self._close_avatar_capture()",code)
 
     def test_audio_events_set_and_clear_avatar_state(self):
         for module,marker in (
