@@ -78,6 +78,8 @@ def main():
         paste(hwnd, 350, 524, "SAVED-PERSONA-TEST")
         scroll_to_save(hwnd)
         op.snap("41_setting_saved_by_user", hwnd)
+        op.click_relative(hwnd, 200, 379)  # Commit character once.
+        time.sleep(0.65)
         op.click_relative(hwnd, 765, 590)
         time.sleep(0.85)
         assert config.is_file(), "User explicitly clicked Save but no file exists"
