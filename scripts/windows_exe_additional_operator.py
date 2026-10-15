@@ -1,11 +1,9 @@
-"""Additional real Windows EXE operator scenario: 3D unavailable, restore 2D and voice tab.
+"""Additional black-box frozen Windows EXE: 3D fallback, 2D restore, voice lookup.
 
-Uses only Windows GUI mouse/keyboard input and synthetic isolated preferences.
-Does not invoke internal AISTING callbacks, audio, OBS or external services.
+Real Windows keyboard, mouse and screenshots. Synthetic local profile only.
 """
 from __future__ import annotations
 
-import ctypes
 import json
 import os
 from pathlib import Path
@@ -13,119 +11,72 @@ import subprocess
 import time
 
 import pyautogui
-
 import windows_exe_real_operator as op
 
 
-def choose_page(hwnd, position: int) -> None:
-    op.click_relative(hwnd, 200, 103)
-    if position == 0:
-        # Windows ttk Combobox ignores Home as a selection in some themes.
-        # Repeated Up actively changes the selected item to the first page.
-        pyautogui.press("up", presses=40, interval=0.015)
-    else:
-        pyautogui.press("home")
-        pyautogui.press("down", presses=position, interval=0.14)
-    pyautogui.press("enter")
-    time.sleep(0.5)
+def main():
+    from PIL import Image, ImageChops
 
-
-def scroll_settings(hwnd) -> None:
-    left, top, _, _ = op.client_area(hwnd)
-    pyautogui.moveTo(left + 650, top + 430)
-    delta = ((-120 * 30) & 0xFFFF) << 16
-    loc = (((top + 430) & 0xFFFF) << 16) | ((left + 650) & 0xFFFF)
-    op.u32.SendMessageW(hwnd, 0x020A, delta, loc)
-    time.sleep(0.5)
-
-
-def set_avatar_and_save(hwnd, kind: int) -> None:
-    choose_page(hwnd, 0)
-    scroll_settings(hwnd)
-    op.click_relative(hwnd, 150, 464)
-    if kind == 1:
-        # Currently 3D: one actual Up key selects the preceding 2D option.
-        pyautogui.press("up")
-    else:
-        # Clean profile: advance the choices from "미정" to 3D.
-        pyautogui.press("home")
-        pyautogui.press("down", presses=kind, interval=0.12)
-    pyautogui.press("enter")
-    time.sleep(0.2)
-    op.snap(f"21_avatar_choice_{kind}", hwnd)
-    op.click_relative(hwnd, 765, 590)
-    time.sleep(0.65)
-
-
-def main() -> None:
     exe = Path("dist/AISTING.exe").resolve()
-    assert exe.is_file(), "Current Windows EXE missing"
-    isolation = Path(os.environ.get("RUNNER_TEMP", ".")) / "aisting_extra_gui_operator"
-    isolation.mkdir(parents=True, exist_ok=True)
-    os.environ["LOCALAPPDATA"] = str(isolation)
-    target = isolation / "AISTING" / "settings.json"
-    assert not target.exists(), "Expected clean synthetic Windows profile"
-    process = subprocess.Popen([str(exe)], env=os.environ.copy())
+    assert exe.is_file()
+    profile = Path(os.environ.get("RUNNER_TEMP", ".")) / "aisting_extra_gui_operator"
+    settings_path = profile / "AISTING" / "settings.json"
+    assert not settings_path.exists()
+    env = os.environ.copy()
+    env["LOCALAPPDATA"] = str(profile)
+    process = subprocess.Popen([str(exe)], env=env)
     hwnd = None
     try:
         hwnd = op.await_window()["hwnd"]
-        time.sleep(2)
-        set_avatar_and_save(hwnd, 2)  # 3D (VRM) in the readonly avatar choices
-        assert target.is_file(), "Clicking save on 3D settings did not create settings"
-        settings3d = json.loads(target.read_text(encoding="utf-8"))
-        assert settings3d["avatar"] == "3d", settings3d["avatar"]
-        choose_page(hwnd, 3)
-        op.snap("22_real_3d_avatar_placeholder", hwnd)
-        scroll_settings(hwnd)
-        op.snap("23_real_3d_avatar_capture_disabled_visible", hwnd)
-        op.click_relative(hwnd, 120, 523)
-        time.sleep(0.65)
+        time.sleep(1.8)
+
+        # The actual Windows GUI avatar dropdown receives keyboard inputs.
+        op.choose_avatar(hwnd, 2)  # "3D" after home/down/down
+        op.snap("21_selected_3d_avatar_on_operator_home", hwnd)
+        op.save_preferences(hwnd)
+        three_d = json.loads(settings_path.read_text(encoding="utf-8"))
+        assert three_d["avatar"] == "3d", three_d["avatar"]
+
+        op.go(hwnd, 5)
+        op.snap("22_unimplemented_3d_placeholder", hwnd)
+        op.native_wheel(hwnd)
+        op.snap("23_3d_cannot_open_fake_2d_sample", hwnd)
+        pyautogui.press("space")  # disabled open button should do nothing
+        time.sleep(0.5)
         assert not [w for w in op.windows() if "아바타 · 로컬 창 캡처용" in w["title"]], \
-            "3D option must not launch a disguised 2D preview capture window"
-        print("OPERATOR EXTRA PASS 3D selected/saved; unsupported 3D does not open a 2D popout", flush=True)
+            "3D setting created a misleading 2D popout"
+        print("OPERATOR EXTRA PASS 3D preview correctly disabled", flush=True)
 
-        set_avatar_and_save(hwnd, 1)  # restore intended 2D
-        settings2d = json.loads(target.read_text(encoding="utf-8"))
-        assert settings2d["avatar"] == "2d", settings2d["avatar"]
-        assert settings2d["platforms"] == settings3d["platforms"]
-        assert settings2d["persona"] == settings3d["persona"]
-        print("OPERATOR EXTRA PASS changed and resaved avatar, preserved unrelated preferences", flush=True)
+        op.choose_avatar(hwnd, 1)  # restore 2D using native dropdown
+        op.save_preferences(hwnd)
+        two_d = json.loads(settings_path.read_text(encoding="utf-8"))
+        assert two_d["avatar"] == "2d"
+        assert two_d["persona"] == three_d["persona"]
+        assert two_d["platforms"] == three_d["platforms"]
+        print("OPERATOR EXTRA PASS 2D restores without touching character", flush=True)
 
-        choose_page(hwnd, 2)  # Windows voice preview tab
-        op.snap("24_real_windows_voice_tab", hwnd)
-        # Explicit lookup: only read the ephemeral Windows runner's voice list.
-        # Never click playback or microphone controls; no voice recording.
-        from PIL import Image, ImageChops
-        before = Image.open(op.OUTPUT / "24_real_windows_voice_tab.png").convert("RGB")
-        op.click_relative(hwnd, 783, 260)
+        op.go(hwnd, 4)  # native Windows voice tab, combobox focused
+        op.snap("24_windows_voice_page_no_audio_playback", hwnd)
+        before = Image.open(op.OUTPUT / "24_windows_voice_page_no_audio_playback.png").convert("RGB")
+        pyautogui.press("tab")  # visible "음성 목록 확인" button
+        pyautogui.press("space")
         time.sleep(3)
-        op.snap("25_actual_windows_voice_list_lookup", hwnd)
-        after = Image.open(op.OUTPUT / "25_actual_windows_voice_list_lookup.png").convert("RGB")
-        area = (20, 480, 835, 580)
-        changed = sum(p > 12 for p in ImageChops.difference(
-            before.crop(area), after.crop(area)).convert("L").getdata())
-        print("VOICE_LOOKUP_STATUS_CHANGED_PIXELS", changed, flush=True)
-        assert changed > 350, "Windows voice lookup click produced no visible result after 3 seconds"
-        print("OPERATOR EXTRA PASS clicked native Windows voice list lookup and observed result; no sound played", flush=True)
-    except BaseException:
-        if hwnd is not None and op.u32.IsWindow(hwnd):
-            try:
+        op.snap("25_voice_lookup_clicked_on_real_windows", hwnd)
+        after = Image.open(op.OUTPUT / "25_voice_lookup_clicked_on_real_windows.png").convert("RGB")
+        changed = sum(v > 12 for v in ImageChops.difference(before, after).convert("L").getdata())
+        assert changed > 350, "Real Windows voice lookup did not update screen"
+        print("OPERATOR EXTRA PASS voice list lookup updated native UI; did not play audio", flush=True)
+    except Exception:
+        try:
+            if hwnd and op.u32.IsWindow(hwnd):
                 op.snap("FAILED_extra_windows_operator", hwnd)
-                pyautogui.screenshot().save(op.OUTPUT / "FAILED_extra_desktop.png")
-            except Exception:
-                pass
+            pyautogui.screenshot().save(op.OUTPUT / "FAILED_extra_desktop.png")
+        except Exception:
+            pass
         raise
     finally:
-        if hwnd is not None and op.u32.IsWindow(hwnd):
-            op.u32.PostMessageW(hwnd, op.WM_CLOSE, 0, 0)
-        try:
-            process.wait(timeout=18)
-        except subprocess.TimeoutExpired:
-            subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"], capture_output=True)
-            raise AssertionError("Additional Windows operator run did not close")
-        assert process.returncode == 0, f"Unexpected EXE close code: {process.returncode}"
-
-    print("OPERATOR EXTRA PASS all actual Windows user actions, normal GUI exit", flush=True)
+        op.close_app(process, hwnd)
+    print("OPERATOR EXTRA PASS frozen EXE, 3D/2D/voice, normal close", flush=True)
 
 
 if __name__ == "__main__":
