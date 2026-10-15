@@ -184,7 +184,9 @@ class AistingApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self.title("AISTING | 오프라인 AI 방송인 개발본")
-        self.geometry("860x720")
+        # Keep bottom controls above the Windows taskbar on 768p laptops.
+        # The settings tab has its own scrollbar for longer content.
+        self.geometry(f"860x{min(720, max(625, self.winfo_screenheight() - 130))}")
         self.minsize(760, 625)
         self._save_problem = ""
         try:
@@ -452,6 +454,23 @@ class AistingApp(tk.Tk):
             lambda event: settings_canvas.itemconfigure(settings_window, width=event.width),
         )
         self._settings_canvas = settings_canvas
+
+        def scroll_settings_under_pointer(event):
+            # On Windows, ttk children receive <MouseWheel> instead of the
+            # parent canvas. Scroll only when the pointer is inside settings.
+            widget = self.winfo_containing(event.x_root, event.y_root)
+            while widget is not None:
+                if widget is settings_canvas:
+                    if event.delta:
+                        steps = max(1, abs(event.delta) // 120)
+                        settings_canvas.yview_scroll(
+                            steps if event.delta < 0 else -steps, "units"
+                        )
+                    return "break"
+                widget = widget.master
+            return None
+
+        self.bind_all("<MouseWheel>", scroll_settings_under_pointer, add="+")
         self._build_settings(settings_body)
         self._build_rehearsal(rehearsal)
         self._build_voice(voice_test)
