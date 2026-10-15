@@ -279,7 +279,14 @@ def main():
         select_combobox(200, 103, 2)
         time.sleep(0.5)
         snap("17_actual_avatar_preview_screen", hwnd)
-        print("OPERATOR inspected avatar preview tab on real Windows EXE", flush=True)
+        native_wheel(28)
+        snap("17b_avatar_scrolled_to_bottom_controls", hwnd)
+        preview = Image.open(OUTPUT / "17_actual_avatar_preview_screen.png").convert("RGB")
+        scrolled = Image.open(OUTPUT / "17b_avatar_scrolled_to_bottom_controls.png").convert("RGB")
+        moved_pixels = sum(val > 15 for val in ImageChops.difference(preview, scrolled).convert("L").getdata())
+        print("AVATAR_SCROLL_MOVED_PIXELS", moved_pixels, flush=True)
+        assert moved_pixels > 6000, "Avatar tab has no usable scrolling to its hidden buttons"
+        print("OPERATOR PASS Windows 768p avatar controls are reachable by scrolling", flush=True)
         close_app()
 
         assert settings_file.is_file()
