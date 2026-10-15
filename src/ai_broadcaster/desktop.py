@@ -1171,24 +1171,64 @@ class AistingApp(tk.Tk):
             self._speech_status.set("현재 음성을 중지하는 중이야.")
 
     def _build_avatar(self, tab) -> None:
-        ttk.Label(tab, text="아바타 형태: 미정 / 2D / 3D (VRM) — 방송 설정에서 자유 선택").pack(anchor="w", pady=(4, 5))
+        """Scrollable avatar controls: reachable at 1024x768 Windows resolution."""
+        outer = ttk.Frame(tab)
+        outer.pack(fill="both", expand=True)
+        avatar_viewport = tk.Canvas(outer, highlightthickness=0, borderwidth=0)
+        avatar_scrollbar = ttk.Scrollbar(
+            outer, orient="vertical", command=avatar_viewport.yview
+        )
+        avatar_viewport.configure(yscrollcommand=avatar_scrollbar.set)
+        avatar_scrollbar.pack(side="right", fill="y")
+        avatar_viewport.pack(side="left", fill="both", expand=True)
+        body = ttk.Frame(avatar_viewport, padding=(8, 2, 8, 8))
+        body_window = avatar_viewport.create_window((0, 0), window=body, anchor="nw")
+        body.bind("<Configure>", lambda _e: avatar_viewport.configure(
+            scrollregion=avatar_viewport.bbox("all")))
+        avatar_viewport.bind("<Configure>", lambda e: avatar_viewport.itemconfigure(
+            body_window, width=e.width))
+
+        ttk.Label(body, text="아바타 형태: 미정 / 2D / 3D (VRM) — 방송 설정에서 자유 선택").pack(anchor="w", pady=(4, 5))
         self._avatar_tab_info = tk.StringVar(value=avatar_choice(AVATARS[self._avatar.get()]).description)
-        ttk.Label(tab, textvariable=self._avatar_tab_info, wraplength=690).pack(anchor="w", pady=(0, 8))
-        self._canvas = tk.Canvas(tab, width=370, height=350, bg="#17223c", highlightthickness=0)
+        ttk.Label(body, textvariable=self._avatar_tab_info, wraplength=690).pack(anchor="w", pady=(0, 8))
+        self._canvas = tk.Canvas(body, width=370, height=350, bg="#17223c", highlightthickness=0)
         self._canvas.pack(pady=4)
-        ttk.Checkbutton(tab, text="입 움직임 데모", variable=self._avatar_demo).pack(pady=5)
-        group = ttk.LabelFrame(tab, text="별도 아바타 창 (PC에서만 실행)", padding=8)
+        ttk.Checkbutton(body, text="입 움직임 데모", variable=self._avatar_demo).pack(pady=5)
+        group = ttk.LabelFrame(body, text="별도 아바타 창 (PC에서만 실행)", padding=8)
         group.pack(fill="x", pady=(8, 4))
         self._avatar_open_button = ttk.Button(group, text="2D 샘플 별도 창 열기", command=self._open_avatar_capture)
         self._avatar_open_button.pack(side="left")
         self._avatar_changed()
         ttk.Label(group, textvariable=self._avatar_capture_status).pack(side="left", padx=(10, 0))
         ttk.Label(
-            tab,
+            body,
             text="OBS가 PC에 있다면 사용자가 OBS 창 캡처로 이 별도 창을 수동 선택할 수 있어.\n"
                  "창만 열며 OBS 설치·실행·방송 송출은 하지 않아.",
             justify="left", wraplength=700,
         ).pack(anchor="w", pady=(7, 0))
+
+        def scroll_avatar(event):
+            # Scroll only this tab when the cursor is inside its viewport.
+            px, py = self.winfo_pointerxy()
+            target = self.winfo_containing(px, py)
+            while target is not None:
+                if target is avatar_viewport:
+                    if event.delta:
+                        avatar_viewport.yview_scroll(
+                            (1 if event.delta < 0 else -1) * max(1, abs(event.delta) // 120),
+                            "units",
+                        )
+                    return "break"
+                target = target.master
+            return None
+
+        def bind_scroll_tree(widget):
+            widget.bind("<MouseWheel>", scroll_avatar, add="+")
+            for child in widget.winfo_children():
+                bind_scroll_tree(child)
+
+        bind_scroll_tree(avatar_viewport)
+        self._avatar_viewport = avatar_viewport
 
     def _open_avatar_capture(self) -> None:
         """오직 사용자 클릭으로 2D 샘플 창 생성. 3D 선택 때는 실행 차단."""
