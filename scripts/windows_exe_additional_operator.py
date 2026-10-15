@@ -93,7 +93,20 @@ def main() -> None:
 
         choose_page(hwnd, 2)  # Windows voice preview tab
         op.snap("24_real_windows_voice_tab", hwnd)
-        print("OPERATOR EXTRA Windows voice tab visible; no sound played", flush=True)
+        # Explicit lookup: only read the ephemeral Windows runner's voice list.
+        # Never click playback or microphone controls; no voice recording.
+        from PIL import Image, ImageChops
+        before = Image.open(op.OUTPUT / "24_real_windows_voice_tab.png").convert("RGB")
+        op.click_relative(hwnd, 783, 260)
+        time.sleep(3)
+        op.snap("25_actual_windows_voice_list_lookup", hwnd)
+        after = Image.open(op.OUTPUT / "25_actual_windows_voice_list_lookup.png").convert("RGB")
+        area = (20, 480, 835, 580)
+        changed = sum(p > 12 for p in ImageChops.difference(
+            before.crop(area), after.crop(area)).convert("L").getdata())
+        print("VOICE_LOOKUP_STATUS_CHANGED_PIXELS", changed, flush=True)
+        assert changed > 350, "Windows voice lookup click produced no visible result after 3 seconds"
+        print("OPERATOR EXTRA PASS clicked native Windows voice list lookup and observed result; no sound played", flush=True)
     except BaseException:
         if hwnd is not None and op.u32.IsWindow(hwnd):
             try:
