@@ -114,8 +114,15 @@ def run():
                 app._persona['name'].delete(0, 'end')
                 app._persona['name'].insert(0, '임시수정-저장안함')
                 assert app._current_persona()['name'] == '가상캐릭터'
-                app._persona['name'].delete(0, 'end')
-                app._persona['name'].insert(0, '가상캐릭터')
+                # Leave an unsaved name/style/personality draft on screen
+                # throughout real GUI chat actions; it must NOT become the AI identity.
+                for key, value in (
+                    ('style', '미저장 말투 초안'),
+                    ('character', '미저장 성격 초안'),
+                ):
+                    app._persona[key].delete(0, 'end')
+                    app._persona[key].insert(0, value)
+                assert app._current_persona() == saved['persona']
                 assert app._avatar.get() == '2D' and app._voice.get() == 'Windows 무료 음성'
                 assert app._voice_rate.get() == '2' and app._voice_volume.get() == '75'
                 app._avatar.set('3D')
@@ -143,6 +150,9 @@ def run():
                 app._run_all()
                 await_idle(app, expected=2)
                 assert app._runner.memory_errors == []
+                assert app._runner.generator.persona == saved['persona'], (
+                    'Mock local-AI generator received uncommitted GUI name/style/personality draft'
+                )
                 assert [x.original.text for x in LocalMemory(memory).recent()] == ['첫 기억', '두 번째 기억']
                 assert '기억 저장 실패' not in app._status.get()
                 print('JOURNEY 3: fake local AI (NO real model)/SQLite 2 records PASS')
