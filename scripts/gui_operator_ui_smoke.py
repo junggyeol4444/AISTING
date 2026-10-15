@@ -36,9 +36,22 @@ def run():
                 assert not ttk.Style(app).layout("Operator.TNotebook.Tab"), \
                     "100+ development tabs are still visible in the operator window"
                 labels = [app._tabs.tab(t, "text") for t in app._tabs.tabs()]
-                for required in ("방송 설정", "내 캐릭터", "시청자 채팅 연습",
+                for required in ("방송인 홈", "방송 설정", "내 캐릭터", "시청자 채팅 연습",
                                  "무료 한국어 음성", "아바타 미리보기", "최종 기능 검수·승인 대기"):
                     assert required in labels
+                assert labels[0] == "방송인 홈", "The first screen must be the broadcaster, not settings"
+                assert app._tab_nav.get() == "방송인 홈"
+                home_tab = app.nametowidget(app._tabs.tabs()[0])
+                assert str(app._home_avatar_canvas) in {str(w) for w in descendants(home_tab)}
+                assert app._home_avatar_canvas.winfo_viewable(), (
+                    "Actual broadcaster avatar must be visible on first launch"
+                )
+                assert len(app._home_avatar_canvas.find_all()) > 5, (
+                    "Main screen avatar canvas is blank"
+                )
+                assert "OBS/플랫폼 미연결" in app._home_broadcast_status.get()
+                assert "실제 LLM 미동작" in app._home_runtime_status.get()
+                assert "실제 Live2D" not in app._home_avatar_notice.get() or "미연결" in app._home_avatar_notice.get()
                 setting_tab = app.nametowidget(app._tabs.tabs()[labels.index("방송 설정")])
                 character_tab = app.nametowidget(app._tabs.tabs()[labels.index("내 캐릭터")])
                 entry_ids = {str(e) for e in app._persona.values()}
@@ -57,7 +70,13 @@ def run():
                     app._persona[k].delete(0, "end")
                     app._persona[k].insert(0, value)
                 assert app._current_persona()["name"] == DEFAULTS["persona"]["name"]
+                assert app._home_character_name.get() == DEFAULTS["persona"]["name"], (
+                    "Unsaved identity draft leaked to main broadcaster"
+                )
                 app._save_character_identity()
+                assert app._home_character_name.get() == identity["name"], (
+                    "Saved identity did not update broadcaster's visible name"
+                )
                 assert app._current_persona() == identity
                 app._navigate_to("방송 설정")
                 app._content.set("수다 + 게임")
@@ -75,7 +94,23 @@ def run():
                 assert app._tab_nav.get() == "시청자 채팅 연습"
                 app._navigate_to("방송 설정")
                 assert app._current_persona() == identity
-                print("OPERATOR UI: character restored without re-entering any field PASS")
+                app._navigate_to("방송인 홈")
+                app.update()
+                assert app._home_avatar_canvas.winfo_viewable()
+                assert app._home_character_name.get() == identity["name"]
+                assert "부드러운 한국어" in app._home_character_details.get()
+                assert "신중하고 따뜻한 성격" in app._home_character_details.get()
+                app._avatar.set("3D")
+                app.update()
+                assert app._home_avatar_canvas.find_withtag("aisting_3d_unavailable"), (
+                    "3D must show an honest missing-renderer notice, never fake a 2D avatar"
+                )
+                app._avatar.set("2D")
+                app.update()
+                assert app._home_avatar_canvas.find_withtag("aisting_sample_2d"), (
+                    "2D choice must bring back the broadcaster's visible avatar"
+                )
+                print("OPERATOR UI: home avatar and identity survive relaunch, honest 3D fallback PASS")
             finally:
                 app._shutdown()
 
