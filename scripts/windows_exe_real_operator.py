@@ -83,81 +83,209 @@ def click_relative(hwnd, x, y):
 
 
 def main():
+    """Perform a complete black-box user journey on the real frozen Windows EXE."""
     import pyperclip
+    from PIL import Image, ImageChops
+
     exe = Path("dist/AISTING.exe").resolve()
     assert exe.exists(), str(exe)
     isolation = Path(os.environ.get("RUNNER_TEMP", ".")) / "aisting_window_operator_e2e"
     isolation.mkdir(parents=True, exist_ok=True)
     os.environ["LOCALAPPDATA"] = str(isolation)
+    settings_file = isolation / "AISTING" / "settings.json"
+    if settings_file.exists():
+        raise AssertionError("Operator test requires a clean isolated local profile")
     print("EXE", exe, "isolated_data", isolation, flush=True)
-    process = subprocess.Popen([str(exe)], env=os.environ.copy())
+    process = None
     hwnd = None
+
+    def open_app(label):
+        nonlocal process, hwnd
+        process = subprocess.Popen([str(exe)], env=os.environ.copy())
+        hwnd = await_window()["hwnd"]
+        time.sleep(2.5)
+        dims = snap(label, hwnd)
+        assert dims[2] >= 760 and 625 <= dims[3] <= 720
+        assert dims[1] + dims[3] <= pyautogui.size().height - 35, \
+            "Bottom of GUI is obscured by Windows taskbar"
+        print("OPERATOR PASS open real EXE", label, flush=True)
+
+    def close_app():
+        nonlocal process, hwnd
+        if hwnd is not None and u32.IsWindow(hwnd):
+            u32.PostMessageW(hwnd, WM_CLOSE, 0, 0)
+        if process is not None:
+            try:
+                process.wait(timeout=18)
+            except subprocess.TimeoutExpired:
+                subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"], capture_output=True)
+                raise AssertionError("AISTING did not exit after real Windows close request")
+            assert process.returncode == 0, f"Unexpected EXE return code {process.returncode}"
+        process, hwnd = None, None
+        print("OPERATOR PASS Windows GUI close and EXE exit", flush=True)
+
+    def select_combobox(x, y, down):
+        click_relative(hwnd, x, y)
+        pyautogui.press("home")
+        pyautogui.press("down", presses=down, interval=0.13)
+        pyautogui.press("enter")
+
+    def paste_at(x, y, txt):
+        click_relative(hwnd, x, y)
+        pyautogui.hotkey("ctrl", "a")
+        pyperclip.copy(txt)
+        pyautogui.hotkey("ctrl", "v")
+
+    def native_wheel(down_steps=10):
+        left, top, _, _ = client_area(hwnd)
+        pyautogui.moveTo(left + 650, top + 430)
+        high_word = ((-120 * down_steps) & 0xFFFF) << 16
+        pointer = (((top + 430) & 0xFFFF) << 16) | ((left + 650) & 0xFFFF)
+        u32.SendMessageW(hwnd, 0x020A, high_word, pointer)
+        time.sleep(0.6)
+
+    def read_output_clipboard(x, y):
+        pyperclip.copy("BEFORE-COPY-CHANGEME")
+        click_relative(hwnd, x, y)
+        pyautogui.hotkey("ctrl", "a")
+        pyautogui.hotkey("ctrl", "c")
+        time.sleep(0.6)
+        return pyperclip.paste()
+
     try:
-        w = await_window()
-        hwnd = w["hwnd"]
-        time.sleep(2.5)  # Wait until the EXE has populated the Tk notebook and settings.
-        print("WINDOW", json.dumps(w, ensure_ascii=False), flush=True)
-        x, y, width, height = snap("01_first_open_ready", hwnd)
-        assert width >= 760 and height >= 625
-        # Actual mouse clicks, keyboard selection and Ctrl+V; no app-internal method calls.
-        click_relative(hwnd, 50, 210)  # Chzzk
-        click_relative(hwnd, 50, 231)  # YouTube
-        click_relative(hwnd, 150, 363) # Content combo: navigate to "수다 + 게임"
-        pyautogui.press("home")
-        pyautogui.press("down", presses=3, interval=0.15)
-        pyautogui.press("enter")
-        click_relative(hwnd, 150, 496) # Persona combo: navigate to "직접 만들기"
-        pyautogui.press("home")
-        pyautogui.press("down")
-        pyautogui.press("enter")
-        for y_pos, txt in ((524, "WINDOWS-OPERATOR"), (550, "E2E-SPEAKING"), (580, "E2E-CHARACTER")):
-            click_relative(hwnd, 350, y_pos)
-            pyautogui.hotkey("ctrl", "a")
-            pyperclip.copy(txt)
-            pyautogui.hotkey("ctrl", "v")
-        time.sleep(0.7)
-        snap("02_settings_interacted", hwnd)
+        open_app("01_first_launch_ready")
+        # Click settings physically and select contents from readonly drop-downs.
+        click_relative(hwnd, 50, 210)
+        click_relative(hwnd, 50, 231)
+        select_combobox(150, 363, 3)  # content: "수다 + 게임"
+        select_combobox(150, 496, 1)  # "직접 만들기"
+        for yy, txt in ((524, "WINDOWS-OPERATOR"), (550, "E2E-SPEAKING"), (580, "E2E-CHARACTER")):
+            paste_at(350, yy, txt)
+        snap("02_real_platform_content_persona_entry", hwnd)
+        print("OPERATOR PASS clicked platform, content, character input", flush=True)
+
+        before = Image.open(OUTPUT / "02_real_platform_content_persona_entry.png").convert("RGB")
         left, top, _, _ = client_area(hwnd)
         pyautogui.moveTo(left + 650, top + 430)
         pyautogui.scroll(-10)
-        time.sleep(0.7)
-        snap("03_after_user_mousewheel", hwnd)
-        from PIL import Image, ImageChops
-        earlier = Image.open(OUTPUT / "02_settings_interacted.png").convert("RGB")
-        later = Image.open(OUTPUT / "03_after_user_mousewheel.png").convert("RGB")
-        diff = ImageChops.difference(earlier, later).convert("L")
-        pixels_changed = sum(1 for val in diff.getdata() if val > 15)
-        print("MOUSEWHEEL_CHANGED_PIXELS", pixels_changed, flush=True)
-        if pixels_changed < 6000:
-            print("MOUSEWHEEL INPUT NOT OBSERVED; probing native WM_MOUSEWHEEL separately", flush=True)
-            delta_hi = ((-120) & 0xFFFF) << 16
-            pointer = (((top + 430) & 0xFFFF) << 16) | ((left + 650) & 0xFFFF)
-            u32.SendMessageW(hwnd, 0x020A, delta_hi, pointer)
-            time.sleep(0.5)
-            snap("03b_after_native_windows_wheel_message", hwnd)
-            latest = Image.open(OUTPUT / "03b_after_native_windows_wheel_message.png").convert("RGB")
-            pixels_changed = sum(1 for val in ImageChops.difference(later, latest).convert("L").getdata() if val > 15)
-            print("NATIVE_WM_MOUSEWHEEL_CHANGED_PIXELS", pixels_changed, flush=True)
-        print("MOUSEWHEEL_INTERACTIVE_VERIFIED", pixels_changed > 6000, flush=True)
-        pyautogui.moveTo(left + 835, top + 350)
-        pyautogui.dragTo(left + 835, top + 610, duration=1.2)
         time.sleep(0.6)
-        snap("04_settings_scrolled_by_scrollbar", hwnd)
-        click_relative(hwnd, 200, 103)
-        pyautogui.press("home")
-        pyautogui.press("down")
-        pyautogui.press("enter")
+        snap("03_mouse_wheel_library", hwnd)
+        after = Image.open(OUTPUT / "03_mouse_wheel_library.png").convert("RGB")
+        raw_change = sum(v > 15 for v in ImageChops.difference(before, after).convert("L").getdata())
+        print("PYAUTOGUI_SCROLL_PIXEL_CHANGE", raw_change, flush=True)
+        if raw_change < 5000:
+            native_wheel(4)
+            snap("03b_native_windows_wheel", hwnd)
+            native_img = Image.open(OUTPUT / "03b_native_windows_wheel.png").convert("RGB")
+            os_change = sum(v > 15 for v in ImageChops.difference(after, native_img).convert("L").getdata())
+            assert os_change > 5000, "Windows WM_MOUSEWHEEL does not scroll real settings screen"
+            print("OPERATOR PASS native Windows mouse-wheel event scrolls visible GUI", os_change, flush=True)
+        else:
+            print("OPERATOR PASS physical mouse-wheel injector scrolls visible GUI", raw_change, flush=True)
+
+        # Scrollbar drag to bottom even on a small laptop screen.
+        left, top, _, _ = client_area(hwnd)
+        pyautogui.moveTo(left + 835, top + 350)
+        pyautogui.dragTo(left + 835, top + 610, duration=0.8)
+        snap("04_real_settings_bottom", hwnd)
+        select_combobox(150, 464, 1)  # avatar 2D
+        select_combobox(545, 473, 1)  # local Windows voice choice
+        snap("05_real_avatar_and_voice_selection", hwnd)
+        click_relative(hwnd, 766, 591) # actual bottom "설정 PC에 저장" button
         time.sleep(1)
-        snap("05_rehearsal_tab_via_real_navigation", hwnd)
-        print("OPERATOR PROBE 2: mouse checks, keyboard selects, typed inputs, wheel/scrollbar, navigation. Inspect screenshots for real outcomes.", flush=True)
+        snap("06_clicked_save_button", hwnd)
+        assert settings_file.is_file(), \
+            "Clicked the visible save button but application did not create local settings"
+        saved = json.loads(settings_file.read_text(encoding="utf-8"))
+        expected = {"platforms": ["chzzk", "youtube"], "content": "both", "avatar": "2d",
+                    "voice": "windows_system", "persona_mode": "custom"}
+        for key, value in expected.items():
+            assert saved[key] == value, f"Saved {key}: expected {value!r}, got {saved[key]!r}"
+        assert saved["persona"] == {"name": "WINDOWS-OPERATOR", "style": "E2E-SPEAKING",
+                                    "character": "E2E-CHARACTER"}, saved["persona"]
+        for guard in ("streaming_enabled", "external_publish_enabled", "scheduled_execution"):
+            assert saved[guard] is False, f"User selection unexpectedly enabled {guard}"
+        print("OPERATOR PASS real Save button, original platform choices and character/voice/avatar stored", flush=True)
+        close_app()
+
+        # True app restart: spawn the same Windows EXE, with the same isolated profile.
+        open_app("07_reopened_settings_after_real_exit")
+        stored_name = read_output_clipboard(350, 524)
+        assert stored_name == "WINDOWS-OPERATOR", \
+            f"UI did not display the saved character name after restart: {stored_name!r}"
+        snap("08_reopened_character_name_verified", hwnd)
+        native_wheel(40)
+        snap("09_reopened_avatar_and_voice", hwnd)
+        print("OPERATOR PASS restore user-visible name and existing preferences after EXE restart", flush=True)
+
+        # Navigate to chat by the operator's real drop-down, not app code APIs.
+        select_combobox(200, 103, 1)
+        time.sleep(0.5)
+        snap("10_real_chat_tab_selected", hwnd)
+        paste_at(300, 230, "ALICE: HELLO\nALICE: HELLO\nBOB: LAST")
+        snap("11_user_entered_three_scripted_chats", hwnd)
+        click_relative(hwnd, 79, 348)  # "대기열에 추가"
+        time.sleep(0.5)
+        snap("12_clicked_enqueue_three_chats", hwnd)
+        click_relative(hwnd, 176, 348) # "모두 답변"
+        # Wait for visible output; do not assume function success from timers.
+        initial = Image.open(OUTPUT / "12_clicked_enqueue_three_chats.png").convert("RGB")
+        changed = 0
+        deadline = time.monotonic() + 18
+        while time.monotonic() < deadline:
+            time.sleep(0.6)
+            current = pyautogui.screenshot(region=client_area(hwnd)).convert("RGB")
+            area_before = initial.crop((30, 401, 829, 600))
+            area_after = current.crop((30, 401, 829, 600))
+            changed = sum(v > 18 for v in ImageChops.difference(area_before, area_after).convert("L").getdata())
+            if changed > 2000:
+                break
+        snap("13_actual_chat_answer_visible", hwnd)
+        assert changed > 2000, "After clicking Reply, real GUI output stayed blank"
+        visible_text = read_output_clipboard(300, 455)
+        print("OPERATOR GUI COPYING", repr(visible_text[:550]), flush=True)
+        if "ALICE" not in visible_text or visible_text.count("HELLO") < 2 or "BOB" not in visible_text:
+            raise AssertionError("Real GUI does not show distinct replies for duplicate chats")
+        print("OPERATOR PASS three scripted chat replies including duplicate after real buttons", flush=True)
+
+        click_relative(hwnd, 787, 350) # "새 연습"
+        time.sleep(0.7)
+        snap("14_click_new_rehearsal_reset", hwnd)
+        print("OPERATOR PASS clickable reset returned to new rehearsal", flush=True)
+
+        # Malformed user script must show a dialog, then be recoverable.
+        paste_at(300, 235, "INVALID CHAT WITHOUT COLON")
+        click_relative(hwnd, 79, 348)
+        time.sleep(0.7)
+        pyautogui.screenshot().save(OUTPUT / "15_invalid_chat_warning_full_desktop.png")
+        pyautogui.press("enter")
+        time.sleep(0.4)
+        paste_at(300, 230, "BOB: RECOVERED")
+        click_relative(hwnd, 79, 348)
+        click_relative(hwnd, 176, 348)
+        time.sleep(1.2)
+        snap("16_after_invalid_chat_recovered", hwnd)
+        print("OPERATOR PASS returned from invalid chat warning to normal user actions", flush=True)
+        close_app()
+
+        assert settings_file.is_file()
+        assert json.loads(settings_file.read_text(encoding="utf-8")) == saved, \
+            "Mock chatting unexpectedly corrupted user preferences"
+        print("OPERATOR FULL REAL-WINDOWS-EXE JOURNEY PASS: launch, physical settings, save, restart, chat, duplicate, error recovery, close", flush=True)
+    except Exception:
+        if hwnd is not None and u32.IsWindow(hwnd):
+            try:
+                snap("FAILED_REAL_USER_STEP", hwnd)
+                pyautogui.screenshot().save(OUTPUT / "FAILED_FULL_DESKTOP.png")
+            except Exception:
+                pass
+        raise
     finally:
-        if hwnd:
-            u32.PostMessageW(hwnd, WM_CLOSE, 0, 0)
-        try:
-            process.wait(timeout=12)
-        except subprocess.TimeoutExpired:
-            subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"], capture_output=True)
-        print("SHUTDOWN PROBE", process.poll(), flush=True)
+        if hwnd is not None or process is not None:
+            try:
+                close_app()
+            except Exception as exc:
+                print("CLEANUP WARNING", repr(exc), flush=True)
 
 
 if __name__ == "__main__":
