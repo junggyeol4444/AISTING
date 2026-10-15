@@ -55,7 +55,7 @@ def await_window(timeout=60):
     while time.monotonic() < until:
         ws = windows()
         for w in ws:
-            if "오프라인 AI 방송인" in w["title"]:
+            if w["title"].startswith("AISTING |"):
                 return w
         time.sleep(0.5)
     raise AssertionError("EXE main GUI not found after launch; windows=" + repr(windows()))
