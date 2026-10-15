@@ -241,12 +241,10 @@ def main():
         go(hwnd, 3)  # visible keyboard navigation to chat, script focused
         type_focused("ALICE: HELLO\nALICE: HELLO\nBOB: LAST")
         snap("06_chat_user_typed_three_messages", hwnd)
-        pyautogui.press("tab", presses=3)  # mode -> model -> queue
-        pyautogui.press("space")
-        pyautogui.press("tab")  # Run all
+        pyautogui.hotkey("ctrl", "enter")  # user adds scripted chat through native Text shortcut
         snap("07_chat_enqueued_before_clicking_run", hwnd)
         before = Image.open(OUTPUT / "07_chat_enqueued_before_clicking_run.png").convert("RGB")
-        pyautogui.press("space")
+        pyautogui.hotkey("ctrl", "shift", "enter")  # visible Run all shortcut
         time.sleep(1.8)
         snap("08_chat_replied_after_real_keyboard_button", hwnd)
         after = Image.open(OUTPUT / "08_chat_replied_after_real_keyboard_button.png").convert("RGB")
@@ -255,22 +253,18 @@ def main():
         print("OPERATOR PASS three-scripted-message GUI response", changed, flush=True)
 
         go(hwnd, 3)
-        pyautogui.press("tab", presses=5)  # new rehearsal button
-        pyautogui.press("space")
+        pyautogui.hotkey("ctrl", "shift", "n")  # new rehearsal
         go(hwnd, 3)
         type_focused("INVALID CHAT WITHOUT COLON")
-        pyautogui.press("tab", presses=3)
-        pyautogui.press("space")
+        pyautogui.hotkey("ctrl", "enter")
         time.sleep(0.6)
         pyautogui.screenshot().save(OUTPUT / "09_native_invalid_script_warning.png")
         assert u32.FindWindowW(None, "대본 형식"), "Malformed chat did not show a native warning"
         pyautogui.press("enter")
         go(hwnd, 3)
         type_focused("BOB: RECOVERED")
-        pyautogui.press("tab", presses=3)
-        pyautogui.press("space")
-        pyautogui.press("tab")
-        pyautogui.press("space")
+        pyautogui.hotkey("ctrl", "enter")
+        pyautogui.hotkey("ctrl", "shift", "enter")
         time.sleep(1)
         snap("10_chat_recovered_after_invalid_user_script", hwnd)
         print("OPERATOR PASS native invalid-chat warning and recovery", flush=True)
