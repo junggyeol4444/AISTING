@@ -234,10 +234,29 @@ class AistingApp(tk.Tk):
         # A development notebook may contain 100+ diagnostic pages. Never show
         # those as a huge strip of unreadable, grey native tabs to operators.
         style.layout("Operator.TNotebook.Tab", [])
-        style.configure("TLabel", font=("Malgun Gothic", 10))
-        style.configure("TButton", font=("Malgun Gothic", 10), padding=(10, 6))
-        style.configure("Operator.Title.TLabel", font=("Malgun Gothic", 21, "bold"))
-        style.configure("Operator.Section.TLabel", font=("Malgun Gothic", 13, "bold"))
+        # Calm, high-contrast desktop visual language. All core controls stay
+        # native Windows/Tk widgets for keyboard and screen-reader access.
+        self.configure(background="#F4F7FB")
+        style.configure("TFrame", background="#F4F7FB")
+        style.configure("TLabel", font=("Malgun Gothic", 10),
+                        background="#F4F7FB", foreground="#243451")
+        style.configure("TLabelframe", background="#FFFFFF", bordercolor="#D9E2EE",
+                        lightcolor="#FFFFFF", darkcolor="#D9E2EE")
+        style.configure("TLabelframe.Label", font=("Malgun Gothic", 10, "bold"),
+                        background="#F4F7FB", foreground="#243451")
+        style.configure("TButton", font=("Malgun Gothic", 10), padding=(10, 6),
+                        foreground="#203453", background="#ECF2FA")
+        style.map("TButton", background=[("active", "#D9E7FA")])
+        style.configure("Operator.Nav.TButton", font=("Malgun Gothic", 10),
+                        foreground="#253C61", background="#EDF2F8", padding=(12, 7))
+        style.configure("Operator.Primary.TButton", font=("Malgun Gothic", 10, "bold"),
+                        foreground="#FFFFFF", background="#2563EB", padding=(14, 9))
+        style.map("Operator.Primary.TButton",
+                  background=[("active", "#194DBA"), ("pressed", "#143C94")])
+        style.configure("Operator.Title.TLabel", font=("Malgun Gothic", 21, "bold"),
+                        foreground="#172F59", background="#F4F7FB")
+        style.configure("Operator.Section.TLabel", font=("Malgun Gothic", 13, "bold"),
+                        foreground="#172F59", background="#F4F7FB")
 
         main = ttk.Frame(self, padding=12)
         main.pack(fill="both", expand=True)
@@ -254,7 +273,8 @@ class AistingApp(tk.Tk):
         # selector; day-to-day actions have their own one-click navigation.
         for label in ("방송 설정", "내 캐릭터", "시청자 채팅 연습", "무료 한국어 음성", "아바타 미리보기"):
             ttk.Button(
-                navigation, text=label, command=lambda target=label: self._navigate_to(target),
+                navigation, text=label, style="Operator.Nav.TButton",
+                command=lambda target=label: self._navigate_to(target),
             ).pack(side="left", padx=(0, 5))
         advanced = ttk.Frame(navigation)
         advanced.pack(side="right")
@@ -458,9 +478,12 @@ class AistingApp(tk.Tk):
         settings_footer = ttk.Frame(settings, padding=(13, 5))
         settings_footer.pack(side="bottom", fill="x")
         ttk.Label(settings_footer, text="로컬 저장만 합니다 · 실제 송출/예약 실행 안 함").pack(side="left")
-        ttk.Button(settings_footer, text="방송 설정 저장", command=self._save).pack(side="right")
+        ttk.Button(
+            settings_footer, text="방송 설정 저장",
+            style="Operator.Primary.TButton", command=self._save,
+        ).pack(side="right")
         # 설정 항목이 늘어나도 입력란이 잘리지 않도록 스크롤 제공.
-        settings_canvas = tk.Canvas(settings, highlightthickness=0, borderwidth=0)
+        settings_canvas = tk.Canvas(settings, highlightthickness=0, borderwidth=0, background="#F4F7FB")
         settings_scrollbar = ttk.Scrollbar(settings, orient="vertical", command=settings_canvas.yview)
         settings_scrollbar.pack(side="right", fill="y")
         settings_canvas.pack(side="left", fill="both", expand=True)
@@ -658,6 +681,7 @@ class AistingApp(tk.Tk):
         ).pack(side="left")
         ttk.Button(
             character_controls, text="캐릭터 관리",
+            style="Operator.Primary.TButton",
             command=lambda: self._navigate_to("내 캐릭터"),
         ).pack(side="right")
 
@@ -747,7 +771,8 @@ class AistingApp(tk.Tk):
             wraplength=710,
         ).pack(anchor="w", pady=(5, 2))
         ttk.Button(
-            character, text="캐릭터 처음 만들기 / 기존 캐릭터 수정 확정·저장",
+            character, text="캐릭터 정체성 확정·저장",
+            style="Operator.Primary.TButton",
             command=self._save_character_identity,
         ).pack(anchor="w", pady=(2, 0))
         self._persona_mode.trace_add("write", self._persona_changed)
