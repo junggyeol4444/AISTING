@@ -268,10 +268,10 @@ class AistingApp(tk.Tk):
         ).pack(side="right")
         navigation = ttk.Frame(main)
         navigation.pack(fill="x", pady=(0, 11))
-        self._tab_nav = tk.StringVar(value="방송 설정")
+        self._tab_nav = tk.StringVar(value="방송인 홈")
         # Keep all original development screens reachable through this opt-in
         # selector; day-to-day actions have their own one-click navigation.
-        for label in ("방송 설정", "내 캐릭터", "시청자 채팅 연습", "무료 한국어 음성", "아바타 미리보기"):
+        for label in ("방송인 홈", "방송 설정", "내 캐릭터", "시청자 채팅 연습", "무료 한국어 음성", "아바타 미리보기"):
             ttk.Button(
                 navigation, text=label, style="Operator.Nav.TButton",
                 command=lambda target=label: self._navigate_to(target),
@@ -286,6 +286,7 @@ class AistingApp(tk.Tk):
         tabs = ttk.Notebook(main, style="Operator.TNotebook")
         self._tabs = tabs
         tabs.pack(fill="both", expand=True)
+        home = ttk.Frame(tabs, padding=9)
         settings = ttk.Frame(tabs)
         character_editor = ttk.Frame(tabs, padding=14)
         rehearsal = ttk.Frame(tabs, padding=12)
@@ -373,7 +374,7 @@ class AistingApp(tk.Tk):
         final_acceptance_tab = ttk.Frame(tabs, padding=12)
         review = ttk.Frame(tabs, padding=12)
         about = ttk.Frame(tabs, padding=12)
-        for tab, label in ((settings, "방송 설정"), (character_editor, "내 캐릭터"), (rehearsal, "시청자 채팅 연습"),
+        for tab, label in ((home, "방송인 홈"), (settings, "방송 설정"), (character_editor, "내 캐릭터"), (rehearsal, "시청자 채팅 연습"),
                            (voice_test, "무료 한국어 음성"), (avatar, "아바타 미리보기"),
                            (local_operation, "PC 로컬 운영"),
                            (os_review, "OS 확인 준비"),
@@ -478,7 +479,7 @@ class AistingApp(tk.Tk):
         # They never start streaming, install software or access accounts.
         for key, page in (
             ("1", "방송 설정"), ("2", "내 캐릭터"), ("3", "시청자 채팅 연습"),
-            ("4", "무료 한국어 음성"), ("5", "아바타 미리보기"),
+            ("4", "무료 한국어 음성"), ("5", "아바타 미리보기"), ("6", "방송인 홈"),
         ):
             self.bind_all(
                 "<Control-Key-" + key + ">",
@@ -548,6 +549,9 @@ class AistingApp(tk.Tk):
         self._build_rehearsal(rehearsal)
         self._build_voice(voice_test)
         self._build_avatar(avatar)
+        # Build the visible live-style preview only after the underlying
+        # avatar and local chat controls are created. No streaming is started.
+        self._build_broadcaster_home(home)
         self._build_local_operation(local_operation)
         self._build_os_review(os_review)
         self._build_hardware_review(hardware_review)
@@ -668,6 +672,7 @@ class AistingApp(tk.Tk):
                 # On keyboard navigation put focus on a meaningful first control.
                 # This is the native visible widget, not a hidden test callback.
                 target = {
+                    "방송인 홈": getattr(self, "_home_rehearsal_button", None),
                     "방송 설정": getattr(self, "_first_platform_check", None),
                     "내 캐릭터": getattr(self, "_persona_mode_widget", None),
                     "시청자 채팅 연습": getattr(self, "_script", None),
@@ -689,6 +694,129 @@ class AistingApp(tk.Tk):
         ttk.Combobox(parent, textvariable=variable, values=list(choices),
                      state="readonly", width=32).pack(anchor="w", pady=4)
         return variable
+
+    def _build_broadcaster_home(self, tab) -> None:
+        """First screen: show the AI broadcaster's face and honest readiness.
+
+        This is an operator preview, not a broadcast/transmission control.
+        No model, audio, timer, OBS or network is started by opening the page.
+        """
+        heading = ttk.Frame(tab)
+        heading.pack(fill="x", pady=(0, 9))
+        ttk.Label(heading, text="AI 방송인 스튜디오",
+                  style="Operator.Section.TLabel").pack(side="left")
+        ttk.Label(heading, text="방송 준비 · 로컬 미리보기",
+                  foreground="#42617d").pack(side="right")
+
+        stage = ttk.Frame(tab)
+        stage.pack(fill="both", expand=True)
+        preview = ttk.LabelFrame(stage, text="캐릭터 화면 · 현재 미리보기", padding=9)
+        preview.pack(side="left", fill="y", padx=(0, 10))
+        self._home_avatar_canvas = tk.Canvas(
+            preview, width=370, height=350, background="#17223c",
+            highlightthickness=0, borderwidth=0,
+        )
+        self._home_avatar_canvas.pack(anchor="center")
+        self._home_avatar_notice = tk.StringVar()
+        ttk.Label(
+            preview, textvariable=self._home_avatar_notice,
+            wraplength=370, justify="center",
+        ).pack(anchor="center", pady=(7, 0))
+
+        dashboard = ttk.Frame(stage)
+        dashboard.pack(side="left", fill="both", expand=True)
+        status_box = ttk.LabelFrame(dashboard, text="방송 상태", padding=12)
+        status_box.pack(fill="x", pady=(0, 8))
+        self._home_broadcast_status = tk.StringVar(
+            value="실제 방송: 중지 · OBS/플랫폼 미연결"
+        )
+        ttk.Label(
+            status_box, textvariable=self._home_broadcast_status,
+            foreground="#A43338", font=("Malgun Gothic", 11, "bold"),
+            wraplength=330,
+        ).pack(anchor="w", pady=(0, 5))
+        ttk.Label(
+            status_box,
+            text="목표는 AI의 자율 방송입니다. 현재 빌드는 실제 방송 시작·종료, "
+                 "채팅 자동 수신, 자율 일정 실행이 구현되지 않았습니다.",
+            wraplength=330, justify="left",
+        ).pack(anchor="w")
+
+        identity = ttk.LabelFrame(dashboard, text="이 방송인은 누구인가", padding=12)
+        identity.pack(fill="x", pady=(0, 8))
+        self._home_character_name = tk.StringVar()
+        self._home_character_details = tk.StringVar()
+        ttk.Label(
+            identity, textvariable=self._home_character_name,
+            font=("Malgun Gothic", 14, "bold"), wraplength=330,
+        ).pack(anchor="w")
+        ttk.Label(
+            identity, textvariable=self._home_character_details,
+            wraplength=330, justify="left",
+        ).pack(anchor="w", pady=(4, 6))
+        ttk.Button(
+            identity, text="캐릭터 설정 확인 / 수정",
+            command=lambda: self._navigate_to("내 캐릭터"),
+        ).pack(anchor="w")
+
+        systems = ttk.LabelFrame(dashboard, text="AI 방송 흐름 · 연결 상태", padding=12)
+        systems.pack(fill="x", pady=(0, 8))
+        self._home_runtime_status = tk.StringVar()
+        ttk.Label(
+            systems, textvariable=self._home_runtime_status,
+            wraplength=330, justify="left",
+        ).pack(anchor="w")
+
+        actions = ttk.Frame(dashboard)
+        actions.pack(fill="x", pady=(3, 0))
+        self._home_rehearsal_button = ttk.Button(
+            actions, text="로컬 채팅 연습 열기",
+            style="Operator.Primary.TButton",
+            command=lambda: self._navigate_to("시청자 채팅 연습"),
+        )
+        self._home_rehearsal_button.pack(fill="x", pady=(0, 5))
+        ttk.Button(
+            actions, text="아바타 화면 / 목소리 확인",
+            command=lambda: self._navigate_to("아바타 미리보기"),
+        ).pack(fill="x")
+        self._update_broadcaster_home()
+        self._draw_avatar_canvases()
+
+    def _update_broadcaster_home(self) -> None:
+        """Describe only actual settings and mock activity, never imply live."""
+        if not hasattr(self, "_home_character_name"):
+            return
+        identity = self._current_persona()
+        self._home_character_name.set(identity["name"])
+        self._home_character_details.set(
+            "말투: " + identity["style"][:70] +
+            "\n성격: " + identity["character"][:70]
+        )
+        avatar_code = AVATARS.get(self._avatar.get())
+        description = {
+            "undecided": "2D 임시 샘플 · 외형은 아직 미선택",
+            "2d": "내장 2D 임시 샘플 · 실제 Live2D 모델 미연결",
+            "3d": "3D 선택 · VRM 렌더러 미연결 (2D로 속여 표시하지 않음)",
+        }.get(avatar_code, "아바타 선택 오류")
+        self._home_avatar_notice.set(description)
+        activity = (
+            "모의 채팅 처리 중" if self._busy else
+            "모의 채팅 대기"
+        )
+        selected = self._selected_mode.get()
+        ai = (
+            "로컬 Ollama 수동 선택 · 연결 미확인"
+            if selected == "로컬 Ollama (수동 선택)"
+            else "기본 모의 응답 · 실제 LLM 미동작"
+        )
+        self._home_runtime_status.set(
+            "AI 두뇌: " + ai + "\n"
+            "시청자 채팅: 모의 입력 전용 · 플랫폼 수신 미연결\n"
+            "목소리: Windows TTS 수동 테스트 · 방송 송출 미연결\n"
+            "자발 발화: 모의 단계 · 자동 방송 루프 미구현\n"
+            "기억: 로컬 대화 시험에서 SQLite 사용\n"
+            "현재: " + activity
+        )
 
     def _build_settings(self, tab) -> None:
         ttk.Label(tab, text="방송 설정", style="Operator.Section.TLabel").pack(anchor="w", pady=(0, 4))
@@ -1472,13 +1600,20 @@ class AistingApp(tk.Tk):
         talking = bool(self._avatar_demo.get() or self._speaker.speaking)
         # 3D 선택 시 가짜 3D 대신 명시적으로 미구현을 표시한다.
         choice = avatar_choice(AVATARS.get(self._avatar.get()))
-        if choice.sample_2d_visible:
-            draw_avatar(self._canvas, AvatarFrame(
-                name, talking, self._avatar_frame,
-                expression=AVATAR_EXPRESSIONS[self._avatar_expression.get()],
-            ))
-        else:
-            draw_unavailable_3d(self._canvas)
+        # One consistent identity and avatar state in the studio home and
+        # the detailed avatar screen. Both are preview-only Tk canvases.
+        surfaces = [self._canvas]
+        if hasattr(self, "_home_avatar_canvas"):
+            surfaces.append(self._home_avatar_canvas)
+        for surface in surfaces:
+            if choice.sample_2d_visible:
+                draw_avatar(surface, AvatarFrame(
+                    name, talking, self._avatar_frame,
+                    expression=AVATAR_EXPRESSIONS[self._avatar_expression.get()],
+                ))
+            else:
+                draw_unavailable_3d(surface)
+        self._update_broadcaster_home()
         canvas = self._avatar_capture_canvas
         if canvas is not None:
             if canvas.winfo_exists():
