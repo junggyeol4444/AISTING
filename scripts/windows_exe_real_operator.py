@@ -188,6 +188,14 @@ def main():
         pyautogui.moveTo(left + 835, top + 350)
         pyautogui.dragTo(left + 835, top + 610, duration=0.8)
         snap("04_real_settings_bottom", hwnd)
+        # Character creation is a separate explicit one-time save.
+        click_relative(hwnd, 200, 379)
+        time.sleep(0.75)
+        assert settings_file.is_file(), "Character creation button did not save"
+        character_saved = json.loads(settings_file.read_text(encoding="utf-8"))
+        assert character_saved["persona_mode"] == "custom", character_saved
+        assert character_saved["persona"]["name"] == "WINDOWS-OPERATOR"
+        print("OPERATOR PASS created durable identity with character-only Save", flush=True)
         select_combobox(150, 464, 1)  # avatar 2D
         select_combobox(545, 473, 1)  # local Windows voice choice
         snap("05_real_avatar_and_voice_selection", hwnd)
