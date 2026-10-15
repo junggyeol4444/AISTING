@@ -49,9 +49,9 @@ def scroll_to_save(hwnd):
     time.sleep(0.6)
 
 
-def read_name(hwnd):
+def read_field(hwnd, y):
     pyperclip.copy("UNCHANGED-CLIPBOARD")
-    op.click_relative(hwnd, 350, 524)
+    op.click_relative(hwnd, 350, y)
     pyautogui.hotkey("ctrl", "a")
     pyautogui.hotkey("ctrl", "c")
     time.sleep(0.4)
@@ -76,6 +76,8 @@ def main():
         pyautogui.press("down")
         pyautogui.press("enter")
         paste(hwnd, 350, 524, "SAVED-PERSONA-TEST")
+        paste(hwnd, 350, 550, "SAVED-STYLE-TEST")
+        paste(hwnd, 350, 580, "SAVED-CHARACTER-TEST")
         scroll_to_save(hwnd)
         op.snap("41_setting_saved_by_user", hwnd)
         op.click_relative(hwnd, 200, 379)  # Commit character once.
@@ -85,16 +87,23 @@ def main():
         assert config.is_file(), "User explicitly clicked Save but no file exists"
         original_bytes = config.read_bytes()
         saved = json.loads(original_bytes.decode("utf-8"))
-        assert saved["persona"]["name"] == "SAVED-PERSONA-TEST", saved["persona"]
+        assert saved["persona"] == {
+            "name": "SAVED-PERSONA-TEST",
+            "style": "SAVED-STYLE-TEST",
+            "character": "SAVED-CHARACTER-TEST",
+        }, saved["persona"]
         assert saved["persona_mode"] == "custom"
         print("UNSAVED PASS 1: actual Save button stored original persona", flush=True)
         close(process, hwnd)
         process = hwnd = None
 
         process, hwnd = start(exe, env, "42_reopened_existing_saved_user")
-        assert read_name(hwnd) == "SAVED-PERSONA-TEST", \
-            "Fresh EXE did not display previous saved custom persona"
+        for y, expected in ((524, "SAVED-PERSONA-TEST"), (550, "SAVED-STYLE-TEST"),
+                            (580, "SAVED-CHARACTER-TEST")):
+            assert read_field(hwnd, y) == expected, f"Initial EXE relaunch lost character at y={y}"
         paste(hwnd, 350, 524, "MUST-NOT-BE-SAVED")
+        paste(hwnd, 350, 550, "UNSAVED-STYLE")
+        paste(hwnd, 350, 580, "UNSAVED-CHARACTER")
         op.click_relative(hwnd, 52, 210)  # modify Chzzk check without saving
         scroll_to_save(hwnd)
         op.snap("43_unsaved_changes_visible_before_exit", hwnd)
@@ -108,12 +117,65 @@ def main():
         print("UNSAVED PASS 3: exit without Save preserved previous file byte-for-byte", flush=True)
 
         process, hwnd = start(exe, env, "44_reopened_after_unsaved_changes")
-        recovered = read_name(hwnd)
         op.snap("45_previous_saved_persona_restored", hwnd)
-        assert recovered == "SAVED-PERSONA-TEST", \
-            f"Unsaved edit carried over after application restart: {recovered!r}"
+        for y, expected in ((524, "SAVED-PERSONA-TEST"), (550, "SAVED-STYLE-TEST"),
+                            (580, "SAVED-CHARACTER-TEST")):
+            actual = read_field(hwnd, y)
+            assert actual == expected, f"Unsaved character edit leaked on restart: {actual!r}"
         assert config.read_bytes() == original_bytes
-        print("UNSAVED PASS 4: 2nd restart restored saved GUI name, discarded unsaved edits", flush=True)
+        print("UNSAVED PASS 4: second restart restored all three saved character fields", flush=True)
+
+        # The operator may save broadcast settings WITHOUT accepting a character draft.
+        paste(hwnd, 350, 524, "DRAFT-NAME-NOT-COMMITTED")
+        paste(hwnd, 350, 550, "DRAFT-STYLE-NOT-COMMITTED")
+        paste(hwnd, 350, 580, "DRAFT-PERSONALITY-NOT-COMMITTED")
+        op.click_relative(hwnd, 52, 210)  # Chzzk preference is the only requested change
+        scroll_to_save(hwnd)
+        op.snap("46_general_save_while_character_draft_is_uncommitted", hwnd)
+        op.click_relative(hwnd, 765, 590)  # ordinary Save, NOT character confirmation
+        time.sleep(0.85)
+        after_general = json.loads(config.read_text(encoding="utf-8"))
+        assert after_general["persona"] == saved["persona"], \
+            "General Save silently committed unconfirmed character name/style/personality"
+        assert after_general["persona_mode"] == "custom"
+        assert after_general["platforms"] == ["chzzk"], after_general["platforms"]
+        print("UNSAVED PASS 5: ordinary Windows Save preserves committed identity", flush=True)
+        close(process, hwnd)
+        process = hwnd = None
+
+        process, hwnd = start(exe, env, "47_restart_after_broadcast_settings_save")
+        for y, expected in ((524, "SAVED-PERSONA-TEST"), (550, "SAVED-STYLE-TEST"),
+                            (580, "SAVED-CHARACTER-TEST")):
+            assert read_field(hwnd, y) == expected, \
+                f"Broadcast Save changed character shown by EXE after restart y={y}"
+
+        # The explicit character button is the ONLY operation that changes identity.
+        paste(hwnd, 350, 524, "CONFIRMED-SECOND-NAME")
+        paste(hwnd, 350, 550, "CONFIRMED-SECOND-STYLE")
+        paste(hwnd, 350, 580, "CONFIRMED-SECOND-PERSONALITY")
+        scroll_to_save(hwnd)
+        op.snap("48_explicit_character_change_before_confirmation", hwnd)
+        op.click_relative(hwnd, 200, 379)  # explicit character Save
+        time.sleep(0.85)
+        confirmed = json.loads(config.read_text(encoding="utf-8"))
+        assert confirmed["persona"] == {
+            "name": "CONFIRMED-SECOND-NAME",
+            "style": "CONFIRMED-SECOND-STYLE",
+            "character": "CONFIRMED-SECOND-PERSONALITY",
+        }, confirmed["persona"]
+        assert confirmed["platforms"] == ["chzzk"]
+        print("UNSAVED PASS 6: explicit character confirmation changes all three fields", flush=True)
+        close(process, hwnd)
+        process = hwnd = None
+
+        process, hwnd = start(exe, env, "49_reopened_confirmed_character")
+        for y, expected in ((524, "CONFIRMED-SECOND-NAME"), (550, "CONFIRMED-SECOND-STYLE"),
+                            (580, "CONFIRMED-SECOND-PERSONALITY")):
+            assert read_field(hwnd, y) == expected, \
+                f"Confirmed character was lost on another Windows EXE restart y={y}"
+        assert json.loads(config.read_text(encoding="utf-8")) == confirmed
+        op.snap("50_explicit_identity_edit_persists_after_restart", hwnd)
+        print("UNSAVED PASS 7: edited character survives Windows EXE quit/restart", flush=True)
         close(process, hwnd)
         process = hwnd = None
     except Exception:
