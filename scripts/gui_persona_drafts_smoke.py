@@ -57,13 +57,13 @@ def main() -> None:
                 app._save()
                 assert load_settings(path)['persona']['name'] == '나만의 캐릭터'
                 assert load_settings(path)['persona_mode'] == 'default'
-                # 화면 높이보다 설정 항목이 커져도 저장 버튼을 스크롤로 찾을 수 있어야 한다.
+                # 설정 화면을 스크롤해도 방송 설정 저장 버튼은 하단에 계속 보여야 한다.
                 app._settings_canvas.yview_moveto(1.0)
                 app.update()
                 from tkinter import ttk
                 save_buttons = []
                 def visit(widget):
-                    if isinstance(widget, ttk.Button) and widget.cget('text') == '설정 PC에 저장':
+                    if isinstance(widget, ttk.Button) and widget.cget('text') == '방송 설정 저장':
                         save_buttons.append(widget)
                     for child in widget.winfo_children():
                         visit(child)
