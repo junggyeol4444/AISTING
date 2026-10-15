@@ -102,11 +102,13 @@ def main():
         # Actual mouse clicks, keyboard selection and Ctrl+V; no app-internal method calls.
         click_relative(hwnd, 50, 210)  # Chzzk
         click_relative(hwnd, 50, 231)  # YouTube
-        click_relative(hwnd, 245, 363) # Content combobox
-        pyautogui.press("end")
+        click_relative(hwnd, 150, 363) # Content combo: navigate to "수다 + 게임"
+        pyautogui.press("home")
+        pyautogui.press("down", presses=3, interval=0.15)
         pyautogui.press("enter")
-        click_relative(hwnd, 245, 496) # Persona combobox
-        pyautogui.press("end")
+        click_relative(hwnd, 150, 496) # Persona combo: navigate to "직접 만들기"
+        pyautogui.press("home")
+        pyautogui.press("down")
         pyautogui.press("enter")
         for y_pos, txt in ((524, "WINDOWS-OPERATOR"), (550, "E2E-SPEAKING"), (580, "E2E-CHARACTER")):
             click_relative(hwnd, 350, y_pos)
@@ -120,6 +122,13 @@ def main():
         pyautogui.scroll(-10)
         time.sleep(0.7)
         snap("03_after_user_mousewheel", hwnd)
+        from PIL import Image, ImageChops
+        earlier = Image.open(OUTPUT / "02_settings_interacted.png").convert("RGB")
+        later = Image.open(OUTPUT / "03_after_user_mousewheel.png").convert("RGB")
+        diff = ImageChops.difference(earlier, later).convert("L")
+        pixels_changed = sum(1 for val in diff.getdata() if val > 15)
+        print("MOUSEWHEEL_CHANGED_PIXELS", pixels_changed, flush=True)
+        assert pixels_changed > 6000, "Actual Windows user mousewheel did not move the settings viewport"
         pyautogui.moveTo(left + 835, top + 350)
         pyautogui.dragTo(left + 835, top + 610, duration=1.2)
         time.sleep(0.6)
