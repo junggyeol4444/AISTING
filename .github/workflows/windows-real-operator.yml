@@ -6,6 +6,7 @@ on:
     paths:
       - scripts/windows_exe_real_operator.py
       - scripts/windows_exe_additional_operator.py
+      - scripts/windows_exe_corrupt_settings_operator.py
       - src/ai_broadcaster/desktop.py
       - .github/workflows/windows-real-operator.yml
   workflow_dispatch:
@@ -34,6 +35,8 @@ jobs:
         run: python scripts/windows_exe_real_operator.py
       - name: Additional native Windows GUI 3D fallback, restore and voice screen scenario
         run: python scripts/windows_exe_additional_operator.py
+      - name: Real Windows user recovers broken settings via warning Save and restart
+        run: python scripts/windows_exe_corrupt_settings_operator.py
       - name: Upload actual screen evidence and failure logs
         if: always()
         uses: actions/upload-artifact@v4
