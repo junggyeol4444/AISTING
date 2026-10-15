@@ -143,6 +143,14 @@ def validate_features(features: dict[str, Any]) -> list[str]:
                 errors.append(f'중복 기능 ID: {key}')
             else:
                 all_ids.add(key)
+    mandatory_ids = {'conversation', 'chat', 'tts', 'avatar', 'broadcast',
+                     'lifecycle', 'notices', 'memory', 'operations'}
+    required_ids = {
+        item.get('id') for item in features.get('required', [])
+        if isinstance(item, dict) and isinstance(item.get('id'), str)
+    } if isinstance(features.get('required'), list) else set()
+    for missing in sorted(mandatory_ids - required_ids):
+        errors.append(f'필수 기능 누락: {missing}')
     actions = features.get('no_default_actions')
     if not isinstance(actions, list) or '실제 방송 시작' not in actions:
         errors.append('실제 방송은 승인 없이 시작할 수 없습니다.')
