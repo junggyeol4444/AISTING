@@ -77,6 +77,11 @@ def run():
                     entry.delete(0, 'end')
                     entry.insert(0, value)
                 app._avatar.set('2D')
+                assert app._current_persona()['name'] == DEFAULTS['persona']['name'], (
+                    'Uncommitted character draft must not become active'
+                )
+                app._save_character_identity()
+                assert load_settings(settings)['persona']['name'] == '가상캐릭터'
                 app._voice.set('Windows 무료 음성')
                 app._voice_rate.set('2')
                 app._voice_volume.set('75')
@@ -104,6 +109,13 @@ def run():
                 assert app._content.get() == '수다 + 게임'
                 assert app._persona_mode.get() == '직접 만들기'
                 assert app._persona['name'].get() == '가상캐릭터'
+                assert app._current_persona()['name'] == '가상캐릭터'
+                # Runtime character is still the committed one during edits.
+                app._persona['name'].delete(0, 'end')
+                app._persona['name'].insert(0, '임시수정-저장안함')
+                assert app._current_persona()['name'] == '가상캐릭터'
+                app._persona['name'].delete(0, 'end')
+                app._persona['name'].insert(0, '가상캐릭터')
                 assert app._avatar.get() == '2D' and app._voice.get() == 'Windows 무료 음성'
                 assert app._voice_rate.get() == '2' and app._voice_volume.get() == '75'
                 app._avatar.set('3D')
