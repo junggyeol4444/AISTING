@@ -5,6 +5,7 @@ on:
       - test/v105-windows-validation-20261015
     paths:
       - scripts/windows_exe_real_operator.py
+      - scripts/windows_exe_additional_operator.py
       - src/ai_broadcaster/desktop.py
       - .github/workflows/windows-real-operator.yml
   workflow_dispatch:
@@ -29,8 +30,10 @@ jobs:
         run: python -m pip install --disable-pip-version-check "pyinstaller>=6,<7" "pyautogui>=0.9.54,<1"
       - name: Build current testing branch's native Windows EXE
         run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name AISTING --paths src --add-data "config;config" --add-data "docs;docs" --add-data "logs/STAGE100_FINAL_VALIDATION.txt;logs" --add-data "logs/STAGE100_UNITTEST.log;logs" scripts/run_desktop.py
-      - name: Capture operator interactions from real Windows EXE
+      - name: Full synthetic-user mouse and keyboard journey on actual Windows EXE
         run: python scripts/windows_exe_real_operator.py
+      - name: Additional native Windows GUI 3D fallback, restore and voice screen scenario
+        run: python scripts/windows_exe_additional_operator.py
       - name: Upload actual screen evidence and failure logs
         if: always()
         uses: actions/upload-artifact@v4
