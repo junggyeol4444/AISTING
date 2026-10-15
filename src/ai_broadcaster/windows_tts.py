@@ -109,6 +109,8 @@ class WindowsSpeechPreview:
         self._popen = process_factory
         self._lock = threading.Lock()
         self._active: object | None = None
+        # A user-requested stop is not a broken speaker or missing voice.
+        self._cancel = threading.Event()
 
     def _check_platform(self) -> None:
         if self.platform != "win32":
@@ -163,6 +165,7 @@ class WindowsSpeechPreview:
                 )
             except OSError as exc:
                 raise SpeechError("Windows 음성 재생 도구를 실행하지 못했습니다.") from exc
+            self._cancel.clear()
             self._active = process
         payload = json.dumps(
             {"text": text.strip(), "voice": voice.name, "volume": volume, "rate": rate},
@@ -175,12 +178,16 @@ class WindowsSpeechPreview:
                 process.kill()
                 process.communicate()
                 raise SpeechError("음성 재생 제한 시간이 초과됐습니다.") from exc
+            if self._cancel.is_set():
+                # Stop button intentionally terminated this process: no error.
+                return
             if process.returncode != 0:
                 raise SpeechError("Windows 음성 재생에 실패했습니다. 한국어 음성 설치 여부를 확인해 주세요.")
         finally:
             with self._lock:
                 if self._active is process:
                     self._active = None
+                    self._cancel.clear()
 
     def stop(self) -> bool:
         """현재 미리 듣기만 종료. 외부 방송·다른 프로세스에는 영향 없음."""
@@ -189,6 +196,7 @@ class WindowsSpeechPreview:
             if current is None:
                 return False
             if current.poll() is None:
+                self._cancel.set()
                 current.terminate()
                 return True
             return False
