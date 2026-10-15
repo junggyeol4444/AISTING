@@ -60,6 +60,8 @@ def main() -> None:
                 app._persona_mode.set("직접 만들기")
                 app._persona["name"].delete(0,"end")
                 app._persona["name"].insert(0,"새 캐릭터")
+                # Only explicit character approval invalidates character-sensitive reviews.
+                app._save_character_identity()
                 app._save()
                 app._refresh_review()
                 assert "승인 대기" in app._review_status.get(),"PC 설정이 바뀌면 이전 승인을 인정하면 안 됨"
