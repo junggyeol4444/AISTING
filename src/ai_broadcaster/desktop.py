@@ -671,6 +671,8 @@ class AistingApp(tk.Tk):
                     "방송 설정": getattr(self, "_first_platform_check", None),
                     "내 캐릭터": getattr(self, "_persona_mode_widget", None),
                     "시청자 채팅 연습": getattr(self, "_script", None),
+                    "무료 한국어 음성": getattr(self, "_voice_list", None),
+                    "아바타 미리보기": getattr(self, "_avatar_open_button", None),
                 }.get(label)
                 if target is not None:
                     self.after_idle(target.focus_set)
