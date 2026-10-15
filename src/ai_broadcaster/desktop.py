@@ -98,7 +98,7 @@ from .operator_boundaries import (
 )
 from .offline_settings import (
     AVATARS, CONTENTS, PLATFORMS, VOICES, PERSONA_MODES, DEFAULTS,
-    load_settings, save_settings, validate_voice_profile,
+    load_settings, save_settings, validate_voice_profile, active_persona,
 )
 from .offline_chat import ChatRehearsal, MockReplyGenerator, LocalOllamaGenerator, LocalMemory
 from .offline_tts import WindowsKoreanSpeech, KoreanVoice, speech_chunks
@@ -621,7 +621,7 @@ class AistingApp(tk.Tk):
         ttk.Label(content_box, text="미선택도 허용 · 언제든 변경·저장 가능 · 선택만으로 방송은 시작되지 않습니다.",
                   wraplength=720).pack(anchor="w")
         self._content.trace_add("write", self._content_changed)
-        character = self._section(tab, "5. AI 방송인 캐릭터 (기본값 / 직접 만들기)")
+        character = self._section(tab, "캐릭터 정체성 최초 만들기·관리 (아바타 외형과 별개)")
         self._persona_mode = self._choice(character, PERSONA_MODES, self.settings["persona_mode"])
         self._persona = {}
         for key, label in (("name", "이름"), ("style", "말투"), ("character", "성격")):
@@ -647,13 +647,26 @@ class AistingApp(tk.Tk):
         self._persona_preview = tk.StringVar()
         ttk.Label(character, textvariable=self._persona_preview, justify="left",
                   wraplength=715).pack(anchor="w", pady=(5, 0))
+        # This is a durable identity, NOT a form to fill out every time.
+        # Uncommitted drafts never control chat, the avatar or the AI prompt.
+        self._saved_character_status = tk.StringVar(
+            value=self._saved_character_description()
+        )
+        ttk.Label(
+            character, textvariable=self._saved_character_status,
+            wraplength=710,
+        ).pack(anchor="w", pady=(5, 2))
+        ttk.Button(
+            character, text="캐릭터 처음 만들기 / 기존 캐릭터 수정 확정·저장",
+            command=self._save_character_identity,
+        ).pack(anchor="w", pady=(2, 0))
         self._persona_mode.trace_add("write", self._persona_changed)
         for item in self._persona.values():
             item.bind("<KeyRelease>", self._persona_changed)
         self._persona_changed()
         row = ttk.Frame(tab)
         row.pack(fill="x", pady=(0, 7))
-        avatarbox = ttk.LabelFrame(row, text="아바타 선택", padding=10)
+        avatarbox = ttk.LabelFrame(row, text="아바타 외형 선택 (캐릭터 생성과 별개)", padding=10)
         avatarbox.pack(side="left", fill="x", expand=True)
         voicebox = ttk.LabelFrame(row, text="목소리 선택", padding=10)
         voicebox.pack(side="left", fill="x", expand=True, padx=(9, 0))
@@ -717,9 +730,37 @@ class AistingApp(tk.Tk):
         self._content_preview.set(content_preview(code) if code is not None else "잘못된 콘텐츠 선택")
 
     def _current_persona(self) -> dict[str, str]:
-        """현재 GUI 모드의 실사용 캐릭터. 기본값은 직접 입력을 무시한다."""
-        code = PERSONA_MODES.get(self._persona_mode.get())
-        return chosen_persona(code, {key: entry.get() for key, entry in self._persona.items()})
+        """Always use the committed identity, never an unsaved editor draft."""
+        return active_persona(self.settings)
+
+    def _saved_character_description(self) -> str:
+        character = active_persona(self.settings)
+        if self.settings["persona_mode"] == "default":
+            return ("현재 사용: 기본 캐릭터 " + character["name"]
+                    + " · 새 캐릭터를 원할 때만 직접 만들기 후 확정·저장")
+        return ("현재 사용: 저장된 캐릭터 " + character["name"]
+                + " · 시작할 때 자동 불러옴 / 매번 다시 입력할 필요 없음")
+
+    def _save_character_identity(self) -> None:
+        """User action to create or change ONE persistent identity, separately."""
+        try:
+            mode = PERSONA_MODES[self._persona_mode.get()]
+            draft = {key: item.get().strip() for key, item in self._persona.items()}
+            # Only a validated and explicitly committed draft is usable.
+            chosen_persona(mode, draft)
+            updated = deepcopy(self.settings)
+            updated["persona_mode"] = mode
+            updated["persona"] = draft
+            save_settings(updated)
+        except (KeyError, ValueError, OSError) as exc:
+            messagebox.showerror("캐릭터 저장 오류", str(exc), parent=self)
+            return
+        self.settings = updated
+        self._saved_character_status.set(self._saved_character_description())
+        self._status.set(
+            "캐릭터를 내 PC에 확정·저장했어. 다음 실행에도 이 캐릭터를 그대로 사용해."
+        )
+        self._draw_avatar_canvases()
 
     def _persona_changed(self, *_args) -> None:
         is_custom = self._persona_mode.get() == "직접 만들기"
@@ -783,13 +824,10 @@ class AistingApp(tk.Tk):
         except (KeyError, ValueError) as exc:
             messagebox.showerror("목소리 설정", str(exc), parent=self)
             return
-        try:
-            data["persona_mode"] = PERSONA_MODES[self._persona_mode.get()]
-            # 기본 모드로 돌려도 사용자가 써 둔 직접 제작 초안은 안전하게 보존한다.
-            data["persona"] = {key: item.get().strip() for key, item in self._persona.items()}
-        except KeyError:
-            messagebox.showerror("캐릭터 설정", "올바른 캐릭터 방식을 선택해 주세요.", parent=self)
-            return
+        # Broadcasting preferences must never silently commit an unapproved
+        # character draft. Character creation has its own explicit Save button.
+        data["persona_mode"] = self.settings["persona_mode"]
+        data["persona"] = deepcopy(self.settings["persona"])
         try:
             save_settings(data)
         except (OSError, ValueError) as exc:
