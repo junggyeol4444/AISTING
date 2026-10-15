@@ -5,6 +5,7 @@ on:
       - test/v105-windows-validation-20261015
     paths:
       - scripts/windows_exe_real_operator.py
+      - src/ai_broadcaster/desktop.py
       - .github/workflows/windows-real-operator.yml
   workflow_dispatch:
 
