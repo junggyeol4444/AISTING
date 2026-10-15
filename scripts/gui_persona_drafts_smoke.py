@@ -40,6 +40,8 @@ def main() -> None:
                 app._persona['character'].insert(0,'내가 정한 성격')
                 app._persona_changed()
                 assert '내가 정한 성격' in app._persona_preview.get()
+                assert app._current_persona()['name'] == '아이스팅'
+                app._save_character_identity()
                 app._save()
                 saved = load_settings(path)
                 assert saved['persona_mode'] == 'custom'
@@ -48,8 +50,10 @@ def main() -> None:
                 # Default mode must not overwrite user draft.
                 app._persona_mode.set('기본 캐릭터')
                 app.update()
-                assert app._current_persona()['name'] == '아이스팅'
+                assert app._current_persona()['name'] == '나만의 캐릭터', 'Draft alone must not change live character'
                 assert app._persona['name'].get() == '나만의 캐릭터'
+                app._save_character_identity()
+                assert app._current_persona()['name'] == '아이스팅'
                 app._save()
                 assert load_settings(path)['persona']['name'] == '나만의 캐릭터'
                 assert load_settings(path)['persona_mode'] == 'default'
