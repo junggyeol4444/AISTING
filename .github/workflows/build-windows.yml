@@ -55,6 +55,14 @@ jobs:
           $length = (Get-Item "dist/AISTING.exe").Length
           if ($length -lt 1000000) { throw "Unexpectedly small EXE: $length bytes" }
           Write-Host "AISTING.exe verified ($length bytes)"
+      - name: Verify frozen EXE can read all six original project evidence files
+        shell: pwsh
+        timeout-minutes: 3
+        run: |
+          $exe = (Resolve-Path "dist/AISTING.exe").Path
+          $probe = Start-Process -FilePath $exe -ArgumentList "--verify-bundled-resources" -PassThru -Wait
+          if ($probe.ExitCode -ne 0) { throw "EXE bundled document inspection failed with exit $($probe.ExitCode)" }
+          Write-Host "EXE six original evidence files / roadmap pending status: PASS"
       - name: Verify first-launch GUI from PyInstaller one-file child process
         shell: pwsh
         timeout-minutes: 3
