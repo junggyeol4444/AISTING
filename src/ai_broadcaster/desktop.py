@@ -183,11 +183,11 @@ def _label_for(options: dict[str, str], code: str) -> str:
 class AistingApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
-        self.title("AISTING | 오프라인 AI 방송인 개발본")
+        self.title("AISTING | 내 AI 방송인")
         # Keep bottom controls above the Windows taskbar on 768p laptops.
         # The settings tab has its own scrollbar for longer content.
-        self.geometry(f"860x{min(720, max(625, self.winfo_screenheight() - 130))}+80+0")
-        self.minsize(760, 625)
+        self.geometry(f"900x{min(720, max(625, self.winfo_screenheight() - 130))}+50+0")
+        self.minsize(820, 625)
         self._save_problem = ""
         try:
             self.settings = load_settings()
@@ -231,26 +231,43 @@ class AistingApp(tk.Tk):
         style = ttk.Style(self)
         if "clam" in style.theme_names():
             style.theme_use("clam")
-        style.configure("TNotebook.Tab", padding=(12, 7), font=("Malgun Gothic", 10))
+        # A development notebook may contain 100+ diagnostic pages. Never show
+        # those as a huge strip of unreadable, grey native tabs to operators.
+        style.layout("Operator.TNotebook.Tab", [])
         style.configure("TLabel", font=("Malgun Gothic", 10))
-        style.configure("TButton", font=("Malgun Gothic", 10))
+        style.configure("TButton", font=("Malgun Gothic", 10), padding=(10, 6))
+        style.configure("Operator.Title.TLabel", font=("Malgun Gothic", 21, "bold"))
+        style.configure("Operator.Section.TLabel", font=("Malgun Gothic", 13, "bold"))
 
-        main = ttk.Frame(self, padding=15)
+        main = ttk.Frame(self, padding=12)
         main.pack(fill="both", expand=True)
-        ttk.Label(main, text="AISTING", font=("Malgun Gothic", 23, "bold")).pack(anchor="w")
-        ttk.Label(main, text="Windows 데스크톱 · 무료 · 수동 실행 · 외부 방송 비활성").pack(anchor="w", pady=(2, 9))
+        header = ttk.Frame(main)
+        header.pack(fill="x", pady=(0, 9))
+        ttk.Label(header, text="AISTING", style="Operator.Title.TLabel").pack(side="left")
+        ttk.Label(
+            header, text="내 PC에서 준비하는 AI 방송인  ·  외부 방송 꺼짐",
+        ).pack(side="right")
         navigation = ttk.Frame(main)
-        navigation.pack(fill="x", pady=(0, 5))
-        ttk.Label(navigation, text="화면 이동").pack(side="left")
+        navigation.pack(fill="x", pady=(0, 11))
         self._tab_nav = tk.StringVar(value="방송 설정")
+        # Keep all original development screens reachable through this opt-in
+        # selector; day-to-day actions have their own one-click navigation.
+        for label in ("방송 설정", "내 캐릭터", "시청자 채팅 연습", "무료 한국어 음성", "아바타 미리보기"):
+            ttk.Button(
+                navigation, text=label, command=lambda target=label: self._navigate_to(target),
+            ).pack(side="left", padx=(0, 5))
+        advanced = ttk.Frame(navigation)
+        advanced.pack(side="right")
+        ttk.Label(advanced, text="전체 도구").pack(side="left", padx=(0, 5))
         self._tab_nav_widget = ttk.Combobox(
-            navigation, textvariable=self._tab_nav, state="readonly", width=29,
+            advanced, textvariable=self._tab_nav, state="readonly", width=19,
         )
-        self._tab_nav_widget.pack(side="left", padx=(8, 0))
-        tabs = ttk.Notebook(main)
+        self._tab_nav_widget.pack(side="left")
+        tabs = ttk.Notebook(main, style="Operator.TNotebook")
         self._tabs = tabs
         tabs.pack(fill="both", expand=True)
         settings = ttk.Frame(tabs)
+        character_editor = ttk.Frame(tabs, padding=14)
         rehearsal = ttk.Frame(tabs, padding=12)
         avatar = ttk.Frame(tabs, padding=12)
         voice_test = ttk.Frame(tabs, padding=12)
@@ -336,7 +353,7 @@ class AistingApp(tk.Tk):
         final_acceptance_tab = ttk.Frame(tabs, padding=12)
         review = ttk.Frame(tabs, padding=12)
         about = ttk.Frame(tabs, padding=12)
-        for tab, label in ((settings, "방송 설정"), (rehearsal, "시청자 채팅 연습"),
+        for tab, label in ((settings, "방송 설정"), (character_editor, "내 캐릭터"), (rehearsal, "시청자 채팅 연습"),
                            (voice_test, "무료 한국어 음성"), (avatar, "아바타 미리보기"),
                            (local_operation, "PC 로컬 운영"),
                            (os_review, "OS 확인 준비"),
@@ -420,7 +437,7 @@ class AistingApp(tk.Tk):
                            (final_acceptance_tab, "최종 기능 검수·승인 대기"),
                            (review, "개발 기준 검토"), (about, "개발 현황")):
             tabs.add(tab, text=label)
-        # 많은 탭이 창 폭 밖에 있어도 모든 기능을 키보드/드롭다운으로 열 수 있다.
+        # The full original development toolset remains reachable from the combo.
         self._tab_nav_widget.configure(values=tuple(tabs.tab(item, "text") for item in tabs.tabs()))
 
         def navigate(_event=None):
@@ -437,7 +454,12 @@ class AistingApp(tk.Tk):
 
         self._tab_nav_widget.bind("<<ComboboxSelected>>", navigate)
         tabs.bind("<<NotebookTabChanged>>", sync_navigation)
-        # 설정 항목이 늘어나도 저장 버튼을 화면 아래에서 잘라내지 않도록 스크롤 제공.
+        # Save is always visible, even on a 768-pixel Windows laptop.
+        settings_footer = ttk.Frame(settings, padding=(13, 5))
+        settings_footer.pack(side="bottom", fill="x")
+        ttk.Label(settings_footer, text="로컬 저장만 합니다 · 실제 송출/예약 실행 안 함").pack(side="left")
+        ttk.Button(settings_footer, text="방송 설정 저장", command=self._save).pack(side="right")
+        # 설정 항목이 늘어나도 입력란이 잘리지 않도록 스크롤 제공.
         settings_canvas = tk.Canvas(settings, highlightthickness=0, borderwidth=0)
         settings_scrollbar = ttk.Scrollbar(settings, orient="vertical", command=settings_canvas.yview)
         settings_scrollbar.pack(side="right", fill="y")
@@ -472,6 +494,7 @@ class AistingApp(tk.Tk):
             return None
 
         self._build_settings(settings_body)
+        self._build_character_editor(character_editor)
         # Bind at the *widget* level, before ttk class key handling can stop
         # propagation; binding only "all" did not work with a focused Entry.
         def attach_settings_wheel(widget):
@@ -594,8 +617,17 @@ class AistingApp(tk.Tk):
         finally:
             self.destroy()
 
+    def _navigate_to(self, label: str) -> None:
+        """Navigate to a top-level operator page or one of the retained tools."""
+        for item in self._tabs.tabs():
+            if self._tabs.tab(item, "text") == label:
+                self._tabs.select(item)
+                self._tab_nav.set(label)
+                return
+        raise ValueError("화면을 찾을 수 없습니다: " + label)
+
     def _section(self, parent, title):
-        area = ttk.LabelFrame(parent, text=title, padding=11)
+        area = ttk.LabelFrame(parent, text=title, padding=9)
         area.pack(fill="x", pady=(0, 11))
         return area
 
@@ -621,7 +653,46 @@ class AistingApp(tk.Tk):
         ttk.Label(content_box, text="미선택도 허용 · 언제든 변경·저장 가능 · 선택만으로 방송은 시작되지 않습니다.",
                   wraplength=720).pack(anchor="w")
         self._content.trace_add("write", self._content_changed)
-        character = self._section(tab, "캐릭터 정체성 최초 만들기·관리 (아바타 외형과 별개)")
+        # Read-only saved identity on the daily settings page. Its form lives
+        # exclusively in the dedicated '내 캐릭터' screen.
+        summary = self._section(tab, "내 캐릭터")
+        self._saved_character_status = tk.StringVar(value=self._saved_character_description())
+        ttk.Label(
+            summary, textvariable=self._saved_character_status,
+            font=("Malgun Gothic", 11, "bold"), wraplength=700,
+        ).pack(anchor="w", pady=(1, 6))
+        ttk.Label(
+            summary, text="이름·말투·성격은 최초 저장 후 자동 복원됩니다. 방송할 때 다시 입력하지 않습니다.",
+            wraplength=700,
+        ).pack(anchor="w", pady=(0, 6))
+        ttk.Button(
+            summary, text="캐릭터 처음 만들기 / 기존 캐릭터 수정",
+            command=lambda: self._navigate_to("내 캐릭터"),
+        ).pack(anchor="w")
+        row = ttk.Frame(tab)
+        row.pack(fill="x", pady=(0, 7))
+        avatarbox = ttk.LabelFrame(row, text="아바타 외형 선택 (캐릭터 생성과 별개)", padding=10)
+        avatarbox.pack(side="left", fill="x", expand=True)
+        voicebox = ttk.LabelFrame(row, text="목소리 선택", padding=10)
+        voicebox.pack(side="left", fill="x", expand=True, padx=(9, 0))
+        self._avatar = self._choice(avatarbox, AVATARS, self.settings["avatar"])
+        self._avatar_choice_info = tk.StringVar(value=avatar_choice(self.settings["avatar"]).description)
+        ttk.Label(avatarbox, textvariable=self._avatar_choice_info, wraplength=330).pack(anchor="w", pady=(4, 0))
+        self._avatar.trace_add("write", self._avatar_changed)
+        self._voice = self._choice(voicebox, VOICES, self.settings["voice"])
+        self._voice_source_info = tk.StringVar(value=describe_voice_source(self.settings["voice"]))
+        ttk.Label(voicebox, textvariable=self._voice_source_info, wraplength=340).pack(anchor="w")
+        self._voice.trace_add("write", self._voice_source_changed)
+        # Save is pinned outside the scrolling canvas in settings_footer.
+
+    def _build_character_editor(self, tab) -> None:
+        ttk.Label(tab, text="내 캐릭터", style="Operator.Section.TLabel").pack(anchor="w", pady=(1, 5))
+        ttk.Label(
+            tab, text="캐릭터는 처음 한 번 만들고 저장합니다. 이후에는 방송·대화에 자동 적용됩니다. "
+                      "저장하기 전 초안은 실제 캐릭터를 바꾸지 않습니다.",
+            wraplength=750,
+        ).pack(anchor="w", pady=(0, 11))
+        character = self._section(tab, "캐릭터 처음 만들기 / 직접 수정")
         self._persona_mode = self._choice(character, PERSONA_MODES, self.settings["persona_mode"])
         self._persona = {}
         for key, label in (("name", "이름"), ("style", "말투"), ("character", "성격")):
@@ -649,9 +720,6 @@ class AistingApp(tk.Tk):
                   wraplength=715).pack(anchor="w", pady=(5, 0))
         # This is a durable identity, NOT a form to fill out every time.
         # Uncommitted drafts never control chat, the avatar or the AI prompt.
-        self._saved_character_status = tk.StringVar(
-            value=self._saved_character_description()
-        )
         ttk.Label(
             character, textvariable=self._saved_character_status,
             wraplength=710,
@@ -664,22 +732,10 @@ class AistingApp(tk.Tk):
         for item in self._persona.values():
             item.bind("<KeyRelease>", self._persona_changed)
         self._persona_changed()
-        row = ttk.Frame(tab)
-        row.pack(fill="x", pady=(0, 7))
-        avatarbox = ttk.LabelFrame(row, text="아바타 외형 선택 (캐릭터 생성과 별개)", padding=10)
-        avatarbox.pack(side="left", fill="x", expand=True)
-        voicebox = ttk.LabelFrame(row, text="목소리 선택", padding=10)
-        voicebox.pack(side="left", fill="x", expand=True, padx=(9, 0))
-        self._avatar = self._choice(avatarbox, AVATARS, self.settings["avatar"])
-        self._avatar_choice_info = tk.StringVar(value=avatar_choice(self.settings["avatar"]).description)
-        ttk.Label(avatarbox, textvariable=self._avatar_choice_info, wraplength=330).pack(anchor="w", pady=(4, 0))
-        self._avatar.trace_add("write", self._avatar_changed)
-        self._voice = self._choice(voicebox, VOICES, self.settings["voice"])
-        self._voice_source_info = tk.StringVar(value=describe_voice_source(self.settings["voice"]))
-        ttk.Label(voicebox, textvariable=self._voice_source_info, wraplength=340).pack(anchor="w")
-        self._voice.trace_add("write", self._voice_source_changed)
-        ttk.Label(tab, text="고정 정책: 내 PC 실행 · 비용 0원 · 예약 없음 · 외부 방송 꺼짐").pack(anchor="w", pady=8)
-        ttk.Button(tab, text="설정 PC에 저장", command=self._save).pack(anchor="e")
+        ttk.Button(
+            tab, text="방송 설정으로 돌아가기",
+            command=lambda: self._navigate_to("방송 설정"),
+        ).pack(anchor="e", pady=(6, 0))
 
     def _avatar_changed(self, *_args) -> None:
         """선택만으로 모델을 설치하지 않는다. 3D에는 2D 샘플 캡처 창을 제공하지 않는다."""
