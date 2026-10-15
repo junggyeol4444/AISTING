@@ -19,8 +19,12 @@ import windows_exe_real_operator as op
 
 def choose_page(hwnd, position: int) -> None:
     op.click_relative(hwnd, 200, 103)
-    pyautogui.press("home")
-    if position:
+    if position == 0:
+        # Windows ttk Combobox ignores Home as a selection in some themes.
+        # Repeated Up actively changes the selected item to the first page.
+        pyautogui.press("up", presses=40, interval=0.015)
+    else:
+        pyautogui.press("home")
         pyautogui.press("down", presses=position, interval=0.14)
     pyautogui.press("enter")
     time.sleep(0.5)
