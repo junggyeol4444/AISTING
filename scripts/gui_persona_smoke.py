@@ -35,6 +35,8 @@ def main() -> None:
                 app._persona['style'].insert(0,'친절한 한국어')
                 app._persona['character'].delete(0,'end')
                 app._persona['character'].insert(0,'별을 좋아하는 AI')
+                assert app._current_persona()['name'] == '아이스팅'
+                app._save_character_identity()
                 app._save()
                 saved = load_settings(path)
                 assert saved['persona_mode'] == 'custom'
@@ -48,14 +50,18 @@ def main() -> None:
 
                 app._persona_mode.set('기본 캐릭터')
                 app.update()
-                assert app._current_persona()['name'] == '아이스팅'
+                assert app._current_persona()['name'] == '은별', 'Uncommitted default-mode draft must not switch identity'
                 assert app._persona['name'].get() == '은별'
+                app._save_character_identity()
+                assert app._current_persona()['name'] == '아이스팅'
                 app._save()
                 assert load_settings(path)['persona_mode'] == 'default'
                 assert load_settings(path)['persona']['name'] == '은별'
                 app._persona_mode.set('직접 만들기')
                 app.update()
                 assert app._persona['name'].get() == '은별'
+                assert app._current_persona()['name'] == '아이스팅'
+                app._save_character_identity()
                 assert app._current_persona()['name'] == '은별'
                 assert not load_settings(path)['streaming_enabled']
                 assert not load_settings(path)['scheduled_execution']
