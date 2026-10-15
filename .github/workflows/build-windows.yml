@@ -38,10 +38,9 @@ jobs:
         run: |
           python -c "import tkinter; print('Tkinter import passed')"
           python scripts/gui_operator_journey_smoke.py
-      - name: Run additional isolated Tk GUI regression smokes
+      - name: Run additional isolated Tk GUI regression smokes (required)
         shell: pwsh
         timeout-minutes: 15
-        continue-on-error: true
         run: python scripts/run_gui_regression_offline.py
       - name: Install packaging dependency in temporary GitHub Windows runner
         shell: pwsh
@@ -91,6 +90,10 @@ jobs:
             Get-Process -Name "AISTING" -ErrorAction SilentlyContinue |
               Stop-Process -Force -ErrorAction SilentlyContinue
           }
+      - name: Verify frozen EXE normal window close and restart (required)
+        shell: pwsh
+        timeout-minutes: 4
+        run: ./scripts/windows_exe_lifecycle_smoke.ps1
       - name: Upload test-branch Windows EXE
         if: always()
         uses: actions/upload-artifact@v4
