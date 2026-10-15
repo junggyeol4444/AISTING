@@ -32,7 +32,8 @@ def run():
             try:
                 app.update()
                 assert app._tabs.cget("style") == "Operator.TNotebook"
-                assert app._tabs.tk.call("ttk::style", "layout", "Operator.TNotebook.Tab") == "", \
+                from tkinter import ttk
+                assert not ttk.Style(app).layout("Operator.TNotebook.Tab"), \
                     "100+ development tabs are still visible in the operator window"
                 labels = [app._tabs.tab(t, "text") for t in app._tabs.tabs()]
                 for required in ("방송 설정", "내 캐릭터", "시청자 채팅 연습",
