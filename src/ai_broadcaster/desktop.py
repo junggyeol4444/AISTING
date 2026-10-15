@@ -2150,8 +2150,10 @@ class AistingApp(tk.Tk):
         selected = deepcopy(self.settings)
         selected["platforms"] = [code for code, flag in self._platforms.items() if flag.get()]
         selected["content"] = CONTENTS[self._content.get()]
-        selected["persona_mode"] = PERSONA_MODES[self._persona_mode.get()]
-        selected["persona"] = {key: widget.get().strip() for key, widget in self._persona.items()}
+        # A mock core session uses the committed broadcasting character too.
+        # Uncommitted editor drafts may only appear in explicitly labeled previews.
+        selected["persona_mode"] = self.settings["persona_mode"]
+        selected["persona"] = deepcopy(self.settings["persona"])
         selected["avatar"] = AVATARS[self._avatar.get()]
         selected["voice"] = VOICES[self._voice.get()]
         selected["voice_profile"] = validate_voice_profile({
