@@ -981,6 +981,15 @@ class AistingApp(tk.Tk):
         self._script = tk.Text(tab, height=6, wrap="word", font=("Malgun Gothic", 10))
         self._script.pack(fill="both", expand=True, pady=(5, 6))
         self._script.insert("1.0", "철수: 안녕\n영희: 오늘은 무슨 게임 해?\n철수: 안녕")
+        # Native Text consumes plain Tab for text insertion, so explicit
+        # keyboard alternatives are bound to the focused chat field.
+        self._script.bind("<Control-Return>", lambda _event: (self._enqueue(), "break")[1])
+        self._script.bind("<Control-Shift-Return>", lambda _event: (self._run_all(), "break")[1])
+        self._script.bind("<Control-Shift-n>", lambda _event: (self._reset_chat(), "break")[1])
+        ttk.Label(
+            tab, text="단축키: Ctrl+Enter 추가 · Ctrl+Shift+Enter 모두 답변 · Ctrl+Shift+N 새 연습",
+            wraplength=780,
+        ).pack(anchor="w", pady=(0, 6))
         row = ttk.Frame(tab)
         row.pack(fill="x")
         ttk.Label(row, text="응답 방식").pack(side="left")
