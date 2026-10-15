@@ -665,6 +665,15 @@ class AistingApp(tk.Tk):
             if self._tabs.tab(item, "text") == label:
                 self._tabs.select(item)
                 self._tab_nav.set(label)
+                # On keyboard navigation put focus on a meaningful first control.
+                # This is the native visible widget, not a hidden test callback.
+                target = {
+                    "방송 설정": getattr(self, "_first_platform_check", None),
+                    "내 캐릭터": getattr(self, "_persona_mode_widget", None),
+                    "시청자 채팅 연습": getattr(self, "_script", None),
+                }.get(label)
+                if target is not None:
+                    self.after_idle(target.focus_set)
                 return
         raise ValueError("화면을 찾을 수 없습니다: " + label)
 
@@ -713,9 +722,10 @@ class AistingApp(tk.Tk):
         platform_row.pack(anchor="w", pady=(2, 5))
         for label, code in PLATFORMS.items():
             flag = tk.BooleanVar(value=code in self.settings["platforms"])
-            ttk.Checkbutton(
-                platform_row, text=label, variable=flag,
-            ).pack(side="left", padx=(0, 14))
+            checkbox = ttk.Checkbutton(platform_row, text=label, variable=flag)
+            checkbox.pack(side="left", padx=(0, 14))
+            if not self._platforms:
+                self._first_platform_check = checkbox
             self._platforms[code] = flag
         ttk.Label(
             platform_box, text="선택만으로 방송은 시작되지 않습니다.",
@@ -759,6 +769,10 @@ class AistingApp(tk.Tk):
         ).pack(anchor="w", pady=(0, 11))
         character = self._section(tab, "캐릭터 처음 만들기 / 직접 수정")
         self._persona_mode = self._choice(character, PERSONA_MODES, self.settings["persona_mode"])
+        self._persona_mode_widget = next(
+            widget for widget in character.winfo_children()
+            if isinstance(widget, ttk.Combobox)
+        )
         self._persona = {}
         for key, label in (("name", "이름"), ("style", "말투"), ("character", "성격")):
             line = ttk.Frame(character)
