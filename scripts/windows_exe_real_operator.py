@@ -251,21 +251,29 @@ def main():
         click_relative(hwnd, 787, 350) # "새 연습"
         time.sleep(0.7)
         snap("14_click_new_rehearsal_reset", hwnd)
-        print("OPERATOR PASS clickable reset returned to new rehearsal", flush=True)
+        cleared = read_output_clipboard(300, 455)
+        assert "ALICE" not in cleared and "BOB" not in cleared, \
+            "Real new rehearsal button did not clear completed chat history"
+        print("OPERATOR PASS clickable reset cleared the real completed reply view", flush=True)
 
-        # Malformed user script must show a dialog, then be recoverable.
+        # Malformed user script must show a modal warning, then recover.
         paste_at(300, 235, "INVALID CHAT WITHOUT COLON")
         click_relative(hwnd, 79, 348)
         time.sleep(0.7)
         pyautogui.screenshot().save(OUTPUT / "15_invalid_chat_warning_full_desktop.png")
+        assert u32.FindWindowW(None, "대본 형식") != 0, \
+            "Invalid operator input did not display an actual native warning dialog"
         pyautogui.press("enter")
         time.sleep(0.4)
         paste_at(300, 230, "BOB: RECOVERED")
         click_relative(hwnd, 79, 348)
         click_relative(hwnd, 176, 348)
-        time.sleep(1.2)
+        time.sleep(1.5)
         snap("16_after_invalid_chat_recovered", hwnd)
-        print("OPERATOR PASS returned from invalid chat warning to normal user actions", flush=True)
+        recovered = read_output_clipboard(300, 455)
+        assert "BOB: RECOVERED" in recovered and "ALICE: HELLO" not in recovered, \
+            "Actual Windows GUI did not recover cleanly after invalid user text"
+        print("OPERATOR PASS actual native invalid-input dialog and subsequent new reply", flush=True)
         close_app()
 
         assert settings_file.is_file()
