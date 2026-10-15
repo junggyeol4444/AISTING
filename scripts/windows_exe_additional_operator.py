@@ -43,9 +43,15 @@ def set_avatar_and_save(hwnd, kind: int) -> None:
     choose_page(hwnd, 0)
     scroll_settings(hwnd)
     op.click_relative(hwnd, 150, 464)
-    pyautogui.press("home")
-    pyautogui.press("down", presses=kind, interval=0.12)
+    if kind == 1:
+        # Currently 3D: one actual Up key selects the preceding 2D option.
+        pyautogui.press("up")
+    else:
+        # Clean profile: advance the choices from "미정" to 3D.
+        pyautogui.press("home")
+        pyautogui.press("down", presses=kind, interval=0.12)
     pyautogui.press("enter")
+    time.sleep(0.2)
     op.snap(f"21_avatar_choice_{kind}", hwnd)
     op.click_relative(hwnd, 765, 590)
     time.sleep(0.65)
