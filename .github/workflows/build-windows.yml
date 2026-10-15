@@ -47,7 +47,7 @@ jobs:
         run: python -m pip install --disable-pip-version-check "pyinstaller>=6,<7"
       - name: Package the v105 native Windows entry point
         shell: pwsh
-        run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name AISTING --paths src --add-data "config;config" --add-data "docs;docs" scripts/run_desktop.py
+        run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name AISTING --paths src --add-data "config;config" --add-data "docs;docs" --add-data "logs/STAGE100_FINAL_VALIDATION.txt;logs" --add-data "logs/STAGE100_UNITTEST.log;logs" scripts/run_desktop.py
       - name: Verify generated EXE exists
         shell: pwsh
         run: |
