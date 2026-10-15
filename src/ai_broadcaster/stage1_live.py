@@ -11,7 +11,9 @@ Stage 1 is NOT complete until real model/voice/avatar evidence is observed.
 from __future__ import annotations
 
 import queue
+import socket
 import threading
+import webbrowser
 import tkinter as tk
 from tkinter import ttk, messagebox
 
@@ -83,6 +85,17 @@ class Stage1LiveWindow(tk.Tk):
         tk.Label(character, text="현재: Canvas 샘플 · 실제 Live2D / VRM 엔진 연결 전",
                  bg=PANEL, fg=MUTED, wraplength=370,
                  font=("Malgun Gothic", 9)).pack(pady=(12, 8))
+        ttk.Button(
+            character,
+            text="실제 Open-LLM-VTuber Live2D 화면 열기",
+            command=self._open_vtuber,
+        ).pack(fill="x", pady=(0, 7))
+        tk.Label(
+            character,
+            text="이미 실행 중인 로컬 Open-LLM-VTuber에만 접속. 설치·시작·다운로드 없음",
+            bg=PANEL, fg=MUTED, wraplength=370,
+            font=("Malgun Gothic", 9),
+        ).pack()
         tk.Label(character, text="음성 프로세스가 실제 재생 중일 때만 입 움직임",
                  bg=PANEL, fg=MUTED, wraplength=370,
                  font=("Malgun Gothic", 9)).pack()
@@ -131,6 +144,29 @@ class Stage1LiveWindow(tk.Tk):
         ).pack(anchor="w", pady=(5, 2))
         tk.Label(right, textvariable=self.voice_status,
                  fg=MUTED, bg=PANEL, wraplength=550).pack(anchor="w")
+
+    def _open_vtuber(self) -> None:
+        """Open the official Live2D frontend only when operator clicks.
+
+        TCP accept != validated Live2D or AI. Never claim success until the
+        official UI actually shows a connected WebSocket and moving model.
+        """
+        try:
+            with socket.create_connection(("127.0.0.1", 12393), timeout=2):
+                pass
+        except OSError:
+            self.status.set(
+                "실제 Open-LLM-VTuber 미실행 · localhost:12393 연결 실패. "
+                "가짜 아바타를 대신 실행하지 않습니다."
+            )
+            return
+        if webbrowser.open("http://127.0.0.1:12393/"):
+            self.status.set(
+                "로컬 Open-LLM-VTuber 주소를 열었습니다. 실제 Live2D 표시·"
+                "WebSocket 연결·음성 동작은 공식 화면에서 확인해야 합니다."
+            )
+        else:
+            self.status.set("로컬 주소는 열려 있지만 브라우저 실행에 실패했습니다.")
 
     def _append_text(self, text: str) -> None:
         self.conversation.configure(state="normal")
