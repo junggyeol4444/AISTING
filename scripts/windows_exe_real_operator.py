@@ -197,7 +197,19 @@ def main():
         process = hwnd = None
 
     try:
-        start("01_operator_home_not_developer_tab_strip")
+        start("01_broadcaster_home_avatar_and_status")
+        home_image = Image.open(OUTPUT / "01_broadcaster_home_avatar_and_status.png").convert("RGB")
+        samples = list(home_image.getdata())
+        # Physical Windows pixels from the same 2D sample renderer shown in
+        # the built EXE: face and hair must be visible on its FIRST screen.
+        face_pixels = samples.count((246, 211, 197))
+        hair_pixels = samples.count((52, 79, 135))
+        assert face_pixels > 400 and hair_pixels > 400, (
+            "First Windows screen has no visible avatar: face=%d hair=%d"
+            % (face_pixels, hair_pixels)
+        )
+        print("OPERATOR PASS first screen visibly contains 2D avatar face and hair",
+              face_pixels, hair_pixels, flush=True)
         edit_character(hwnd, identity, save=False)
         snap("02_character_unsaved_draft_on_dedicated_page", hwnd)
         assert not settings_path.exists(), "Typing unsaved persona wrote settings"
