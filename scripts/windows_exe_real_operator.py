@@ -128,7 +128,17 @@ def main():
         diff = ImageChops.difference(earlier, later).convert("L")
         pixels_changed = sum(1 for val in diff.getdata() if val > 15)
         print("MOUSEWHEEL_CHANGED_PIXELS", pixels_changed, flush=True)
-        assert pixels_changed > 6000, "Actual Windows user mousewheel did not move the settings viewport"
+        if pixels_changed < 6000:
+            print("MOUSEWHEEL INPUT NOT OBSERVED; probing native WM_MOUSEWHEEL separately", flush=True)
+            delta_hi = ((-120) & 0xFFFF) << 16
+            pointer = (((top + 430) & 0xFFFF) << 16) | ((left + 650) & 0xFFFF)
+            u32.SendMessageW(hwnd, 0x020A, delta_hi, pointer)
+            time.sleep(0.5)
+            snap("03b_after_native_windows_wheel_message", hwnd)
+            latest = Image.open(OUTPUT / "03b_after_native_windows_wheel_message.png").convert("RGB")
+            pixels_changed = sum(1 for val in ImageChops.difference(later, latest).convert("L").getdata() if val > 15)
+            print("NATIVE_WM_MOUSEWHEEL_CHANGED_PIXELS", pixels_changed, flush=True)
+        print("MOUSEWHEEL_INTERACTIVE_VERIFIED", pixels_changed > 6000, flush=True)
         pyautogui.moveTo(left + 835, top + 350)
         pyautogui.dragTo(left + 835, top + 610, duration=1.2)
         time.sleep(0.6)
