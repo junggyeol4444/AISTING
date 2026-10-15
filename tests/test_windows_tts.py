@@ -154,8 +154,8 @@ class TestWindowsTTS(unittest.TestCase):
         self.assertTrue(self.service.stop())
         worker.join(timeout=4)
         self.assertFalse(worker.is_alive())
-        self.assertTrue(result)
-        self.assertIsInstance(result[0],SpeechError)
+        self.assertEqual(result, [], "User-requested stop must not raise on the worker")
+        self.assertIsNone(self.service._active)
         self.assertFalse(self.service.stop())
 
     def _call_and_collect(self,result):
@@ -166,13 +166,24 @@ class TestWindowsTTS(unittest.TestCase):
 
     def test_no_second_play_while_running(self):
         self.process=FakePlayer(blocked=True)
-        thread=threading.Thread(target=self.service.speak,args=("첫 문장",self.voice))
+        errors = []
+        thread=threading.Thread(
+            target=lambda: self._call_and_collect(errors), name="windows-tts-cancellation-test"
+        )
         thread.start()
         self.assertTrue(self.process.started.wait(2))
         with self.assertRaises(SpeechError):
             self.service.speak("두 번째 문장",self.voice)
-        self.service.stop()
+        self.assertTrue(self.service.stop())
         thread.join(timeout=3)
+        self.assertFalse(thread.is_alive())
+        self.assertEqual(errors, [], "Cancelling preview must not leave an uncaught thread error")
+
+    def test_real_playback_failure_still_reports_error(self):
+        self.process = FakePlayer(returncode=3)
+        with self.assertRaises(SpeechError):
+            self.service.speak("실제 음성 장치 실패", self.voice)
+        self.assertIsNone(self.service._active)
 
     def test_missing_powershell_reported(self):
         def fail(cmd, **kwargs):
