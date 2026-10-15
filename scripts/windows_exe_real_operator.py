@@ -7,6 +7,7 @@ Only synthetic local user preferences and scripted chat are used.
 from __future__ import annotations
 
 import ctypes
+import ctypes.wintypes
 import json
 import os
 from pathlib import Path
@@ -44,7 +45,6 @@ def windows():
                             "rect": (rect.left, rect.top, rect.right, rect.bottom)})
         return True
 
-    import ctypes.wintypes
     cb = fn_type(each)
     u32.EnumWindows(cb, 0)
     return results
@@ -62,7 +62,6 @@ def await_window(timeout=60):
 
 
 def client_area(hwnd):
-    import ctypes.wintypes
     rect = ctypes.wintypes.RECT()
     u32.GetClientRect(hwnd, ctypes.byref(rect))
     p = ctypes.wintypes.POINT(0, 0)
