@@ -47,10 +47,10 @@ def start_existing_open_llm_vtuber(project_dir: Path) -> int:
     env["UV_NO_SYNC"] = "1"
     print("원본 기획안 1단계: 기존 Open-LLM-VTuber 실제 서버 실행")
     print("기반:", root)
-    print("실행:", "uv --offline --no-sync run run_server.py")
+    print("실행:", "uv run --offline --no-sync run_server.py")
     print("화면:", UPSTREAM_UI)
     print("설치·다운로드 없음. 모델·소리·Live2D가 실제 작동하는지는 별도로 확인해야 합니다.")
-    cmd = [executable, "--offline", "--no-sync", "run", "run_server.py"]
+    cmd = [executable, "run", "--offline", "--no-sync", "run_server.py"]
     try:
         return subprocess.call(cmd, cwd=root, env=env)
     except OSError as exc:
