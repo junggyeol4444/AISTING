@@ -536,6 +536,54 @@ class OriginalPlanStudio:
             threading.Thread(target=worker, name="aisting-official-ai-turn", daemon=True).start()
         send_button = ttk.Button(footer, text="실제 AI에 질문 전송", command=send)
         send_button.pack(side="right")
+
+        def send_to_same_live2d_session():
+            """One approved AI turn handled inside the official viewer's own WS."""
+            from .original_plan_frontend import send_to_native_live2d_session
+            message = input_box.get("1.0", "end-1c").strip()
+            if not 1 <= len(message) <= 4000:
+                messagebox.showerror("질문 확인", "질문을 1~4000자로 입력하세요.", parent=win)
+                return
+            try:
+                approved_identity = self._require_confirmed_persona_for_real_ai()
+            except (StageOneUnavailable, ValueError, OSError, KeyError) as exc:
+                indicator.set("확정 캐릭터/공식 설정 불일치 · 전송하지 않음")
+                messagebox.showerror("확정 캐릭터 확인 실패", str(exc), parent=win)
+                return
+            if not messagebox.askyesno(
+                "같은 공식 Live2D·TTS 세션으로 실제 질문",
+                "이미 AISTING에서 연 공식 Live2D Windows 창의 대화 입력에 "
+                "질문을 전달합니다. 별도의 AI WebSocket 세션을 만들지 않고 "
+                "공식 창에서 답변·GPT-SoVITS 음성·입모양을 처리하도록 요청합니다. "
+                "공식 설정에 따라 유료/외부 AI 요청이나 음성 합성, 기록이 발생할 수 "
+                "있지만 OBS 송출은 시작하지 않습니다. 이번 질문을 실행합니까?",
+                parent=win,
+            ):
+                indicator.set("운영자 승인 취소 · 요청을 보내지 않았습니다")
+                return
+            try:
+                if self._require_confirmed_persona_for_real_ai() != approved_identity:
+                    raise StageOneUnavailable("승인 도중 확정 캐릭터가 변경됐습니다.")
+                send_to_native_live2d_session(message, operator_approved=True)
+            except (RuntimeError, OSError, ValueError, PermissionError) as exc:
+                indicator.set("동일 Live2D 세션 전달 실패 · " + str(exc))
+                return
+            input_box.delete("1.0", "end")
+            indicator.set("공식 Live2D 창 입력 전달 요청 · 실제 AI/음성/립싱크 결과는 창에서 확인")
+            self.real_ai_status.set("공식 Live2D 한 세션으로 입력 전달 시도 · 실제 서버 수신/영상/오디오 미검증")
+            output.configure(state="normal")
+            output.insert(
+                "end", "나 [공식 Live2D 창 동일 세션 전달 요청]: " + message +
+                "\\n[실제 응답은 공식 Live2D 창에 표시됩니다. "
+                "전송 수신과 음성·립싱크는 확인되지 않았습니다.]\\n\\n"
+            )
+            output.see("end")
+            output.configure(state="disabled")
+
+        ttk.Button(
+            footer, text="공식 Live2D 창 같은 세션으로 전송",
+            command=send_to_same_live2d_session,
+        ).pack(side="right", padx=(0, 9))
         self._ai_submit_button = send_button
         self._ai_indicator = indicator
 
