@@ -91,6 +91,59 @@ class WindowsExeSelftestTests(unittest.TestCase):
             ]), 0)
         self.assertEqual(calls, [("C:/Open-LLM-VTuber", {"operator_approved": True})])
 
+    def test_gui_selftest_refuses_regular_operator_pc(self):
+        with patch.object(sys, "platform", "win32"), patch.object(
+            sys, "frozen", True, create=True
+        ), patch.dict("os.environ", {"GITHUB_ACTIONS": "false",
+                                      "AISTING_GUI_SELFTEST": "approved_ci_only"}):
+            self.assertFalse(self.app["_verify_frozen_gui"]())
+
+    def test_gui_selftest_constructs_actual_app_interface(self):
+        created = []
+        names = ["방송인 홈", "내 캐릭터", "방송 설정",
+                 "시청자 채팅 연습", "아바타 미리보기"]
+        class FakeApp:
+            def __init__(self):
+                created.append(self)
+                self._tabs = types.SimpleNamespace(
+                    tabs=lambda: list(range(len(names))),
+                    tab=lambda i, field: names[i],
+                )
+                self.destroyed = False
+            def title(self): return "AISTING | 내 AI 방송인"
+            def withdraw(self): pass
+            def update_idletasks(self): pass
+            def destroy(self): self.destroyed = True
+        with patch.dict(sys.modules, self.mods), patch.object(
+            self.mods["ai_broadcaster.desktop"], "AistingApp", FakeApp, create=True
+        ), patch.object(sys, "platform", "win32"), patch.object(
+            sys, "frozen", True, create=True
+        ), patch.dict("os.environ", {"GITHUB_ACTIONS": "true",
+                                      "AISTING_GUI_SELFTEST": "approved_ci_only"}):
+            self.assertTrue(self.app["_verify_frozen_gui"]())
+            self.assertEqual(self.app["_run"](["--aisting-gui-selftest"]), 0)
+        self.assertEqual(len(created), 2)
+        self.assertTrue(all(x.destroyed for x in created))
+
+    def test_gui_selftest_requires_all_original_main_pages(self):
+        class FakeApp:
+            def __init__(self):
+                self._tabs = types.SimpleNamespace(tabs=lambda: [0],
+                                                  tab=lambda i, key: "방송인 홈")
+            def title(self): return "AISTING"
+            def withdraw(self): pass
+            def update_idletasks(self): pass
+            def destroy(self): pass
+        with patch.dict(sys.modules, self.mods), patch.object(
+            self.mods["ai_broadcaster.desktop"], "AistingApp", FakeApp, create=True
+        ), patch.object(sys, "platform", "win32"), patch.object(
+            sys, "frozen", True, create=True
+        ), patch.dict("os.environ", {"GITHUB_ACTIONS": "true",
+                                      "AISTING_GUI_SELFTEST": "approved_ci_only"}):
+            self.assertFalse(self.app["_verify_frozen_gui"]())
+            self.assertEqual(self.app["_run"](["--aisting-gui-selftest"]), 2)
+
+
 
 if __name__ == "__main__":
     unittest.main()
