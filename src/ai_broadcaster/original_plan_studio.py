@@ -828,6 +828,7 @@ class OriginalPlanStudio:
         def close_window():
             self._obs_window = None
             self._obs_panel_status = None
+            self._obs_stream_buttons = ()
             window.destroy()
         window.protocol('WM_DELETE_WINDOW', close_window)
         window.title("원본 기획안 3단계 · OBS 실제 연결 확인")
@@ -898,6 +899,85 @@ class OriginalPlanStudio:
         connect_btn = ttk.Button(actions, text="실제 OBS 상태 읽기", command=connect)
         connect_btn.pack(side="right", padx=(0, 8))
         self._obs_connect_button = connect_btn
+
+        def control_real_stream(action: str):
+            """Only user-approved real OBS actions; no unattended broadcast."""
+            from tkinter import simpledialog
+            from .original_plan_obs import OfficialObsWebsocket
+            if self._obs_check_in_progress:
+                return
+            if os.environ.get('AISTING_APPROVED_OBS_OUTGOING') != 'YES':
+                status.set(
+                    "실제 송출 제어 차단: 실행 전에 운영자가 별도로 "
+                    "AISTING_APPROVED_OBS_OUTGOING=YES를 설정해야 합니다."
+                )
+                return
+            if action not in ('start', 'stop'):
+                return
+            try:
+                client = OfficialObsWebsocket(secret.get(), port=int(port.get()))
+            except ValueError as exc:
+                status.set("OBS 정보 오류: " + str(exc))
+                return
+            if action == 'start':
+                prompt = (
+                    "OBS의 실제 방송 출력을 즉시 시작합니다. 대상 플랫폼·방송 공개범위는 "
+                    "AISTING이 자동 검사할 수 없습니다. OBS에서 비공개 테스트 목적지와 "
+                    "출력 상태를 직접 확인했습니까? 공개 방송을 시작할 위험이 있습니다. "
+                    "기존 OBS 화면·오디오 경로의 실검증도 필요합니다. 계속하시겠습니까?"
+                )
+                phrase = '비공개 방송 테스트 승인'
+                title = "실제 OBS 비공개 송출 시작 · 별도 승인"
+            else:
+                prompt = (
+                    "OBS가 현재 송출 중인 실제 방송을 종료합니다. "
+                    "지금 실행 중인 송출을 중단하시겠습니까?"
+                )
+                phrase = '방송 중지 승인'
+                title = "실제 OBS 송출 종료 · 별도 승인"
+            if not messagebox.askyesno(title, prompt, parent=window):
+                status.set("운영자 실행 승인이 없어 OBS를 변경하지 않았습니다.")
+                return
+            typed = simpledialog.askstring(
+                title, "실제 실행을 원하면 아래 문구를 그대로 입력하세요:\\n" + phrase,
+                parent=window,
+            )
+            if typed != phrase:
+                status.set("실제 OBS 제어 문구 불일치 · 아무 작업도 하지 않았습니다.")
+                return
+            self._obs_check_in_progress = True
+            connect_btn.configure(state='disabled')
+            for button in self._obs_stream_buttons:
+                button.configure(state='disabled')
+            status.set("운영자 승인된 실제 OBS 송출 요청 처리 중… 성공 미확인")
+            def stream_worker():
+                try:
+                    client.connect()
+                    result = (
+                        client.start_stream(operator_confirmed=True)
+                        if action == 'start'
+                        else client.stop_stream(operator_confirmed=True)
+                    )
+                except Exception as exc:
+                    self._events.put(('obs_stream_action', (action, None, str(exc))))
+                else:
+                    self._events.put(('obs_stream_action', (action, result, None)))
+            threading.Thread(
+                target=stream_worker, name='aisting-obs-approved-stream-control',
+                daemon=True,
+            ).start()
+
+        start_btn = ttk.Button(
+            actions, text="실제 송출 시작 (추가 승인 필요)",
+            command=lambda: control_real_stream('start'),
+        )
+        start_btn.pack(side="left", padx=(0, 6))
+        stop_btn = ttk.Button(
+            actions, text="실제 송출 종료 (추가 승인 필요)",
+            command=lambda: control_real_stream('stop'),
+        )
+        stop_btn.pack(side="left")
+        self._obs_stream_buttons = (start_btn, stop_btn)
 
     def _read_confirmed_persona_from_disk(self) -> dict[str, str]:
         """Read the latest *persisted* character, never the unsaved GUI draft.
@@ -1244,6 +1324,28 @@ class OriginalPlanStudio:
                             ' / 참조: ' + connected.model_url +
                             ' · 실제 AI 응답·TTS·Live2D 동작은 미검증'
                         )
+                elif kind == 'obs_stream_action':
+                    self._obs_check_in_progress = False
+                    if (self._obs_window is not None and self._obs_window.winfo_exists()
+                            and hasattr(self, '_obs_connect_button')):
+                        self._obs_connect_button.configure(state='normal')
+                        for button in getattr(self, '_obs_stream_buttons', ()):
+                            button.configure(state='normal')
+                    action, current, failure = connected
+                    if failure is not None:
+                        result = '실제 OBS 송출 제어 실패: ' + failure
+                    else:
+                        expected = action == 'start'
+                        if current.streaming is not expected:
+                            result = '실제 OBS 응답 상태가 요청과 다릅니다 · 확인 필요'
+                        else:
+                            result = (
+                                '실제 OBS 방송 출력 시작을 상태 조회로 확인'
+                                if expected else '실제 OBS 방송 출력 종료를 상태 조회로 확인'
+                            ) + ' · 플랫폼의 비공개/공개 범위, 음성·영상 전달은 별도 미검증'
+                    self.obs_status.set(result)
+                    if self._obs_panel_status is not None:
+                        self._obs_panel_status.set(result)
                 elif kind in ('obs_connected', 'obs_error'):
                     self._obs_check_in_progress = False
                     if (self._obs_window is not None and self._obs_window.winfo_exists()
