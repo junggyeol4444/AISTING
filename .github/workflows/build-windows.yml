@@ -70,6 +70,31 @@ jobs:
           if ($executables[0].Length -lt 1000000) { throw "AISTING.exe unexpectedly small" }
           Write-Host "Windows AISTING.exe built: $($executables[0].FullName) ($($executables[0].Length) bytes)"
 
+      - name: Construct original Windows Tk GUI inside isolated CI and close it
+        shell: pwsh
+        timeout-minutes: 4
+        env:
+          AISTING_GUI_SELFTEST: approved_ci_only
+        run: |
+          $env:LOCALAPPDATA = Join-Path $env:RUNNER_TEMP 'AISTING-EXE-GUI-TEST'
+          New-Item -ItemType Directory -Path $env:LOCALAPPDATA -Force | Out-Null
+          $exe = @(Get-ChildItem -Path . -Recurse -File -Filter AISTING.exe |
+            Where-Object { $_.Directory.Name -like 'dist-native-*' })
+          if ($exe.Count -ne 1) { throw 'No unique Windows native executable to test' }
+          $process = Start-Process -FilePath $exe[0].FullName -ArgumentList '--aisting-gui-selftest' -PassThru
+          try {
+            if (-not $process.WaitForExit(90000)) {
+              throw 'Original AISTING Windows Tk GUI did not exit within 90 seconds'
+            }
+            $process.Refresh()
+            if ($process.ExitCode -ne 0) {
+              throw "Original AISTING Windows Tk GUI startup failed (exit $($process.ExitCode))"
+            }
+            Write-Host 'Original AISTING Tk GUI created and destroyed successfully in isolated CI'
+          } finally {
+            if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force }
+          }
+
       - name: Upload real Windows EXE artifact
         uses: actions/upload-artifact@v4
         with:
