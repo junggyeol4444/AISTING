@@ -117,3 +117,54 @@ def status(roadmap: dict[str, Any]) -> dict[str, Any]:
     completed = sum(s['status'] == 'completed' for s in steps)
     current = next((s for s in steps if s['status'] != 'completed'), None)
     return {'completed': completed, 'total': len(steps), 'current': current}
+
+
+def validate_features(features: dict[str, Any]) -> list[str]:
+    """Preserve the user's existing mandatory/optional feature boundaries.
+
+    This is a read-only specification check. It never starts an integration,
+    downloads a model, enables a broadcast, or marks a roadmap step complete.
+    """
+    if not isinstance(features, dict):
+        return ["기능 기획안은 JSON 객체여야 합니다."]
+    errors: list[str] = []
+    if features.get("schema_version") != 1:
+        errors.append("지원되지 않는 기능 기획안 형식입니다.")
+    mandatory = {
+        "conversation", "chat", "tts", "avatar", "broadcast",
+        "lifecycle", "notices", "memory", "operations",
+    }
+    required = features.get("required")
+    optional = features.get("optional")
+    if not isinstance(required, list) or not isinstance(optional, list):
+        return errors + ["필수/선택 기능 목록이 올바르지 않습니다."]
+    for label, collection in (("필수", required), ("선택", optional)):
+        if any(not isinstance(item, dict) or not isinstance(item.get("id"), str)
+               or not item["id"].strip() for item in collection):
+            errors.append(label + " 기능 항목 형식이 올바르지 않습니다.")
+            continue
+        ids = [item["id"] for item in collection]
+        if len(set(ids)) != len(ids):
+            errors.append(label + " 기능 ID가 중복됩니다.")
+        attr = "acceptance" if label == "필수" else "condition"
+        if any(not isinstance(item.get(attr), str) or not item[attr].strip()
+               for item in collection):
+            errors.append(label + " 기능의 검증/선택 조건이 없습니다.")
+    required_ids = {item.get("id") for item in required if isinstance(item, dict)}
+    optional_ids = {item.get("id") for item in optional if isinstance(item, dict)}
+    if not mandatory.issubset(required_ids):
+        errors.append("원본 필수 방송 기능이 누락됐습니다.")
+    if "game" in required_ids or "game" not in optional_ids:
+        errors.append("게임은 필수가 아닌 운영자 선택 기능입니다.")
+    if required_ids.intersection(optional_ids):
+        errors.append("필수 기능과 선택 기능의 ID가 중복됩니다.")
+    no_default = features.get("no_default_actions")
+    forbidden_auto = {
+        "PC 프로그램 설치", "외부 계정·API 연결", "유료 결제",
+        "실제 방송 시작", "외부 공지 게시", "실존인물 무단 음성 복제",
+    }
+    if not isinstance(no_default, list) or not forbidden_auto.issubset(
+        {x for x in no_default if isinstance(x, str)}
+    ):
+        errors.append("승인 전 금지된 자동 실행 동작이 누락됐습니다.")
+    return errors
