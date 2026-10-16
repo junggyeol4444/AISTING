@@ -177,6 +177,40 @@ class NativeLive2DTests(unittest.TestCase):
         self.assertIn("Client(address, family='AF_PIPE'", source)
         self.assertNotIn("sys.stdin.buffer", source)
 
+    @unittest.skipUnless(sys.platform == 'win32', 'Actual Windows AF_PIPE only')
+    def test_real_windows_named_pipe_round_trip_with_official_ui_handler(self):
+        """One actual Windows pipe between parent and viewer worker; no LLM call."""
+        import time
+        import threading
+        from unittest.mock import MagicMock
+        viewer._native_viewer = types.SimpleNamespace(poll=lambda: None)
+        listener, address, key = viewer._create_native_bridge()
+        viewer._native_listener = listener
+        parent = threading.Thread(
+            target=viewer._receive_native_bridge, args=(listener, listener),
+            daemon=True,
+        )
+        parent.start()
+        fake = MagicMock()
+        fake.events.loaded.wait.return_value = True
+        fake.evaluate_js.side_effect = [True, True]
+        child = threading.Thread(
+            target=viewer._native_frontend_input_worker,
+            args=(fake, address, key.hex()), daemon=True,
+        )
+        child.start()
+        deadline = time.monotonic() + 5
+        while viewer._native_bridge is None and time.monotonic() < deadline:
+            time.sleep(0.02)
+        self.assertIsNotNone(viewer._native_bridge)
+        self.assertTrue(viewer.send_to_native_live2d_session(
+            '안녕하세요', operator_approved=True
+        ))
+        self.assertEqual(fake.evaluate_js.call_count, 2)
+        viewer._native_bridge.close()
+        child.join(timeout=2)
+        self.assertFalse(child.is_alive())
+
     def test_project_path_sent_to_child(self):
         command = viewer.native_viewer_command(self.project, frozen=True)
         self.assertEqual(command[-2:], ["--aisting-live2d-viewer", str(self.project)])
