@@ -132,24 +132,22 @@ def load_settings(path: Path | None = None) -> dict[str, Any]:
 
 
 def save_settings(value: dict[str, Any], path: Path | None = None) -> Path:
+    """Save ordinary settings under the same lock as character confirmation.
+
+    A legacy caller may hold a stale character draft. It must not silently
+    commit that draft or overwrite a newer character confirmed elsewhere.
+    """
     target = path if path is not None else settings_file()
-    clean = validate_settings(value)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    # A fixed settings.tmp path can overwrite an unrelated file (or follow a
-    # symlink) and concurrent saves can corrupt each other's temporary data.
-    # Create a private, unique sibling and replace only after a full flush.
-    temporary: Path | None = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode="w", encoding="utf-8", dir=target.parent,
-            prefix=f".{target.name}.", suffix=".tmp", delete=False,
-        ) as stream:
-            temporary = Path(stream.name)
-            json.dump(clean, stream, indent=2, ensure_ascii=False)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(temporary, target)
-        return target
-    finally:
-        if temporary is not None:
-            temporary.unlink(missing_ok=True)
+    from .original_plan_persona_store import save_broadcast_without_persona
+    # Reading before the lock is intentional: the merge routine acquires
+    # the OS lock and rejects non-persona changes that raced this read.
+    observed = load_settings(target)
+    if not isinstance(value, dict):
+        raise ValueError('방송 설정은 JSON 객체여야 합니다.')
+    clean = deepcopy(value)
+    # Even an invalid unsaved character draft is outside general Save.
+    clean['persona_mode'] = observed['persona_mode']
+    clean['persona'] = deepcopy(observed['persona'])
+    clean = validate_settings(clean)
+    save_broadcast_without_persona(observed, clean, path=target)
+    return target

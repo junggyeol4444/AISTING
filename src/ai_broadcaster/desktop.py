@@ -138,6 +138,8 @@ from .avatar_preparation import (AvatarPreparation, ORIGINS as AVATAR_ORIGINS, p
 from .avatar_runtime_environment import (AvatarRuntimeDraft, RENDERERS as AVATAR_RENDERERS, runtime_environment_path, save_runtime_environment, load_runtime_environment, delete_runtime_environment)
 from .content_modes import content_preview
 from .persona_modes import chosen_persona
+from .offline_settings import active_persona
+from .original_plan_studio import OriginalPlanStudio
 from .persona_drafts import EXAMPLE_DRAFTS, apply_draft_example, compact_persona_preview, preview_persona_guidance
 from .local_runtime import local_operation_plan, check_local_storage
 from .os_readiness import (
@@ -183,9 +185,9 @@ def _label_for(options: dict[str, str], code: str) -> str:
 class AistingApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
-        self.title("AISTING | 오프라인 AI 방송인 개발본")
-        self.geometry("860x720")
-        self.minsize(760, 625)
+        self.title("AISTING | 내 AI 방송인")
+        self.geometry("960x740")
+        self.minsize(840, 640)
         self._save_problem = ""
         try:
             self.settings = load_settings()
@@ -229,7 +231,9 @@ class AistingApp(tk.Tk):
         style = ttk.Style(self)
         if "clam" in style.theme_names():
             style.theme_use("clam")
-        style.configure("TNotebook.Tab", padding=(12, 7), font=("Malgun Gothic", 10))
+        # Keep the 100 development pages reachable without displaying 100 tabs.
+        style.layout("AISTING.TNotebook.Tab", [])
+        style.configure("AISTING.TNotebook", background="#F4F7FB")
         style.configure("TLabel", font=("Malgun Gothic", 10))
         style.configure("TButton", font=("Malgun Gothic", 10))
 
@@ -238,16 +242,20 @@ class AistingApp(tk.Tk):
         ttk.Label(main, text="AISTING", font=("Malgun Gothic", 23, "bold")).pack(anchor="w")
         ttk.Label(main, text="Windows 데스크톱 · 무료 · 수동 실행 · 외부 방송 비활성").pack(anchor="w", pady=(2, 9))
         navigation = ttk.Frame(main)
-        navigation.pack(fill="x", pady=(0, 5))
-        ttk.Label(navigation, text="화면 이동").pack(side="left")
-        self._tab_nav = tk.StringVar(value="방송 설정")
+        navigation.pack(fill="x", pady=(0, 8))
+        for name in ("방송인 홈", "내 캐릭터", "방송 설정", "시청자 채팅 연습", "아바타 미리보기"):
+            ttk.Button(navigation, text=name, command=lambda page=name: self._goto_page(page)).pack(side="left", padx=(0, 4))
+        ttk.Label(navigation, text="전체 도구").pack(side="left", padx=(10, 0))
+        self._tab_nav = tk.StringVar(value="방송인 홈")
         self._tab_nav_widget = ttk.Combobox(
             navigation, textvariable=self._tab_nav, state="readonly", width=29,
         )
         self._tab_nav_widget.pack(side="left", padx=(8, 0))
-        tabs = ttk.Notebook(main)
+        tabs = ttk.Notebook(main, style="AISTING.TNotebook")
         self._tabs = tabs
         tabs.pack(fill="both", expand=True)
+        studio = ttk.Frame(tabs, padding=8)
+        character_tab = ttk.Frame(tabs, padding=14)
         settings = ttk.Frame(tabs)
         rehearsal = ttk.Frame(tabs, padding=12)
         avatar = ttk.Frame(tabs, padding=12)
@@ -334,7 +342,8 @@ class AistingApp(tk.Tk):
         final_acceptance_tab = ttk.Frame(tabs, padding=12)
         review = ttk.Frame(tabs, padding=12)
         about = ttk.Frame(tabs, padding=12)
-        for tab, label in ((settings, "방송 설정"), (rehearsal, "시청자 채팅 연습"),
+        for tab, label in ((studio, "방송인 홈"), (character_tab, "내 캐릭터"),
+                           (settings, "방송 설정"), (rehearsal, "시청자 채팅 연습"),
                            (voice_test, "무료 한국어 음성"), (avatar, "아바타 미리보기"),
                            (local_operation, "PC 로컬 운영"),
                            (os_review, "OS 확인 준비"),
@@ -436,6 +445,8 @@ class AistingApp(tk.Tk):
         self._tab_nav_widget.bind("<<ComboboxSelected>>", navigate)
         tabs.bind("<<NotebookTabChanged>>", sync_navigation)
         # 설정 항목이 늘어나도 저장 버튼을 화면 아래에서 잘라내지 않도록 스크롤 제공.
+        self._settings_footer = ttk.Frame(settings)
+        self._settings_footer.pack(side="bottom", fill="x")
         settings_canvas = tk.Canvas(settings, highlightthickness=0, borderwidth=0)
         settings_scrollbar = ttk.Scrollbar(settings, orient="vertical", command=settings_canvas.yview)
         settings_scrollbar.pack(side="right", fill="y")
@@ -452,10 +463,11 @@ class AistingApp(tk.Tk):
             lambda event: settings_canvas.itemconfigure(settings_window, width=event.width),
         )
         self._settings_canvas = settings_canvas
-        self._build_settings(settings_body)
+        self._build_settings(settings_body, character_tab)
         self._build_rehearsal(rehearsal)
         self._build_voice(voice_test)
         self._build_avatar(avatar)
+        self._original_studio = OriginalPlanStudio(studio, self)
         self._build_local_operation(local_operation)
         self._build_os_review(os_review)
         self._build_hardware_review(hardware_review)
@@ -558,6 +570,7 @@ class AistingApp(tk.Tk):
                     pass
         self._poll_after_id = None
         self._avatar_after_id = None
+        self._original_studio.close()
         self._speech_cancel.set()
         self._speech_pending.clear()
         self._stop_requested.set()
@@ -566,6 +579,14 @@ class AistingApp(tk.Tk):
             self._speaker.stop()
         finally:
             self.destroy()
+
+    def _goto_page(self, label: str) -> None:
+        for page in self._tabs.tabs():
+            if self._tabs.tab(page, "text") == label:
+                self._tabs.select(page)
+                self._tab_nav.set(label)
+                return
+        raise ValueError("화면 없음: " + label)
 
     def _section(self, parent, title):
         area = ttk.LabelFrame(parent, text=title, padding=11)
@@ -578,7 +599,7 @@ class AistingApp(tk.Tk):
                      state="readonly", width=32).pack(anchor="w", pady=4)
         return variable
 
-    def _build_settings(self, tab) -> None:
+    def _build_settings(self, tab, character_tab=None) -> None:
         box = self._section(tab, "방송 플랫폼 (치지직 · 유튜브 · 트위치 / 복수 선택)")
         self._platforms = {}
         for label, code in PLATFORMS.items():
@@ -594,7 +615,8 @@ class AistingApp(tk.Tk):
         ttk.Label(content_box, text="미선택도 허용 · 언제든 변경·저장 가능 · 선택만으로 방송은 시작되지 않습니다.",
                   wraplength=720).pack(anchor="w")
         self._content.trace_add("write", self._content_changed)
-        character = self._section(tab, "5. AI 방송인 캐릭터 (기본값 / 직접 만들기)")
+        character = self._section(character_tab if character_tab is not None else tab,
+                                  "AI 방송인 캐릭터 · 최초 확정 저장 후 자동 불러오기")
         self._persona_mode = self._choice(character, PERSONA_MODES, self.settings["persona_mode"])
         self._persona = {}
         for key, label in (("name", "이름"), ("style", "말투"), ("character", "성격")):
@@ -620,6 +642,8 @@ class AistingApp(tk.Tk):
         self._persona_preview = tk.StringVar()
         ttk.Label(character, textvariable=self._persona_preview, justify="left",
                   wraplength=715).pack(anchor="w", pady=(5, 0))
+        ttk.Button(character, text="캐릭터 확정·저장",
+                   command=self._save_character_identity).pack(anchor="e", pady=(10, 0))
         self._persona_mode.trace_add("write", self._persona_changed)
         for item in self._persona.values():
             item.bind("<KeyRelease>", self._persona_changed)
@@ -639,7 +663,8 @@ class AistingApp(tk.Tk):
         ttk.Label(voicebox, textvariable=self._voice_source_info, wraplength=340).pack(anchor="w")
         self._voice.trace_add("write", self._voice_source_changed)
         ttk.Label(tab, text="고정 정책: 내 PC 실행 · 비용 0원 · 예약 없음 · 외부 방송 꺼짐").pack(anchor="w", pady=8)
-        ttk.Button(tab, text="설정 PC에 저장", command=self._save).pack(anchor="e")
+        ttk.Button(self._settings_footer, text="방송 설정 저장 (캐릭터 제외)",
+                   command=self._save).pack(side="right", padx=12, pady=8)
 
     def _avatar_changed(self, *_args) -> None:
         """선택만으로 모델을 설치하지 않는다. 3D에는 2D 샘플 캡처 창을 제공하지 않는다."""
@@ -690,9 +715,22 @@ class AistingApp(tk.Tk):
         self._content_preview.set(content_preview(code) if code is not None else "잘못된 콘텐츠 선택")
 
     def _current_persona(self) -> dict[str, str]:
-        """현재 GUI 모드의 실사용 캐릭터. 기본값은 직접 입력을 무시한다."""
-        code = PERSONA_MODES.get(self._persona_mode.get())
-        return chosen_persona(code, {key: entry.get() for key, entry in self._persona.items()})
+        """Only committed persona is used for real AI and live avatar."""
+        return active_persona(self.settings)
+
+    def _save_character_identity(self) -> None:
+        try:
+            mode = PERSONA_MODES[self._persona_mode.get()]
+            draft = {key: entry.get().strip() for key, entry in self._persona.items()}
+            chosen_persona(mode, draft)
+            from .original_plan_persona_store import commit_character_identity
+            updated = commit_character_identity(self.settings, mode, draft)
+        except (OSError, ValueError, KeyError, RuntimeError) as exc:
+            messagebox.showerror("캐릭터 저장 실패", str(exc), parent=self)
+            return
+        self.settings = updated
+        self._original_studio._refresh_persona()
+        self._status.set("캐릭터 확정 저장 완료 · 재실행 시 자동 사용")
 
     def _persona_changed(self, *_args) -> None:
         is_custom = self._persona_mode.get() == "직접 만들기"
@@ -756,19 +794,17 @@ class AistingApp(tk.Tk):
         except (KeyError, ValueError) as exc:
             messagebox.showerror("목소리 설정", str(exc), parent=self)
             return
+        # Ordinary broadcast settings Save never commits draft identity.
+        data["persona_mode"] = self.settings["persona_mode"]
+        data["persona"] = deepcopy(self.settings["persona"])
         try:
-            data["persona_mode"] = PERSONA_MODES[self._persona_mode.get()]
-            # 기본 모드로 돌려도 사용자가 써 둔 직접 제작 초안은 안전하게 보존한다.
-            data["persona"] = {key: item.get().strip() for key, item in self._persona.items()}
-        except KeyError:
-            messagebox.showerror("캐릭터 설정", "올바른 캐릭터 방식을 선택해 주세요.", parent=self)
-            return
-        try:
-            save_settings(data)
-        except (OSError, ValueError) as exc:
+            from .original_plan_persona_store import save_broadcast_without_persona
+            data = save_broadcast_without_persona(self.settings, data)
+        except (OSError, ValueError, RuntimeError) as exc:
             messagebox.showerror("설정 저장 오류", str(exc), parent=self)
             return
         self.settings = data
+        self._original_studio._refresh_persona()
         if hasattr(self, "_notice_status"):
             self._notice_invalidate()
         self._status.set("설정을 내 PC에 저장했어. 방송이나 외부 업로드는 시작되지 않았어.")
