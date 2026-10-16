@@ -280,6 +280,47 @@ def send_to_native_live2d_session(text: str, *, operator_approved: bool = False)
 
 
 
+
+def send_to_native_live2d_session_with_observation(
+        text: str, *, operator_approved: bool = False,
+        duration: float = 8.0) -> "OfficialLipSyncEvidence":
+    """One approved official text turn followed immediately by read-only RMS sampling.
+
+    Existing child pipe dispatches both parts in one request, so observation
+    cannot block the associated prompt. No other AI session or forced audio.
+    """
+    if operator_approved is not True:
+        raise PermissionError('공식 Live2D 실제 질문·입 움직임 확인 승인이 필요합니다.')
+    if not isinstance(text, str) or not 1 <= len(text.strip()) <= 4000:
+        raise FrontendUnavailable('공식 AI 질문은 1~4000글자여야 합니다.')
+    if type(duration) not in (int, float) or not 1 <= duration <= 12:
+        raise ValueError('립싱크 관찰 기간은 1~12초여야 합니다.')
+    child, conn = _native_viewer, _native_bridge
+    if child is None or child.poll() is not None or conn is None:
+        raise FrontendUnavailable('공식 Live2D Windows 창과 연결되어 있지 않습니다.')
+    with _native_send_lock:
+        try:
+            request = {'type': 'user-text-with-lipsync', 'text': text.strip(),
+                       'seconds': float(duration)}
+            conn.send_bytes(json.dumps(request, ensure_ascii=False).encode('utf-8'))
+            if not conn.poll(float(duration) + 9):
+                raise FrontendUnavailable(
+                    '공식 질문·립싱크 검사 응답 시간 초과 · 자동 재시도하지 않습니다.'
+                )
+            reply = json.loads(conn.recv_bytes(4096).decode('utf-8'))
+        except (OSError, EOFError, UnicodeError, ValueError) as exc:
+            raise FrontendUnavailable(
+                '공식 Live2D 질문·립싱크 전달 오류 · 중복 전송 방지를 위해 자동 재시도하지 않습니다.'
+            ) from exc
+    if not isinstance(reply, dict) or reply.get('type') != 'input-with-lipsync-result':
+        raise FrontendUnavailable('공식 Live2D 질문 전송 또는 관찰이 확인되지 않았습니다.')
+    if reply.get('accepted') is not True:
+        raise FrontendUnavailable('공식 Live2D 질문의 실제 WebSocket 전송이 확인되지 않았습니다.')
+    return _parse_official_lipsync_evidence(reply.get('evidence'))
+
+
+
+
 @dataclass(frozen=True)
 class OfficialLipSyncEvidence:
     """Real official WebView2 model observations; never simulated samples."""
@@ -329,6 +370,10 @@ def inspect_native_live2d_lipsync(*, operator_approved: bool = False,
             reply = json.loads(conn.recv_bytes(4096).decode('utf-8'))
         except (EOFError, OSError, ValueError, UnicodeError) as exc:
             raise FrontendUnavailable('Live2D 실시간 관찰 IPC 연결 실패') from exc
+    return _parse_official_lipsync_evidence(reply)
+
+
+def _parse_official_lipsync_evidence(reply: dict) -> OfficialLipSyncEvidence:
     if not isinstance(reply, dict) or reply.get('type') != 'lip-sync-result':
         raise FrontendUnavailable('공식 Live2D 검사 응답 형식이 올바르지 않습니다.')
     try:
@@ -523,6 +568,34 @@ def _official_frontend_input_script(value: str, nonce: str) -> tuple[str, str, s
     return input_script, submit_script, observed_script, cleanup_script
 
 
+def _submit_original_live2d_text(window, value: str) -> bool:
+    """Run official React input handler and observe its real WS text-input send."""
+    accepted = False
+    request_nonce = secrets.token_hex(16)
+    scripts = _official_frontend_input_script(value.strip(), request_nonce)
+    input_script, submit_script, observed_script, cleanup_script = scripts
+    try:
+        input_seen = window.evaluate_js(input_script) is True
+        if input_seen:
+            time.sleep(0.1)
+            handled = window.evaluate_js(submit_script) is True
+            if handled:
+                deadline = time.monotonic() + 6.0
+                while time.monotonic() < deadline:
+                    if window.evaluate_js(observed_script) is True:
+                        accepted = True
+                        break
+                    time.sleep(0.05)
+    except Exception:
+        accepted = False
+    finally:
+        try:
+            window.evaluate_js(cleanup_script)
+        except Exception:
+            pass
+    return accepted
+
+
 def _native_frontend_input_worker(window, address: str | None = None,
                                   auth_hex: str | None = None) -> None:
     """Connect authenticated Windows pipe even in PyInstaller --windowed mode.
@@ -550,37 +623,21 @@ def _native_frontend_input_worker(window, address: str | None = None,
                 conn.send_bytes(json.dumps(result).encode('utf-8'))
                 continue
             accepted = False
-            if isinstance(request, dict) and request.get('type') == 'user-text':
+            if isinstance(request, dict) and request.get('type') in ('user-text', 'user-text-with-lipsync'):
                 value = request.get('text')
                 if isinstance(value, str) and 1 <= len(value.strip()) <= 4000:
-                    request_nonce = secrets.token_hex(16)
-                    scripts = _official_frontend_input_script(
-                        value.strip(), request_nonce
-                    )
-                    input_script, submit_script, observed_script, cleanup_script = scripts
-                    try:
-                        input_seen = window.evaluate_js(input_script) is True
-                        if input_seen:
-                            # The React form updates its controlled text on
-                            # the next browser task; never delay AI replies.
-                            time.sleep(0.1)
-                            handled = window.evaluate_js(submit_script) is True
-                            if handled:
-                                # Official handleSend may await screen/media
-                                # capture before it calls the REAL WS.send.
-                                deadline = time.monotonic() + 6.0
-                                while time.monotonic() < deadline:
-                                    if window.evaluate_js(observed_script) is True:
-                                        accepted = True
-                                        break
-                                    time.sleep(0.05)
-                    except Exception:
-                        accepted = False
-                    finally:
-                        try:
-                            window.evaluate_js(cleanup_script)
-                        except Exception:
-                            pass
+                    accepted = _submit_original_live2d_text(window, value)
+                    if accepted and request.get('type') == 'user-text-with-lipsync':
+                        period = request.get('seconds')
+                        if type(period) not in (int, float) or not 1 <= period <= 12:
+                            conn.send_bytes(b'{"type":"input-with-lipsync-invalid"}')
+                            continue
+                        evidence = _observe_actual_live2d_model(window, float(period))
+                        conn.send_bytes(json.dumps({
+                            'type': 'input-with-lipsync-result', 'accepted': True,
+                            'evidence': evidence,
+                        }).encode('utf-8'))
+                        continue
             conn.send_bytes(json.dumps(
                 {'type': 'input-result', 'accepted': accepted}
             ).encode('utf-8'))
