@@ -7,6 +7,8 @@ status query. Outgoing stream actions require a separate, explicit approval.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import base64
+import binascii
 import os
 from typing import Any
 
@@ -36,6 +38,15 @@ class ActualObsMediaPath:
     capture_sources: tuple[str, ...]
     audio_sources: tuple[str, ...]
     problems: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ActualObsFrame:
+    """An OBS-rendered PNG scene frame. No motion/audio/stream proof."""
+    scene: str
+    width: int
+    height: int
+    png_data: bytes
 
 
 class OfficialObsWebsocket:
@@ -199,6 +210,47 @@ class OfficialObsWebsocket:
             return ActualObsMediaPath(tuple(captures), tuple(audio), tuple(problems))
         except Exception as exc:
             raise ObsConnectionError('OBS 화면 캡처/오디오 경로 상세 읽기 실패') from exc
+
+
+    def read_current_scene_frame(self, *, operator_approved: bool = False) -> ActualObsFrame:
+        """Obtain a REAL current program scene image directly from OBS.
+
+        Read-only GetSourceScreenshot; does not save to disk, change an OBS
+        scene, enable capture sources, record video, or start broadcasting.
+        The operator must approve exposing potentially private desktop pixels
+        inside this local AISTING application for this particular request.
+        """
+        if operator_approved is not True:
+            raise PermissionError('현재 OBS 실제 화면 프레임 검사 승인이 필요합니다.')
+        actual = self.status()
+        if self._client is None:
+            raise ObsConnectionError('실제 OBS에 먼저 연결해야 합니다.')
+        try:
+            result = self._client.get_source_screenshot(
+                actual.scene, 'png', image_width=640, image_height=360
+            )
+            encoded = result.image_data
+            if (not isinstance(encoded, str)
+                    or not encoded.startswith('data:image/png;base64,')
+                    or len(encoded) > 4_000_000):
+                raise ValueError('OBS가 실제 PNG 영상 프레임을 반환하지 않았습니다.')
+            binary = base64.b64decode(
+                encoded[len('data:image/png;base64,'):], validate=True
+            )
+            if len(binary) < 45 or len(binary) > 2_500_000:
+                raise ValueError('OBS 화면 프레임 용량이 유효하지 않습니다.')
+            if (binary[:8] != b'\x89PNG\r\n\x1a\n'
+                    or binary[12:16] != b'IHDR'):
+                raise ValueError('OBS 영상 프레임의 PNG 헤더가 유효하지 않습니다.')
+            width = int.from_bytes(binary[16:20], 'big')
+            height = int.from_bytes(binary[20:24], 'big')
+            if not 1 <= width <= 640 or not 1 <= height <= 360:
+                raise ValueError('OBS 영상 크기가 비정상적입니다.')
+            return ActualObsFrame(actual.scene, width, height, binary)
+        except (OSError, ValueError, TypeError, binascii.Error) as exc:
+            raise ObsConnectionError('실제 OBS PNG 화면 읽기·검증 실패: ' + str(exc)) from exc
+        except Exception as exc:
+            raise ObsConnectionError('실제 OBS에서 화면 프레임을 가져오지 못했습니다.') from exc
 
     def set_scene(self, name: str, *, operator_confirmed: bool = False) -> ActualObsState:
         # Changing the on-air scene is an actual OBS control action. Require
