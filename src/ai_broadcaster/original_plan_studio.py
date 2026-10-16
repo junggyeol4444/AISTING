@@ -593,6 +593,50 @@ class OriginalPlanStudio:
                 daemon=True,
             ).start()
 
+        lip_sync_busy = {"active": False}
+
+        def inspect_actual_lipsync():
+            """Read actual Cubism audio-to-mouth state; no fabricated motion."""
+            if lip_sync_busy["active"]:
+                return
+            if not messagebox.askyesno(
+                "공식 Live2D 실제 립싱크 검증",
+                "이미 실행 중인 공식 Live2D 모델의 실제 WAV 진폭(RMS)과 "
+                "Cubism 입 파라미터 변화를 8초 동안 읽습니다. "
+                "실제 AI가 말하는 동안 실행해야 합니다. "
+                "검사만 수행하며 질문 전송·모델 변경·음성 생성·방송·저장은 하지 않습니다. "
+                "이 실시간 관찰을 승인합니까?",
+                parent=win,
+            ):
+                indicator.set("립싱크 실제 관찰 미승인 · 아무 동작도 하지 않음")
+                return
+            from .original_plan_frontend import inspect_native_live2d_lipsync
+            lip_sync_busy["active"] = True
+            lip_sync_button.configure(state="disabled")
+            indicator.set("공식 Live2D 모델의 실제 RMS·입 움직임을 8초 관찰 중…")
+            def inspection_worker():
+                try:
+                    result = inspect_native_live2d_lipsync(
+                        operator_approved=True, duration=8.0
+                    )
+                except Exception as exc:
+                    self._events.put(("live2d_lipsync_evidence",
+                                      (current_generation, None, str(exc), lip_sync_busy)))
+                else:
+                    self._events.put(("live2d_lipsync_evidence",
+                                      (current_generation, result, None, lip_sync_busy)))
+            threading.Thread(
+                target=inspection_worker, daemon=True,
+                name="aisting-live2d-real-rms-mouth-read",
+            ).start()
+
+        lip_sync_button = ttk.Button(
+            footer, text="실제 Live2D 립싱크 8초 관찰",
+            command=inspect_actual_lipsync,
+        )
+        lip_sync_button.pack(side="right", padx=(0, 9))
+        self._lip_sync_button = lip_sync_button
+
         same_session_button = ttk.Button(
             footer, text="공식 Live2D 창 같은 세션으로 전송",
             command=send_to_same_live2d_session,
@@ -1290,6 +1334,35 @@ class OriginalPlanStudio:
                             self.tts_status.set(message)
                     except tk.TclError:
                         pass
+                    continue
+                if kind == 'live2d_lipsync_evidence':
+                    generation, evidence, failure, busy = connected
+                    busy["active"] = False
+                    if (generation != self._real_ai_generation
+                            or self._real_ai_window is None
+                            or not self._real_ai_window.winfo_exists()):
+                        continue
+                    self._lip_sync_button.configure(state="normal")
+                    if failure is not None:
+                        result = "실제 Live2D 립싱크 검증 불가: " + failure
+                    else:
+                        result = (
+                            "실제 Cubism 캔버스 " + ("확인" if evidence.canvas_seen else "미확인") +
+                            " / 모델 " + ("확인" if evidence.model_seen else "미확인") +
+                            " / 립싱크 파라미터 " + str(evidence.lip_sync_ids) + "개" +
+                            " / 관찰 " + str(evidence.samples) + "회" +
+                            " / 최대 RMS " + str(evidence.peak_rms) +
+                            " / 활성 RMS " + str(evidence.active_rms_samples) + "회" +
+                            " / 입 파라미터 변화폭 " + str(evidence.mouth_range) +
+                            " / 입 변화 횟수 " + str(evidence.changing_mouth_samples) + "회" +
+                            (" · 실제 음성 연동 립싱크 신호 확인"
+                             if evidence.verified_signal else
+                             " · 음성 연동 입 움직임 미확인 (실제 발화 중 재확인 필요)")
+                        )
+                    self._ai_indicator.set(result)
+                    self.real_ai_status.set(
+                        result + " · 실제 영상 시청/OBS 송출 검증은 별도"
+                    )
                     continue
                 if kind == 'live2d_send_result':
                     generation, sent_text, failure = connected
