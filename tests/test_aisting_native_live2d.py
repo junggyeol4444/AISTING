@@ -163,13 +163,28 @@ class NativeLive2DTests(unittest.TestCase):
         with self.assertRaises(viewer.FrontendUnavailable):
             viewer.send_to_native_live2d_session('다시 질문', operator_approved=True)
 
-    def test_frontend_script_uses_original_react_handler(self):
-        injection, submit = viewer._official_frontend_input_script('한국어 "대화"')
+    def test_frontend_script_confirms_actual_official_ws_send(self):
+        injection, submit, observed, cleanup = viewer._official_frontend_input_script(
+            '한국어 "대화"', 'a' * 32
+        )
         self.assertIn("HTMLTextAreaElement.prototype", injection)
         self.assertIn("dispatchEvent(new Event('input'", injection)
+        self.assertIn("WebSocket.prototype.send", injection)
+        self.assertIn("original.apply(this,arguments)", injection)
+        self.assertIn("this.url==='ws://127.0.0.1:12393/client-ws'", injection)
+        self.assertIn("packet.type==='text-input'", injection)
         self.assertIn("KeyboardEvent('keydown'", submit)
         self.assertIn("key.defaultPrevented", submit)
+        self.assertIn("audit.observed===true", observed)
+        self.assertIn("WebSocket.prototype.send=audit.original", cleanup)
         self.assertIn('한국어', injection)
+
+    def test_frontend_script_refuses_bad_nonce_or_empty_question(self):
+        for bad in ("", "x" * 32, "ab" * 16):
+            with self.subTest(nonce=bad), self.assertRaises(ValueError):
+                viewer._official_frontend_input_script("안녕", bad)
+        with self.assertRaises(ValueError):
+            viewer._official_frontend_input_script("", "a" * 32)
 
     def test_native_worker_does_not_use_console_stdin(self):
         from pathlib import Path
@@ -193,7 +208,7 @@ class NativeLive2DTests(unittest.TestCase):
         parent.start()
         fake = MagicMock()
         fake.events.loaded.wait.return_value = True
-        fake.evaluate_js.side_effect = [True, True]
+        fake.evaluate_js.side_effect = [True, True, True, True]
         child = threading.Thread(
             target=viewer._native_frontend_input_worker,
             args=(fake, address, key.hex()), daemon=True,
@@ -206,7 +221,7 @@ class NativeLive2DTests(unittest.TestCase):
         self.assertTrue(viewer.send_to_native_live2d_session(
             '안녕하세요', operator_approved=True
         ))
-        self.assertEqual(fake.evaluate_js.call_count, 2)
+        self.assertEqual(fake.evaluate_js.call_count, 4)
         viewer._native_bridge.close()
         child.join(timeout=2)
         self.assertFalse(child.is_alive())
