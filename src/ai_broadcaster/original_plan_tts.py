@@ -214,14 +214,16 @@ def synthesize_local_gpt_sovits(
     api_url: str = "http://127.0.0.1:9880/tts",
     operator_approved: bool = False,
     rights_confirmed: bool = False,
+    play_to_speaker: bool = False,
     timeout: float = 120.0,
 ) -> ActualGptSovitsSynthesis:
     """Call the ACTUAL GPT-SoVITS inference engine with upstream-compatible args.
 
     A separate one-shot operator confirmation must approve using the local
-    voice material and generating speech. Never upload to a remote host, play
-    sound, create a model, save a WAV, or start a stream. The official
-    Open-LLM-VTuber frontend remains the playback/lip-sync owner.
+    voice material and generating speech. No upload to remote hosts, model
+    training, file writes, or OBS actions. Speaker preview additionally
+    requires explicit opt-in. The official frontend remains the owner of
+    Live2D playback/lip-sync during actual conversation.
     """
     if operator_approved is not True or rights_confirmed is not True:
         raise PermissionError("사용 권리 확인과 이번 실제 음성 합성 승인이 모두 필요합니다.")
@@ -271,12 +273,27 @@ def synthesize_local_gpt_sovits(
         with wave.open(BytesIO(content), "rb") as wav:
             if wav.getnframes() < 1 or wav.getframerate() < 1 or wav.getnchannels() < 1:
                 raise VoiceConfigurationError("합성 WAV에 유효한 소리 프레임이 없습니다.")
-            return ActualGptSovitsSynthesis(
+            report = ActualGptSovitsSynthesis(
                 sample_rate=wav.getframerate(),
                 channels=wav.getnchannels(),
                 frame_count=wav.getnframes(),
                 wav_bytes=len(content),
             )
+        if play_to_speaker is True:
+            # Only an explicitly approved, one-shot Windows speaker preview.
+            # SND_MEMORY plays directly from bounded WAV bytes: no files,
+            # no recording, no broadcasting, and no training side effects.
+            import sys
+            if sys.platform != 'win32':
+                raise VoiceConfigurationError('실제 스피커 재생은 Windows 전용입니다.')
+            try:
+                import winsound
+                winsound.PlaySound(
+                    content, winsound.SND_MEMORY | winsound.SND_NODEFAULT
+                )
+            except (OSError, RuntimeError, ImportError) as exc:
+                raise VoiceConfigurationError('Windows에서 GPT-SoVITS 음성 재생을 완료하지 못했습니다.') from exc
+        return report
     except (OSError, http.client.HTTPException, EOFError, wave.Error) as exc:
         raise VoiceConfigurationError("실제 로컬 GPT-SoVITS 요청 또는 WAV 검사 실패") from exc
     finally:
