@@ -993,6 +993,12 @@ class OriginalPlanStudio:
                         self._real_ai_output.insert('end', value)
                         self._real_ai_output.see('end')
                         self._real_ai_output.configure(state='disabled')
+                    elif progress_kind == 'official_expressions':
+                        self._ai_indicator.set('공식 AI 표정 지시 수신: ' + str(value) +
+                                               ' · 실제 Live2D 움직임 미확인')
+                    elif progress_kind == 'official_lip_sync_samples':
+                        self._ai_indicator.set('공식 AI 립싱크 진폭 ' + str(value) +
+                                               '개 수신 · 실제 아바타 움직임 미확인')
                     elif progress_kind == 'audio_wav':
                         self._ai_indicator.set('실제 AI 응답 수신 중 · 공식 WAV 데이터 수신 (' +
                                                str(value) + '바이트) · 재생 안 함')
@@ -1029,11 +1035,20 @@ class OriginalPlanStudio:
                         )
                         if response.invalid_audio_packets:
                             audio_note += ' · 유효하지 않은 음성 프레임 ' + str(response.invalid_audio_packets) + '개'
+                        avatar_note = (
+                            '공식 표정 지시 ' + str(response.live2d_expression_signals) + '개 · ' +
+                            '립싱크 진폭 샘플 ' + str(response.lip_sync_volume_samples) + '개' +
+                            (' · 신호 형식 오류 ' + str(response.malformed_visual_signals) + '개'
+                             if response.malformed_visual_signals else '') +
+                            ' · Live2D 동작 별도 미검증'
+                        )
                         self.real_ai_status.set('실제 AI 응답 텍스트 수신 · 설정: ' +
                                                 response.config_name +
                                                 ' · 공식 Live2D 초기화 모델: ' + response.model_name +
                                                 ' (' + response.model_url + ')' +
-                                                ' · ' + audio_note + ' · 청취/립싱크/송출 미검증')
+                                                ' · ' + audio_note + ' · ' + avatar_note +
+                                                ' · 공식 브라우저와 데스크톱 AI 세션 분리 가능' +
+                                                ' · 청취/송출 미검증')
                         if self._real_ai_window is not None and self._real_ai_window.winfo_exists():
                             self._ai_indicator.set('같은 서버 세션 ' + str(response.session_number) +
                                                    ' · 대화 ' + str(response.turn_number) + '회 · 소리 재생 안 함')
