@@ -407,7 +407,7 @@ class TestOfficialObsRealFrame(unittest.TestCase):
                          ("AISTING 실제 장면", 1, 1))
         self.assertEqual(got.png_data, self._png_1x1())
         client.get_source_screenshot.assert_called_once_with(
-            "AISTING 실제 장면", "png", image_width=640, image_height=360
+            "AISTING 실제 장면", "png", 640, 360, -1
         )
         self.assertFalse(client.start_stream.called)
         self.assertFalse(client.stop_stream.called)
