@@ -783,7 +783,7 @@ class OriginalPlanStudio:
             window.destroy()
         window.protocol('WM_DELETE_WINDOW', close_window)
         window.title("원본 기획안 3단계 · OBS 실제 연결 확인")
-        window.geometry("700x360")
+        window.geometry("700x440")
         form = ttk.Frame(window, padding=16)
         form.pack(fill="both", expand=True)
         ttk.Label(form, text="실제 OBS WebSocket 접속 확인",
@@ -832,6 +832,14 @@ class OriginalPlanStudio:
                         # Connectivity can succeed when one read-only inventory
                         # endpoint is unavailable. Keep each result distinct.
                         sources = '소스 목록 별도 조회 실패: ' + str(exc)
+                    try:
+                        media = client.read_scene_media_path()
+                        captures = "실제 OBS 캡처 후보: " + ("; ".join(media.capture_sources[:8]) or "없음")
+                        audio_path = "실제 OBS 음량/음소거 조회: " + ("; ".join(media.audio_sources[:8]) or "없음")
+                        problems = "상세 미확인: " + ("; ".join(media.problems[:8]) or "없음")
+                        sources += "\\n" + captures + "\\n" + audio_path + "\\n" + problems
+                    except ObsConnectionError as exc:
+                        sources += "\\n실제 OBS 화면/오디오 경로 상세 조회 실패: " + str(exc)
                     self._events.put(("obs_connected", (current, sources)))
                 except Exception as exc:
                     self._events.put(("obs_error", str(exc)))
