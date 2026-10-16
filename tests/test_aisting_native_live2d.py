@@ -231,17 +231,20 @@ class NativeLive2DTests(unittest.TestCase):
         self.assertIn("window.getLive2DManager", script)
         self.assertIn("model._model.getParameterValueById", script)
         self.assertIn("wav.getRms()", script)
+        self.assertIn("model?._lipsync===true", script)
         self.assertIn("getElementById('canvas')", script)
         self.assertNotIn("new Audio(", script)
         self.assertNotIn(".start(", script)
 
     def test_lipsync_evidence_requires_both_real_audio_and_mouth_motion(self):
         from ai_broadcaster.original_plan_frontend import OfficialLipSyncEvidence
-        good = OfficialLipSyncEvidence(40, True, True, 1, .30, 12, .55, 8)
+        good = OfficialLipSyncEvidence(40, True, True, 1, .30, 12, .55, 8, 12, 5)
         self.assertTrue(good.verified_signal)
         self.assertFalse(OfficialLipSyncEvidence(40, True, True, 1, 0, 0, .55, 8).verified_signal)
         self.assertFalse(OfficialLipSyncEvidence(40, True, True, 1, .3, 12, 0, 0).verified_signal)
-        self.assertFalse(OfficialLipSyncEvidence(40, True, True, 0, .3, 12, .55, 8).verified_signal)
+        self.assertFalse(OfficialLipSyncEvidence(40, True, True, 0, .3, 12, .55, 8, 12, 5).verified_signal)
+        self.assertFalse(OfficialLipSyncEvidence(40, True, True, 1, .3, 12, .55, 8, 0, 0).verified_signal)
+        self.assertFalse(OfficialLipSyncEvidence(40, True, True, 1, .3, 12, .55, 8, 12, 0).verified_signal)
 
     def test_lipsync_inspection_requires_user_consent_and_active_viewer(self):
         with self.assertRaises(PermissionError):
@@ -265,6 +268,8 @@ class NativeLive2DTests(unittest.TestCase):
             'active_rms_samples': 9,
             'mouth_range': 0.31,
             'changing_mouth_samples': 5,
+            'renderer_active_samples': 14,
+            'overlapping_audio_mouth_samples': 5,
         }
         viewer._native_bridge.recv_bytes.return_value = json.dumps(payload).encode()
         report = viewer.inspect_native_live2d_lipsync(
@@ -285,9 +290,9 @@ class NativeLive2DTests(unittest.TestCase):
         import json
         child = MagicMock()
         child.evaluate_js.side_effect = [
-            json.dumps({'canvas': True,'model': True,'ids': 1,'rms': 0,'mouth': 0}),
-            json.dumps({'canvas': True,'model': True,'ids': 1,'rms': .21,'mouth': .15}),
-            json.dumps({'canvas': True,'model': True,'ids': 1,'rms': .43,'mouth': .55}),
+            json.dumps({'canvas': True,'model': True,'ids': 1,'lipsync':True,'rms': 0,'mouth': 0}),
+            json.dumps({'canvas': True,'model': True,'ids': 1,'lipsync':True,'rms': .21,'mouth': .15}),
+            json.dumps({'canvas': True,'model': True,'ids': 1,'lipsync':True,'rms': .43,'mouth': .55}),
         ]
         with patch.object(viewer.time, 'monotonic', side_effect=[0., .1, .2, .3, 1.1]), patch.object(
             viewer.time, 'sleep'
@@ -298,6 +303,23 @@ class NativeLive2DTests(unittest.TestCase):
         self.assertAlmostEqual(report['mouth_range'], .55)
         self.assertEqual(report['changing_mouth_samples'], 2)
         self.assertEqual(report['active_rms_samples'], 2)
+        self.assertEqual(report['renderer_active_samples'], 3)
+        self.assertEqual(report['overlapping_audio_mouth_samples'], 2)
+
+    def test_lipsync_requires_current_renderer_engine_enabled(self):
+        import json
+        from unittest.mock import MagicMock
+        child = MagicMock()
+        child.evaluate_js.side_effect = [
+            json.dumps({'canvas':True,'model':True,'ids':1,'lipsync':False,'rms':.3,'mouth':0}),
+            json.dumps({'canvas':True,'model':True,'ids':1,'lipsync':False,'rms':.5,'mouth':.6}),
+        ]
+        with patch.object(viewer.time,'monotonic',side_effect=[0.,.1,.2,1.1]), patch.object(viewer.time,'sleep'):
+            result=viewer._observe_actual_live2d_model(child,1)
+        self.assertEqual(result['active_rms_samples'],2)
+        self.assertEqual(result['changing_mouth_samples'],1)
+        self.assertEqual(result['renderer_active_samples'],0)
+        self.assertEqual(result['overlapping_audio_mouth_samples'],0)
 
     def test_project_path_sent_to_child(self):
         command = viewer.native_viewer_command(self.project, frozen=True)
