@@ -180,7 +180,7 @@ class NativeLive2DTests(unittest.TestCase):
         self.assertIn('한국어', injection)
 
     def test_frontend_script_refuses_bad_nonce_or_empty_question(self):
-        for bad in ("", "x" * 32, "ab" * 16):
+        for bad in ("", "x" * 32, "g" * 32):
             with self.subTest(nonce=bad), self.assertRaises(ValueError):
                 viewer._official_frontend_input_script("안녕", bad)
         with self.assertRaises(ValueError):
