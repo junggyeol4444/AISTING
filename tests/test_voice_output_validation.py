@@ -175,6 +175,64 @@ class TestActualGptSovitsLocalWav(unittest.TestCase):
             self.assertEqual(query['media_type'], ['wav'])
             self.assertEqual(query['ref_audio_path'], [str(self.reference.resolve())])
 
+    def test_real_gpt_sovits_speaker_preview_uses_windows_audio_memory_only(self):
+        from types import SimpleNamespace
+        from io import BytesIO
+        from unittest.mock import Mock
+        import wave
+        import sys
+        from ai_broadcaster.original_plan_tts import synthesize_local_gpt_sovits
+        buf = BytesIO()
+        with wave.open(buf, 'wb') as out:
+            out.setnchannels(1)
+            out.setsampwidth(2)
+            out.setframerate(22050)
+            out.writeframes(b'\x01\x01' * 100)
+        memory_wav = buf.getvalue()
+        sound = Mock()
+        fake_winsound = SimpleNamespace(
+            SND_MEMORY=4, SND_NODEFAULT=2, PlaySound=sound
+        )
+        with patch('http.client.HTTPConnection') as http, patch.object(
+            sys, 'platform', 'win32'
+        ), patch.dict(sys.modules, {'winsound': fake_winsound}):
+            http.return_value.getresponse.return_value.status = 200
+            http.return_value.getresponse.return_value.read.return_value = memory_wav
+            result = synthesize_local_gpt_sovits(
+                self.reference, '참조 녹음 문장', '안녕하세요.',
+                operator_approved=True, rights_confirmed=True, play_to_speaker=True,
+            )
+        sound.assert_called_once_with(memory_wav, 6)
+        self.assertEqual(result.wav_bytes, len(memory_wav))
+
+    def test_real_gpt_sovits_no_sound_without_preview_permission(self):
+        from io import BytesIO
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        import wave
+        import sys
+        from ai_broadcaster.original_plan_tts import synthesize_local_gpt_sovits
+        buf = BytesIO()
+        with wave.open(buf, 'wb') as out:
+            out.setnchannels(1)
+            out.setsampwidth(2)
+            out.setframerate(16000)
+            out.writeframes(b'\x01\x01' * 10)
+        sound = Mock()
+        fake_winsound = SimpleNamespace(
+            SND_MEMORY=4, SND_NODEFAULT=2, PlaySound=sound
+        )
+        with patch('http.client.HTTPConnection') as http, patch.object(
+            sys, 'platform', 'win32'
+        ), patch.dict(sys.modules, {'winsound': fake_winsound}):
+            http.return_value.getresponse.return_value.status = 200
+            http.return_value.getresponse.return_value.read.return_value = buf.getvalue()
+            synthesize_local_gpt_sovits(
+                self.reference, '참조 문장', '안녕',
+                operator_approved=True, rights_confirmed=True
+            )
+        sound.assert_not_called()
+
     def test_refusal_prevents_any_audio_network_request(self):
         from ai_broadcaster.original_plan_tts import synthesize_local_gpt_sovits
         with patch('http.client.HTTPConnection') as http:
