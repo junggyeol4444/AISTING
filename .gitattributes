@@ -1,0 +1,5 @@
+# Preserve the operator-authored authoritative planning documents byte-for-byte.
+# Their SHA-256 baselines are checked by existing offline acceptance tests.
+# Windows checkout must not silently convert LF to CRLF.
+/docs/ORIGINAL_PLAN.txt -text
+/config/roadmap.json -text
