@@ -818,7 +818,7 @@ class OriginalPlanStudio:
                    command=apply).pack(side="right", padx=(0, 10))
 
     def _open_obs_panel(self) -> None:
-        """Actual OBS WebSocket status query; never trigger outgoing stream."""
+        """Operator-approved OBS status, real frame preview and gated stream control."""
         from .original_plan_obs import OfficialObsWebsocket, ObsConnectionError
         if self._obs_window is not None and self._obs_window.winfo_exists():
             self._obs_window.lift()
@@ -978,6 +978,46 @@ class OriginalPlanStudio:
         )
         stop_btn.pack(side="left")
         self._obs_stream_buttons = (start_btn, stop_btn)
+
+        def inspect_actual_frame():
+            """Request one real PNG image from OBS without changing its output."""
+            if self._obs_check_in_progress:
+                return
+            if not messagebox.askyesno(
+                "실제 OBS 장면 프레임 읽기",
+                "현재 OBS 프로그램 장면의 실제 이미지 1장을 이 AISTING 창에 표시합니다. "
+                "OBS 화면에 개인정보나 다른 프로그램이 있다면 그대로 보일 수 있습니다. "
+                "이미지는 저장하거나 외부로 보내지 않습니다. 진행할까요?",
+                parent=window,
+            ):
+                return
+            try:
+                client = OfficialObsWebsocket(secret.get(), port=int(port.get()))
+            except ValueError as exc:
+                status.set("실제 OBS 이미지 검사 설정 오류: " + str(exc))
+                return
+            self._obs_check_in_progress = True
+            connect_btn.configure(state='disabled')
+            frame_btn.configure(state='disabled')
+            status.set("실제 OBS에서 프로그램 장면 PNG 프레임을 읽는 중…")
+            def frame_worker():
+                try:
+                    client.connect()
+                    frame = client.read_current_scene_frame(operator_approved=True)
+                except Exception as exc:
+                    self._events.put(('obs_frame_error', str(exc)))
+                else:
+                    self._events.put(('obs_frame_received', frame))
+            threading.Thread(
+                target=frame_worker, name='aisting-obs-live-frame-probe', daemon=True,
+            ).start()
+
+        frame_btn = ttk.Button(
+            form, text="OBS 실제 프로그램 화면 1프레임 확인 (읽기 전용)",
+            command=inspect_actual_frame,
+        )
+        frame_btn.pack(anchor="w", pady=(12, 0))
+        self._obs_frame_button = frame_btn
 
     def _read_confirmed_persona_from_disk(self) -> dict[str, str]:
         """Read the latest *persisted* character, never the unsaved GUI draft.
@@ -1324,6 +1364,44 @@ class OriginalPlanStudio:
                             ' / 참조: ' + connected.model_url +
                             ' · 실제 AI 응답·TTS·Live2D 동작은 미검증'
                         )
+                elif kind in ('obs_frame_received', 'obs_frame_error'):
+                    self._obs_check_in_progress = False
+                    if (self._obs_window is not None and self._obs_window.winfo_exists()
+                            and hasattr(self, '_obs_frame_button')):
+                        self._obs_frame_button.configure(state='normal')
+                        self._obs_connect_button.configure(state='normal')
+                        if kind == 'obs_frame_error':
+                            self._obs_panel_status.set('OBS 실제 장면 PNG 검사 실패: ' + str(connected))
+                        else:
+                            import base64
+                            actual_frame = connected
+                            try:
+                                preview = tk.Toplevel(self._obs_window)
+                                preview.title('AISTING | 실제 OBS 현재 프로그램 장면')
+                                preview.geometry('685x440')
+                                photo = tk.PhotoImage(
+                                    master=preview,
+                                    data=base64.b64encode(actual_frame.png_data).decode('ascii'),
+                                    format='png',
+                                )
+                                label = ttk.Label(preview, image=photo)
+                                label.image = photo  # Keep OBS frame in memory for this window.
+                                label.pack(padx=12, pady=12)
+                                ttk.Label(
+                                    preview,
+                                    text='OBS 실제 장면 프레임: ' + actual_frame.scene +
+                                         f' ({actual_frame.width}x{actual_frame.height})' +
+                                         ' · 실시간 움직임/립싱크/오디오/송출 증명 아님',
+                                    wraplength=660,
+                                ).pack(padx=10, pady=(3, 12))
+                                self._obs_panel_status.set(
+                                    'OBS 실제 화면 프레임 수신·표시 · 음성/립싱크는 별도 확인'
+                                )
+                            except tk.TclError as exc:
+                                self._obs_panel_status.set(
+                                    'OBS PNG 수신 후 Windows GUI 렌더링 실패: ' + str(exc)
+                                )
+                    continue
                 elif kind == 'obs_stream_action':
                     self._obs_check_in_progress = False
                     if (self._obs_window is not None and self._obs_window.winfo_exists()
