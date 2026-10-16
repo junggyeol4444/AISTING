@@ -7,6 +7,7 @@ Only a user-approved change to an existing official upstream configuration.
 from __future__ import annotations
 
 from pathlib import Path
+from dataclasses import dataclass
 import re
 from urllib.parse import urlsplit
 
@@ -196,3 +197,87 @@ def apply_official_gpt_sovits(folder: str | Path, reference_audio: Path,
     except (UnicodeError, ValueError, OSError, RuntimeError) as exc:
         raise VoiceConfigurationError(str(exc)) from exc
     return conf, backup
+@dataclass(frozen=True)
+class ActualGptSovitsSynthesis:
+    """Result from real local inference; no speaker output, OBS, or avatar implied."""
+    sample_rate: int
+    channels: int
+    frame_count: int
+    wav_bytes: int
+
+
+def synthesize_local_gpt_sovits(
+    reference_audio: Path,
+    reference_text: str,
+    utterance: str,
+    *,
+    api_url: str = "http://127.0.0.1:9880/tts",
+    operator_approved: bool = False,
+    rights_confirmed: bool = False,
+    timeout: float = 120.0,
+) -> ActualGptSovitsSynthesis:
+    """Call the ACTUAL GPT-SoVITS inference engine with upstream-compatible args.
+
+    A separate one-shot operator confirmation must approve using the local
+    voice material and generating speech. Never upload to a remote host, play
+    sound, create a model, save a WAV, or start a stream. The official
+    Open-LLM-VTuber frontend remains the playback/lip-sync owner.
+    """
+    if operator_approved is not True or rights_confirmed is not True:
+        raise PermissionError("사용 권리 확인과 이번 실제 음성 합성 승인이 모두 필요합니다.")
+    if not isinstance(utterance, str) or not 1 <= len(utterance.strip()) <= 200:
+        raise VoiceConfigurationError("시험 발화는 1~200글자여야 합니다.")
+    if any(ord(ch) < 32 for ch in utterance):
+        raise VoiceConfigurationError("시험 발화에 제어 문자를 사용할 수 없습니다.")
+    if type(timeout) not in (int, float) or not 1 <= timeout <= 180:
+        raise VoiceConfigurationError("실제 합성 제한 시간이 잘못되었습니다.")
+    ref = Path(reference_audio)
+    inspect_reference_audio_container(ref)
+    if not isinstance(reference_text, str) or not 1 <= len(reference_text.strip()) <= 500:
+        raise VoiceConfigurationError("참조 음성의 실제 녹음 문장을 입력해야 합니다.")
+    endpoint = validate_local_gpt_sovits_url(api_url)
+    import http.client
+    from io import BytesIO
+    from urllib.parse import urlencode, urlsplit
+    import wave
+    parts = urlsplit(endpoint)
+    params = {
+        "text": utterance.strip(),
+        "text_lang": "ko",
+        "ref_audio_path": str(ref.resolve(strict=True)),
+        "prompt_lang": "ko",
+        "prompt_text": reference_text.strip(),
+        "text_split_method": "cut5",
+        "batch_size": "1",
+        "media_type": "wav",
+        "streaming_mode": "false",
+    }
+    target = "/tts?" + urlencode(params)
+    conn = http.client.HTTPConnection("127.0.0.1", parts.port, timeout=float(timeout))
+    try:
+        conn.request("GET", target, headers={"Host": "127.0.0.1",
+                                            "Accept": "audio/wav, audio/x-wav, application/octet-stream"})
+        response = conn.getresponse()
+        if response.status != 200:
+            raise VoiceConfigurationError(
+                "GPT-SoVITS 실제 합성 HTTP 상태 오류: " + str(response.status)
+            )
+        # A small test utterance still has bounded, potentially large output.
+        content = response.read(20_000_001)
+        if len(content) > 20_000_000:
+            raise VoiceConfigurationError("합성 음성이 20MB 상한을 초과했습니다.")
+        if len(content) < 44 or content[:4] != b"RIFF" or content[8:12] != b"WAVE":
+            raise VoiceConfigurationError("GPT-SoVITS가 실제 WAV 음성을 반환하지 않았습니다.")
+        with wave.open(BytesIO(content), "rb") as wav:
+            if wav.getnframes() < 1 or wav.getframerate() < 1 or wav.getnchannels() < 1:
+                raise VoiceConfigurationError("합성 WAV에 유효한 소리 프레임이 없습니다.")
+            return ActualGptSovitsSynthesis(
+                sample_rate=wav.getframerate(),
+                channels=wav.getnchannels(),
+                frame_count=wav.getnframes(),
+                wav_bytes=len(content),
+            )
+    except (OSError, http.client.HTTPException, EOFError, wave.Error) as exc:
+        raise VoiceConfigurationError("실제 로컬 GPT-SoVITS 요청 또는 WAV 검사 실패") from exc
+    finally:
+        conn.close()
