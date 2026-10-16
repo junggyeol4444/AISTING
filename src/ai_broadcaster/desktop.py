@@ -127,6 +127,7 @@ from .emotion_expression_review import (
 )
 from .voice_choices import describe_voice_source, preferred_installed_voice
 from .avatar_renderer import AvatarFrame, BACKGROUND_COLORS, draw_avatar, draw_unavailable_3d
+from .avatar_animation import SpeechActivity
 from .avatar_choices import avatar_choice
 from .avatar_display_validation import audit_avatar_display
 from .avatar_expressions import (
@@ -215,6 +216,7 @@ class AistingApp(tk.Tk):
         self._model_name = tk.StringVar()
         # Windows의 기본 음성 합성만 사용하며, 클릭 전 소리/프로세스는 시작하지 않는다.
         self._speaker = WindowsKoreanSpeech()
+        self._speech_activity = SpeechActivity()
         self._speech_busy = False
         self._speech_cancel = threading.Event()
         self._speech_pending: deque[str] = deque()
@@ -1151,6 +1153,9 @@ class AistingApp(tk.Tk):
     def _speech_worker(self, chunks: list[str], voice: KoreanVoice,
                        profile: dict[str, object] | None = None) -> None:
         interrupted = False
+        # The manual voice preview and queued chat answer use this SAME real
+        # Windows audio path. No synthesized/demo audio is inferred here.
+        self._speech_activity.start("desktop_tts")
         try:
             for part in chunks:
                 if self._speech_cancel.is_set():
@@ -1170,6 +1175,10 @@ class AistingApp(tk.Tk):
             self._events.put(("speech_stopped" if self._speech_cancel.is_set() else "speech_error", str(exc)))
         else:
             self._events.put(("speech_stopped" if self._speech_cancel.is_set() or interrupted else "speech_done", None))
+        finally:
+            # Always clear the shared mouth indicator on completion, stop, or
+            # backend failure. The Tk thread only reads this thread-safe state.
+            self._speech_activity.finish("desktop_tts")
 
     def _stop_speech(self) -> None:
         if self._speech_busy:
@@ -1253,7 +1262,8 @@ class AistingApp(tk.Tk):
             name = self._current_persona()["name"]
         except ValueError:
             name = DEFAULTS["persona"]["name"]
-        talking = bool(self._avatar_demo.get() or self._speaker.speaking)
+        talking = bool(self._avatar_demo.get() or self._speech_activity.talking
+                       or self._speaker.speaking)
         # 3D 선택 시 가짜 3D 대신 명시적으로 미구현을 표시한다.
         choice = avatar_choice(AVATARS.get(self._avatar.get()))
         if choice.sample_2d_visible:
