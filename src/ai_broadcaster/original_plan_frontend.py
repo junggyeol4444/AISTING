@@ -279,6 +279,151 @@ def send_to_native_live2d_session(text: str, *, operator_approved: bool = False)
     return True
 
 
+
+@dataclass(frozen=True)
+class OfficialLipSyncEvidence:
+    """Real official WebView2 model observations; never simulated samples."""
+    samples: int
+    model_seen: bool
+    canvas_seen: bool
+    lip_sync_ids: int
+    peak_rms: float
+    active_rms_samples: int
+    mouth_range: float
+    changing_mouth_samples: int
+
+    @property
+    def verified_signal(self) -> bool:
+        # Model/canvas presence alone is NOT audio-driven mouth motion.
+        return (self.model_seen and self.canvas_seen and self.lip_sync_ids > 0
+                and self.peak_rms > 0.01 and self.active_rms_samples > 0
+                and self.mouth_range > 0.02 and self.changing_mouth_samples > 0)
+
+
+def inspect_native_live2d_lipsync(*, operator_approved: bool = False,
+                                   duration: float = 8.0) -> OfficialLipSyncEvidence:
+    """Read actual original Cubism RMS and mouth parameter while the AI speaks.
+
+    Never synthesize, mutate the model, start any audio, send an AI prompt,
+    change OBS, or claim a sound was heard. This needs a running real voice.
+    """
+    if operator_approved is not True:
+        raise PermissionError('실제 Live2D 립싱크 관찰 승인이 필요합니다.')
+    if type(duration) not in (float, int) or not 1 <= duration <= 12:
+        raise ValueError('Live2D 관찰 기간은 1~12초여야 합니다.')
+    child = _native_viewer
+    conn = _native_bridge
+    if child is None or child.poll() is not None or conn is None:
+        raise FrontendUnavailable('현재 공식 Live2D Windows 창이 연결되어 있지 않습니다.')
+    with _native_send_lock:
+        try:
+            conn.send_bytes(json.dumps({
+                'type': 'observe-lipsync', 'seconds': float(duration)
+            }).encode('utf-8'))
+            if not conn.poll(float(duration) + 6):
+                raise FrontendUnavailable('Live2D 실제 입 움직임 검사 결과가 도착하지 않았습니다.')
+            reply = json.loads(conn.recv_bytes(4096).decode('utf-8'))
+        except (EOFError, OSError, ValueError, UnicodeError) as exc:
+            raise FrontendUnavailable('Live2D 실시간 관찰 IPC 연결 실패') from exc
+    if not isinstance(reply, dict) or reply.get('type') != 'lip-sync-result':
+        raise FrontendUnavailable('공식 Live2D 검사 응답 형식이 올바르지 않습니다.')
+    try:
+        vals = tuple(reply[field] for field in (
+            'samples', 'model_seen', 'canvas_seen', 'lip_sync_ids',
+            'peak_rms', 'active_rms_samples', 'mouth_range',
+            'changing_mouth_samples',
+        ))
+        samples, model_seen, canvas_seen, ids, rms, active, mouth, changes = vals
+        if (type(samples) is not int or not 1 <= samples <= 500
+                or type(model_seen) is not bool or type(canvas_seen) is not bool
+                or type(ids) is not int or not 0 <= ids <= 50
+                or type(active) is not int or not 0 <= active <= samples
+                or type(changes) is not int or not 0 <= changes <= samples
+                or type(rms) not in (int, float) or not 0 <= rms <= 10
+                or type(mouth) not in (int, float) or not 0 <= mouth <= 10):
+            raise ValueError('관측값 범위 오류')
+        return OfficialLipSyncEvidence(
+            samples, model_seen, canvas_seen, ids, float(rms), active,
+            float(mouth), changes
+        )
+    except (KeyError, ValueError, TypeError) as exc:
+        raise FrontendUnavailable('공식 Live2D 검사 결과에 유효하지 않은 데이터가 있습니다.') from exc
+
+
+def _official_live2d_probe_script() -> str:
+    """One read-only observation of official Open-LLM-VTuber Cubism internals."""
+    return (
+        "(() => {"
+        "if(location.origin!=='http://127.0.0.1:12393')return null;"
+        "const canvas=document.getElementById('canvas');"
+        "const visible=!!(canvas&&canvas.width>0&&canvas.height>0);"
+        "const manager=window.getLive2DManager?.()||"
+        "window.LAppLive2DManager?.getInstance?.();"
+        "const model=manager?.getModel?.(0);"
+        "const wav=model?._wavFileHandler;"
+        "const ids=model?._lipSyncIds;"
+        "const count=ids?.getSize?.()||0;"
+        "let mouth=null;"
+        "try{if(count>0&&model?._model?.getParameterValueById)"
+        "mouth=model._model.getParameterValueById(ids.at(0));"
+        "}catch(_error){}"
+        "let rms=null;"
+        "try{if(wav?.getRms)rms=wav.getRms();}catch(_error){}"
+        "return JSON.stringify({canvas:visible,model:!!model,ids:count,"
+        "rms:(Number.isFinite(rms)?rms:null),"
+        "mouth:(Number.isFinite(mouth)?mouth:null)});"
+        "})()"
+    )
+
+
+def _observe_actual_live2d_model(window, seconds: float) -> dict:
+    """Sample real renderer state; no generated/sample/placeholder values."""
+    samples = 0
+    model_seen = canvas_seen = False
+    ids = active = changing = 0
+    peak_rms = 0.0
+    low = high = previous = None
+    deadline = time.monotonic() + seconds
+    script = _official_live2d_probe_script()
+    while time.monotonic() < deadline and samples < 500:
+        try:
+            raw = window.evaluate_js(script)
+            item = json.loads(raw) if isinstance(raw, str) else None
+            if isinstance(item, dict):
+                samples += 1
+                model_seen = model_seen or item.get('model') is True
+                canvas_seen = canvas_seen or item.get('canvas') is True
+                count = item.get('ids')
+                if type(count) is int and 0 <= count <= 50:
+                    ids = max(ids, count)
+                rms = item.get('rms')
+                if type(rms) in (int, float) and 0 <= rms <= 10:
+                    peak_rms = max(peak_rms, float(rms))
+                    if rms > 0.01:
+                        active += 1
+                mouth = item.get('mouth')
+                if type(mouth) in (int, float) and -10 <= mouth <= 10:
+                    m = float(mouth)
+                    low = m if low is None else min(low, m)
+                    high = m if high is None else max(high, m)
+                    if previous is not None and abs(m - previous) > 0.01:
+                        changing += 1
+                    previous = m
+        except (ValueError, TypeError, OSError):
+            pass
+        time.sleep(0.08)
+    return {
+        'type': 'lip-sync-result',
+        'samples': samples,
+        'model_seen': model_seen, 'canvas_seen': canvas_seen,
+        'lip_sync_ids': ids,
+        'peak_rms': round(peak_rms, 6),
+        'active_rms_samples': active,
+        'mouth_range': round((high - low) if low is not None else 0.0, 6),
+        'changing_mouth_samples': changing,
+    }
+
+
 def _official_frontend_input_script(value: str, nonce: str) -> tuple[str, str, str, str]:
     """Observe ONLY the official frontend's same-session WS text send.
 
@@ -378,6 +523,14 @@ def _native_frontend_input_worker(window, address: str | None = None,
         while True:
             raw = conn.recv_bytes(24_000)
             request = json.loads(raw.decode('utf-8'))
+            if isinstance(request, dict) and request.get('type') == 'observe-lipsync':
+                period = request.get('seconds')
+                if type(period) not in (int, float) or not 1 <= period <= 12:
+                    conn.send_bytes(b'{"type":"lip-sync-invalid"}')
+                    continue
+                result = _observe_actual_live2d_model(window, float(period))
+                conn.send_bytes(json.dumps(result).encode('utf-8'))
+                continue
             accepted = False
             if isinstance(request, dict) and request.get('type') == 'user-text':
                 value = request.get('text')
