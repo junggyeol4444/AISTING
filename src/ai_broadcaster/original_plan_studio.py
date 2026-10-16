@@ -638,12 +638,13 @@ class OriginalPlanStudio:
         """Real upstream config editor; no network/audio/training on open."""
         from .original_plan_tts import (VoiceConfigurationError,
                                          apply_official_gpt_sovits,
+                                         synthesize_local_gpt_sovits,
                                          inspect_reference_audio_container,
                                          validate_local_gpt_sovits_url)
         window = tk.Toplevel(self.parent)
         window.title("원본 기획안 2단계 · GPT-SoVITS 실제 목소리 연결")
-        window.geometry("720x420")
-        window.minsize(610, 395)
+        window.geometry("720x515")
+        window.minsize(610, 475)
         form = ttk.Frame(window, padding=17)
         form.pack(fill="both", expand=True)
         ttk.Label(form, text="이미 확보한 목소리의 GPT-SoVITS 연결 설정",
@@ -669,6 +670,9 @@ class OriginalPlanStudio:
         ttk.Label(form, text="이미 실행 중인 무료·로컬 GPT-SoVITS API 주소 (설치/접속 안 함)").pack(anchor="w")
         endpoint_var = tk.StringVar(master=window, value="http://127.0.0.1:9880/tts")
         ttk.Entry(form, textvariable=endpoint_var).pack(fill="x", pady=(5, 10))
+        ttk.Label(form, text="실제 한국어 합성 시험 문장 (재생/저장/송출 안 함)").pack(anchor="w")
+        synthesis_text = tk.StringVar(master=window, value="안녕하세요. 반갑습니다.")
+        ttk.Entry(form, textvariable=synthesis_text).pack(fill="x", pady=(5, 6))
         note = tk.StringVar(master=window, value="입력만으로 파일을 수정하지 않습니다.")
         ttk.Label(form, textvariable=note, wraplength=665).pack(anchor="w", pady=(0, 8))
         def apply():
@@ -704,8 +708,63 @@ class OriginalPlanStudio:
                       if backup else "GPT-SoVITS 설정 동일 · 실제 목소리 작동은 미검증")
             note.set(result)
             self.tts_status.set(result)
+        synthesis_busy = {"running": False}
+
+        def test_real_synthesis():
+            if synthesis_busy["running"]:
+                return
+            try:
+                audio_file = Path(path_var.get()).expanduser()
+                if not audio_file.is_file():
+                    raise VoiceConfigurationError("권리가 확보된 실제 WAV/FLAC 참조 음성을 선택하세요.")
+                inspect_reference_audio_container(audio_file)
+                reference_text = prompt_var.get()
+                if not reference_text.strip():
+                    raise VoiceConfigurationError("참조 음성에서 실제 발화된 문장을 입력하세요.")
+                endpoint = validate_local_gpt_sovits_url(endpoint_var.get())
+                sentence = synthesis_text.get().strip()
+                if not 1 <= len(sentence) <= 200:
+                    raise VoiceConfigurationError("시험 문장은 1~200글자로 입력하세요.")
+            except (OSError, VoiceConfigurationError) as exc:
+                note.set("합성 준비 실패: " + str(exc))
+                return
+            if not messagebox.askyesno(
+                "이번 한 번만 실제 한국어 합성 실행",
+                "선택한 참조 음성의 소유/동의/라이선스 권리를 확인했습니까?\\n"
+                "기존 로컬 GPT-SoVITS 서버에 실제 음성 합성 요청을 1회 보냅니다. "
+                "참조 음성 경로와 해당 녹음 문장은 로컬 서버로 전송됩니다. "
+                "모델 학습·설치·소리 재생·파일 저장·OBS 송출은 하지 않습니다.\\n"
+                "요청 주소: " + endpoint + "\\n실행할까요?",
+                parent=window,
+            ):
+                return
+            synthesis_busy["running"] = True
+            synthesis_btn.configure(state="disabled")
+            note.set("로컬 GPT-SoVITS 실제 합성 응답 확인 중… 소리는 재생하지 않습니다.")
+            def synth_worker():
+                try:
+                    result = synthesize_local_gpt_sovits(
+                        audio_file, reference_text, sentence, api_url=endpoint,
+                        operator_approved=True, rights_confirmed=True,
+                    )
+                except Exception as exc:
+                    message = "실제 합성 실패: " + str(exc)
+                else:
+                    message = (
+                        f"실제 한국어 합성 WAV 수신: {result.sample_rate}Hz / "
+                        f"{result.channels}채널 / {result.frame_count}프레임 / "
+                        f"{result.wav_bytes}바이트. 재생·Live2D·OBS는 미검증"
+                    )
+                self._events.put(("gpt_synth_result", (window, note, synthesis_btn,
+                                                        synthesis_busy, message)))
+            threading.Thread(target=synth_worker, daemon=True).start()
+
         footer = ttk.Frame(form)
         footer.pack(fill="x", pady=(6, 0))
+        synthesis_btn = ttk.Button(
+            footer, text="실제 한국어 WAV 합성 확인", command=test_real_synthesis
+        )
+        synthesis_btn.pack(side="left", padx=(0, 8))
         ttk.Button(footer, text="취소 / 닫기", command=window.destroy).pack(side="right")
         ttk.Button(footer, text="공식 설정 백업 후 적용",
                    command=apply).pack(side="right", padx=(0, 10))
@@ -1013,6 +1072,17 @@ class OriginalPlanStudio:
         try:
             while True:
                 kind, connected = self._events.get_nowait()
+                if kind == 'gpt_synth_result':
+                    window, note, button, busy, message = connected
+                    busy["running"] = False
+                    try:
+                        if window.winfo_exists():
+                            button.configure(state="normal")
+                            note.set(message)
+                            self.tts_status.set(message)
+                    except tk.TclError:
+                        pass
+                    continue
                 if kind == 'ai_progress':
                     generation, sent_text, progress_kind, value = connected
                     if generation != self._real_ai_generation or not self._real_ai_busy:
