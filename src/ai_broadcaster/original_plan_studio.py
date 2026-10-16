@@ -447,6 +447,7 @@ class OriginalPlanStudio:
             self._real_ai_generation += 1  # Ignore any late worker results.
             self._real_ai_busy = False
             self._real_ai_output = None
+            self._real_ai_input = None
             self._real_ai_window = None
             win.destroy()
         win.protocol('WM_DELETE_WINDOW', close_chat)
@@ -470,6 +471,7 @@ class OriginalPlanStudio:
         output = tk.Text(frame, height=11, wrap="word", state="disabled")
         output.pack(fill="both", expand=True)
         self._real_ai_output = output
+        self._real_ai_input = input_box
         # Only the Tk main thread mutates widgets. Worker sends actual upstream
         # segments via the existing event queue; generation gates stale events.
         self._real_ai_stream_started = False
@@ -520,6 +522,7 @@ class OriginalPlanStudio:
                 self._real_ai_busy = False
                 return
             send_button.configure(state="disabled")
+            same_session_button.configure(state="disabled")
             indicator.set("공식 AI의 실제 응답을 기다리는 중 · 완료/미완료는 수신 후 표시")
             self.real_ai_status.set("실제 공식 AI에 질문 전송 · 답변 수신 대기")
             def worker():
@@ -538,8 +541,11 @@ class OriginalPlanStudio:
         send_button.pack(side="right")
 
         def send_to_same_live2d_session():
-            """One approved AI turn handled inside the official viewer's own WS."""
+            """One consented AI text message over the official viewer's own WS."""
             from .original_plan_frontend import send_to_native_live2d_session
+            if self._real_ai_busy:
+                indicator.set("현재 실제 AI 전송이 진행 중입니다")
+                return
             message = input_box.get("1.0", "end-1c").strip()
             if not 1 <= len(message) <= 4000:
                 messagebox.showerror("질문 확인", "질문을 1~4000자로 입력하세요.", parent=win)
@@ -552,11 +558,11 @@ class OriginalPlanStudio:
                 return
             if not messagebox.askyesno(
                 "같은 공식 Live2D·TTS 세션으로 실제 질문",
-                "이미 AISTING에서 연 공식 Live2D Windows 창의 대화 입력에 "
-                "질문을 전달합니다. 별도의 AI WebSocket 세션을 만들지 않고 "
-                "공식 창에서 답변·GPT-SoVITS 음성·입모양을 처리하도록 요청합니다. "
-                "공식 설정에 따라 유료/외부 AI 요청이나 음성 합성, 기록이 발생할 수 "
-                "있지만 OBS 송출은 시작하지 않습니다. 이번 질문을 실행합니까?",
+                "이미 AISTING에서 연 공식 Live2D Windows 창이 사용하는 "
+                "기존 WebSocket에 질문을 전송합니다. 별도 AI 세션을 만들지 않습니다. "
+                "공식 설정에 따라 외부/유료 AI 요청, 음성 합성 및 대화 기록이 "
+                "발생할 수 있습니다. OBS 송출은 시작하지 않습니다. "
+                "이번 한 번의 질문 전송을 승인합니까?",
                 parent=win,
             ):
                 indicator.set("운영자 승인 취소 · 요청을 보내지 않았습니다")
@@ -564,26 +570,35 @@ class OriginalPlanStudio:
             try:
                 if self._require_confirmed_persona_for_real_ai() != approved_identity:
                     raise StageOneUnavailable("승인 도중 확정 캐릭터가 변경됐습니다.")
-                send_to_native_live2d_session(message, operator_approved=True)
-            except (RuntimeError, OSError, ValueError, PermissionError) as exc:
-                indicator.set("동일 Live2D 세션 전달 실패 · " + str(exc))
+            except (StageOneUnavailable, ValueError, OSError, KeyError) as exc:
+                indicator.set("전송 차단 · " + str(exc))
                 return
-            input_box.delete("1.0", "end")
-            indicator.set("공식 Live2D 창 입력 전달 요청 · 실제 AI/음성/립싱크 결과는 창에서 확인")
-            self.real_ai_status.set("공식 Live2D 한 세션으로 입력 전달 시도 · 실제 서버 수신/영상/오디오 미검증")
-            output.configure(state="normal")
-            output.insert(
-                "end", "나 [공식 Live2D 창 동일 세션 전달 요청]: " + message +
-                "\\n[실제 응답은 공식 Live2D 창에 표시됩니다. "
-                "전송 수신과 음성·립싱크는 확인되지 않았습니다.]\\n\\n"
-            )
-            output.see("end")
-            output.configure(state="disabled")
+            self._real_ai_busy = True
+            send_button.configure(state="disabled")
+            same_session_button.configure(state="disabled")
+            indicator.set("공식 Live2D 창의 실제 WebSocket 전송 확인 중…")
+            self.real_ai_status.set("공식 Live2D 동일 세션 요청 중 · 아직 전송 미확인")
 
-        ttk.Button(
+            def send_worker():
+                try:
+                    send_to_native_live2d_session(message, operator_approved=True)
+                except Exception as exc:
+                    self._events.put(("live2d_send_result",
+                                      (current_generation, message, str(exc))))
+                else:
+                    self._events.put(("live2d_send_result",
+                                      (current_generation, message, None)))
+            threading.Thread(
+                target=send_worker, name="aisting-official-live2d-real-send",
+                daemon=True,
+            ).start()
+
+        same_session_button = ttk.Button(
             footer, text="공식 Live2D 창 같은 세션으로 전송",
             command=send_to_same_live2d_session,
-        ).pack(side="right", padx=(0, 9))
+        )
+        same_session_button.pack(side="right", padx=(0, 9))
+        self._same_session_button = same_session_button
         self._ai_submit_button = send_button
         self._ai_indicator = indicator
 
@@ -1259,6 +1274,40 @@ class OriginalPlanStudio:
                     except tk.TclError:
                         pass
                     continue
+                if kind == 'live2d_send_result':
+                    generation, sent_text, failure = connected
+                    if generation != self._real_ai_generation:
+                        continue
+                    self._real_ai_busy = False
+                    if (self._real_ai_window is None
+                            or not self._real_ai_window.winfo_exists()
+                            or self._real_ai_output is None):
+                        continue
+                    self._ai_submit_button.configure(state="normal")
+                    self._same_session_button.configure(state="normal")
+                    if failure is not None:
+                        self._ai_indicator.set('공식 Live2D WebSocket 전송 미확인 · ' + failure)
+                        self.real_ai_status.set(
+                            '공식 Live2D 실제 전송 확인 실패 · 중복 가능성을 고려하여 자동 재시도 안 함'
+                        )
+                    else:
+                        # Do not erase new edits made while the relay was running.
+                        current_input = self._real_ai_input.get("1.0", "end-1c").strip()
+                        if current_input == sent_text:
+                            self._real_ai_input.delete("1.0", "end")
+                        self._ai_indicator.set('공식 화면의 기존 WebSocket text-input 실제 전송 확인')
+                        self.real_ai_status.set(
+                            '공식 Live2D 동일 세션 WebSocket 질문 전송 확인 · '
+                            '실제 AI 응답/GPT-SoVITS 음성/립싱크/OBS는 별도 미검증'
+                        )
+                        self._real_ai_output.configure(state="normal")
+                        self._real_ai_output.insert(
+                            "end", "나 [공식 Live2D WebSocket 전송 확인]: " + sent_text +
+                            "\n[서버 처리 및 음성·립싱크 결과는 공식 Live2D 창에서 확인]\n\n"
+                        )
+                        self._real_ai_output.see("end")
+                        self._real_ai_output.configure(state="disabled")
+                    continue
                 if kind == 'ai_progress':
                     generation, sent_text, progress_kind, value = connected
                     if generation != self._real_ai_generation or not self._real_ai_busy:
@@ -1292,6 +1341,7 @@ class OriginalPlanStudio:
                     self._real_ai_busy = False
                     if self._real_ai_window is not None and self._real_ai_window.winfo_exists():
                         self._ai_submit_button.configure(state="normal")
+                        self._same_session_button.configure(state="normal")
                     if kind == 'ai_error':
                         if self._real_ai_output is not None and self._real_ai_window is not None and self._real_ai_window.winfo_exists():
                             self._real_ai_output.configure(state='normal')
