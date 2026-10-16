@@ -706,8 +706,8 @@ class OriginalPlanStudio:
                                          validate_local_gpt_sovits_url)
         window = tk.Toplevel(self.parent)
         window.title("원본 기획안 2단계 · GPT-SoVITS 실제 목소리 연결")
-        window.geometry("720x515")
-        window.minsize(610, 475)
+        window.geometry("790x545")
+        window.minsize(660, 500)
         form = ttk.Frame(window, padding=17)
         form.pack(fill="both", expand=True)
         ttk.Label(form, text="이미 확보한 목소리의 GPT-SoVITS 연결 설정",
@@ -733,7 +733,7 @@ class OriginalPlanStudio:
         ttk.Label(form, text="이미 실행 중인 무료·로컬 GPT-SoVITS API 주소 (설치/접속 안 함)").pack(anchor="w")
         endpoint_var = tk.StringVar(master=window, value="http://127.0.0.1:9880/tts")
         ttk.Entry(form, textvariable=endpoint_var).pack(fill="x", pady=(5, 10))
-        ttk.Label(form, text="실제 한국어 합성 시험 문장 (재생/저장/송출 안 함)").pack(anchor="w")
+        ttk.Label(form, text="실제 한국어 합성 시험 문장 (WAV 검사 또는 별도 승인 후 스피커 재생)").pack(anchor="w")
         synthesis_text = tk.StringVar(master=window, value="안녕하세요. 반갑습니다.")
         ttk.Entry(form, textvariable=synthesis_text).pack(fill="x", pady=(5, 6))
         note = tk.StringVar(master=window, value="입력만으로 파일을 수정하지 않습니다.")
@@ -773,7 +773,7 @@ class OriginalPlanStudio:
             self.tts_status.set(result)
         synthesis_busy = {"running": False}
 
-        def test_real_synthesis():
+        def test_real_synthesis(*, speaker_preview: bool = False):
             if synthesis_busy["running"]:
                 return
             try:
@@ -796,19 +796,26 @@ class OriginalPlanStudio:
                 "선택한 참조 음성의 소유/동의/라이선스 권리를 확인했습니까?\\n"
                 "기존 로컬 GPT-SoVITS 서버에 실제 음성 합성 요청을 1회 보냅니다. "
                 "참조 음성 경로와 해당 녹음 문장은 로컬 서버로 전송됩니다. "
-                "모델 학습·설치·소리 재생·파일 저장·OBS 송출은 하지 않습니다.\\n"
-                "요청 주소: " + endpoint + "\\n실행할까요?",
+                "모델 학습·설치·파일 저장·OBS 송출은 하지 않습니다.\\n"
+                + ("이번 실제 합성 WAV를 Windows 스피커로 1회 재생합니다. "
+                   "재생 후에도 실제 청취 여부는 사용자가 확인해야 합니다.\\n"
+                   if speaker_preview else "이번에는 소리를 재생하지 않습니다.\\n")
+                + "요청 주소: " + endpoint + "\\n실행할까요?",
                 parent=window,
             ):
                 return
             synthesis_busy["running"] = True
             synthesis_btn.configure(state="disabled")
-            note.set("로컬 GPT-SoVITS 실제 합성 응답 확인 중… 소리는 재생하지 않습니다.")
+            speaker_btn.configure(state="disabled")
+            note.set("로컬 GPT-SoVITS 실제 음성 합성 중… " +
+                     ("승인된 Windows 스피커 재생도 수행합니다." if speaker_preview
+                      else "스피커 재생은 하지 않습니다."))
             def synth_worker():
                 try:
                     result = synthesize_local_gpt_sovits(
                         audio_file, reference_text, sentence, api_url=endpoint,
                         operator_approved=True, rights_confirmed=True,
+                        play_to_speaker=speaker_preview,
                     )
                 except Exception as exc:
                     message = "실제 합성 실패: " + str(exc)
@@ -816,10 +823,14 @@ class OriginalPlanStudio:
                     message = (
                         f"실제 한국어 합성 WAV 수신: {result.sample_rate}Hz / "
                         f"{result.channels}채널 / {result.frame_count}프레임 / "
-                        f"{result.wav_bytes}바이트. 재생·Live2D·OBS는 미검증"
+                        f"{result.wav_bytes}바이트. " +
+                        ("Windows 오디오 재생 API 호출 완료 · 실제 청취는 운영자 확인 필요"
+                         if speaker_preview else "스피커 재생하지 않음") +
+                        " · 공식 Live2D/OBS 전달은 미검증"
                     )
-                self._events.put(("gpt_synth_result", (window, note, synthesis_btn,
-                                                        synthesis_busy, message)))
+                self._events.put(("gpt_synth_result",
+                                  (window, note, (synthesis_btn, speaker_btn),
+                                   synthesis_busy, message)))
             threading.Thread(target=synth_worker, daemon=True).start()
 
         footer = ttk.Frame(form)
@@ -828,6 +839,11 @@ class OriginalPlanStudio:
             footer, text="실제 한국어 WAV 합성 확인", command=test_real_synthesis
         )
         synthesis_btn.pack(side="left", padx=(0, 8))
+        speaker_btn = ttk.Button(
+            footer, text="승인 후 실제 목소리 듣기",
+            command=lambda: test_real_synthesis(speaker_preview=True),
+        )
+        speaker_btn.pack(side="left", padx=(0, 8))
         ttk.Button(footer, text="취소 / 닫기", command=window.destroy).pack(side="right")
         ttk.Button(footer, text="공식 설정 백업 후 적용",
                    command=apply).pack(side="right", padx=(0, 10))
@@ -1264,11 +1280,12 @@ class OriginalPlanStudio:
             while True:
                 kind, connected = self._events.get_nowait()
                 if kind == 'gpt_synth_result':
-                    window, note, button, busy, message = connected
+                    window, note, buttons, busy, message = connected
                     busy["running"] = False
                     try:
                         if window.winfo_exists():
-                            button.configure(state="normal")
+                            for button in buttons:
+                                button.configure(state="normal")
                             note.set(message)
                             self.tts_status.set(message)
                     except tk.TclError:
