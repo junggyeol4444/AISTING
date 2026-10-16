@@ -1391,15 +1391,29 @@ class OriginalPlanStudio:
                         current_input = self._real_ai_input.get("1.0", "end-1c").strip()
                         if current_input == sent_text:
                             self._real_ai_input.delete("1.0", "end")
-                        self._ai_indicator.set('공식 화면의 기존 WebSocket text-input 실제 전송 확인')
+                        lip_state = (
+                            '실제 Cubism RMS·입 변화 동시 관찰'
+                            if evidence is not None and evidence.verified_signal
+                            else '실제 음성 연동 입 움직임 미확인'
+                        )
+                        details = (
+                            ' / RMS ' + str(evidence.peak_rms) +
+                            ' / 입 변화폭 ' + str(evidence.mouth_range) +
+                            ' / 동시 관찰 ' +
+                            str(evidence.overlapping_audio_mouth_samples) + '회'
+                            if evidence is not None else ''
+                        )
+                        self._ai_indicator.set('기존 WebSocket 실제 질문 전송 확인 · ' + lip_state)
                         self.real_ai_status.set(
-                            '공식 Live2D 동일 세션 WebSocket 질문 전송 확인 · '
-                            '실제 AI 응답/GPT-SoVITS 음성/립싱크/OBS는 별도 미검증'
+                            '공식 Live2D 동일 세션 WebSocket 실제 질문 전송 확인 · ' +
+                            lip_state + details +
+                            ' · 실제 청취 및 OBS 송출 검증은 별도'
                         )
                         self._real_ai_output.configure(state="normal")
                         self._real_ai_output.insert(
                             "end", "나 [공식 Live2D WebSocket 전송 확인]: " + sent_text +
-                            "\n[서버 처리 및 음성·립싱크 결과는 공식 Live2D 창에서 확인]\n\n"
+                            "\n[" + lip_state + details +
+                            " · 실제 음성 청취 및 OBS는 미검증]\n\n"
                         )
                         self._real_ai_output.see("end")
                         self._real_ai_output.configure(state="disabled")
