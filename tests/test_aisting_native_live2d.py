@@ -12,6 +12,10 @@ from ai_broadcaster import original_plan_frontend as viewer
 
 class NativeLive2DTests(unittest.TestCase):
     def setUp(self):
+        viewer._native_viewer = None
+        viewer._native_viewer_project = None
+        viewer._native_bridge = None
+        viewer._native_listener = None
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.project = Path(temporary.name)
@@ -50,19 +54,29 @@ class NativeLive2DTests(unittest.TestCase):
                 viewer.open_prechecked_frontend(self.good, operator_approved=True)
 
     def test_same_application_child_not_external_browser(self):
-        with patch.object(viewer, "inspect_installed_official_frontend", return_value=self.index), patch.object(viewer.sys, "platform", "win32"), patch.object(
-            viewer.importlib.util, "find_spec", return_value=object()
-        ), patch.object(
+        from unittest.mock import MagicMock
+        listener = MagicMock()
+        address = r'\\.\pipe\aisting-live2d-' + 'a' * 32
+        key = bytes.fromhex('22' * 32)
+        with patch.object(viewer, "inspect_installed_official_frontend",
+                          return_value=self.index), patch.object(
+            viewer.sys, "platform", "win32"
+        ), patch.object(viewer.importlib.util, "find_spec",
+                       return_value=object()), patch.object(
             viewer, "native_viewer_command",
             return_value=["AISTING.exe", "--aisting-live2d-viewer", str(self.project)]
+        ), patch.object(
+            viewer, "_create_native_bridge", return_value=(listener, address, key)
+        ), patch.object(
+            viewer.threading, "Thread"
         ), patch.object(
             viewer.subprocess, "Popen", return_value=types.SimpleNamespace(pid=21)
         ) as popen:
             self.assertTrue(viewer.open_prechecked_frontend(self.good, operator_approved=True))
             popen.assert_called_once_with(
-                ["AISTING.exe", "--aisting-live2d-viewer", str(self.project)],
-                close_fds=True, stdin=viewer.subprocess.PIPE, text=True,
-                encoding="utf-8", bufsize=1)
+                ["AISTING.exe", "--aisting-live2d-viewer", str(self.project),
+                 "--aisting-ipc", address, key.hex()],
+                close_fds=True, stdin=viewer.subprocess.DEVNULL)
 
     def test_child_requires_approval(self):
         with self.assertRaises(PermissionError):
@@ -83,7 +97,7 @@ class NativeLive2DTests(unittest.TestCase):
             self.assertEqual(create.call_args.args[1], viewer.OFFICIAL_URL)
             start.assert_called_once_with(
                 func=viewer._native_frontend_input_worker,
-                args=(create.return_value,),
+                args=(create.return_value, None, None),
                 gui="edgechromium", debug=False, private_mode=True)
 
 
@@ -118,6 +132,50 @@ class NativeLive2DTests(unittest.TestCase):
             response.read.return_value = b"<html>not official</html>"
             with self.assertRaises(viewer.FrontendUnavailable):
                 viewer.probe_official_frontend(self.project, operator_approved=True)
+
+    def test_same_session_refuses_without_explicit_approval(self):
+        with self.assertRaises(PermissionError):
+            viewer.send_to_native_live2d_session('안녕하세요')
+
+    def test_same_session_refuses_without_authenticated_bridge(self):
+        viewer._native_viewer = types.SimpleNamespace(poll=lambda: None)
+        viewer._native_bridge = None
+        with self.assertRaises(viewer.FrontendUnavailable):
+            viewer.send_to_native_live2d_session('안녕하세요', operator_approved=True)
+
+    def test_native_relay_reports_only_acknowledged_ui_input(self):
+        import json
+        from unittest.mock import MagicMock
+        viewer._native_viewer = types.SimpleNamespace(poll=lambda: None)
+        viewer._native_bridge = MagicMock()
+        viewer._native_bridge.poll.return_value = True
+        viewer._native_bridge.recv_bytes.return_value = (
+            b'{"type":"input-result","accepted":true}'
+        )
+        self.assertTrue(viewer.send_to_native_live2d_session(
+            '안녕하세요', operator_approved=True
+        ))
+        sent = json.loads(viewer._native_bridge.send_bytes.call_args.args[0])
+        self.assertEqual(sent, {'type':'user-text','text':'안녕하세요'})
+        viewer._native_bridge.recv_bytes.return_value = (
+            b'{"type":"input-result","accepted":false}'
+        )
+        with self.assertRaises(viewer.FrontendUnavailable):
+            viewer.send_to_native_live2d_session('다시 질문', operator_approved=True)
+
+    def test_frontend_script_uses_original_react_handler(self):
+        injection, submit = viewer._official_frontend_input_script('한국어 "대화"')
+        self.assertIn("HTMLTextAreaElement.prototype", injection)
+        self.assertIn("dispatchEvent(new Event('input'", injection)
+        self.assertIn("KeyboardEvent('keydown'", submit)
+        self.assertIn("key.defaultPrevented", submit)
+        self.assertIn('한국어', injection)
+
+    def test_native_worker_does_not_use_console_stdin(self):
+        from pathlib import Path
+        source = Path(viewer.__file__).read_text(encoding='utf-8')
+        self.assertIn("Client(address, family='AF_PIPE'", source)
+        self.assertNotIn("sys.stdin.buffer", source)
 
     def test_project_path_sent_to_child(self):
         command = viewer.native_viewer_command(self.project, frozen=True)
