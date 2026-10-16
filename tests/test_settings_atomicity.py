@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from ai_broadcaster.offline_settings import DEFAULTS, load_settings, save_settings
+from ai_broadcaster.original_plan_persona_store import commit_character_identity
 
 
 class SettingsAtomicityTests(unittest.TestCase):
@@ -38,7 +39,11 @@ class SettingsAtomicityTests(unittest.TestCase):
                 save_settings(new, self.path)
         self.assertEqual(self.path.read_bytes(), before)
         self.assertEqual(load_settings(self.path), self.config)
-        self.assertEqual(sorted(p.name for p in self.path.parent.iterdir()), ["settings.json"])
+        self.assertFalse(list(self.path.parent.glob("*.tmp")))
+        self.assertTrue((self.path.parent / ".settings.json.aisting-write.lock").is_file())
+        backups = list(self.path.parent.glob("settings.json.before-broadcast-*.bak"))
+        self.assertEqual(len(backups), 1)
+        self.assertEqual(backups[0].read_bytes(), before)
 
     def test_existing_legacy_tmp_symlink_target_untouched(self):
         self.path.parent.mkdir(parents=True)
@@ -59,6 +64,12 @@ class SettingsAtomicityTests(unittest.TestCase):
         self.config["persona_mode"] = "custom"
         self.config["persona"]["name"] = "테스트"
         save_settings(self.config, self.path)
+        draft_safe = load_settings(self.path)
+        self.assertEqual(draft_safe["persona"], DEFAULTS["persona"])
+        commit_character_identity(draft_safe, self.config["persona_mode"],
+                                  self.config["persona"], path=self.path)
         self.assertEqual(json.loads(self.path.read_text(encoding="utf-8")), self.config)
         self.assertEqual(load_settings(self.path), self.config)
-        self.assertEqual(sorted(p.name for p in self.path.parent.iterdir()), ["settings.json"])
+        self.assertFalse(list(self.path.parent.glob("*.tmp")))
+        self.assertTrue((self.path.parent / ".settings.json.aisting-write.lock").is_file())
+        self.assertEqual(len(list(self.path.parent.glob("settings.json.before-character-*.bak"))), 1)

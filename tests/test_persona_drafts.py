@@ -18,6 +18,7 @@ from ai_broadcaster.persona_drafts import (
 )
 from ai_broadcaster.persona_modes import chosen_persona
 from ai_broadcaster.offline_settings import DEFAULTS, load_settings, save_settings
+from ai_broadcaster.original_plan_persona_store import commit_character_identity
 from ai_broadcaster.offline_chat import LocalOllamaGenerator, ChatMessage
 from ai_broadcaster.requirements import load_json, status, validate
 
@@ -92,6 +93,9 @@ class TestPersonaDrafts(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'settings.json'
             save_settings(data, path)
+            unconfirmed = load_settings(path)
+            self.assertEqual(unconfirmed['persona'], DEFAULTS['persona'])
+            commit_character_identity(unconfirmed, data['persona_mode'], data['persona'], path=path)
             read = load_settings(path)
             self.assertEqual(read, data)
             self.assertEqual(set(read), set(DEFAULTS))

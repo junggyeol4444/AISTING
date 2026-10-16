@@ -16,6 +16,7 @@ from ai_broadcaster.offline_chat import (
     MockReplyGenerator, parse_script,
 )
 from ai_broadcaster.offline_settings import DEFAULTS, load_settings, save_settings, validate_settings
+from ai_broadcaster.original_plan_persona_store import commit_character_identity
 
 
 class DummyGenerator:
@@ -174,6 +175,11 @@ class TestOfflineSettings(unittest.TestCase):
             val['platforms']=['chzzk','youtube']
             val['persona']['name']='시험'
             save_settings(val,p)
+            saved = load_settings(p)
+            self.assertEqual(saved['platforms'], ['chzzk','youtube'])
+            self.assertEqual(saved['persona'], DEFAULTS['persona'])  # Draft stays unconfirmed.
+            val['persona_mode'] = 'custom'
+            commit_character_identity(saved, val['persona_mode'], val['persona'], path=p)
             self.assertEqual(load_settings(p),val)
             self.assertEqual(json.loads(p.read_text(encoding='utf-8'))['budget'],'free_only')
 

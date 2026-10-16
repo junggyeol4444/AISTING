@@ -18,6 +18,7 @@ from ai_broadcaster.offline_settings import (
     validate_settings,
 )
 from ai_broadcaster.offline_chat import ChatMessage, LocalOllamaGenerator, MockReplyGenerator
+from ai_broadcaster.original_plan_persona_store import commit_character_identity
 from ai_broadcaster.persona_modes import (
     chosen_persona, persona_guidance, validate_persona_fields,
 )
@@ -75,6 +76,8 @@ class TestPersonaSelection(unittest.TestCase):
                 for mode in ('custom', 'default', 'custom'):
                     data['persona_mode'] = mode
                     save_settings(data, file)
+                    before = load_settings(file)
+                    commit_character_identity(before, mode, data['persona'], path=file)
                     saved = load_settings(file)
                     self.assertEqual(saved['persona_mode'], mode)
                     self.assertEqual(saved['persona']['name'], '은하')

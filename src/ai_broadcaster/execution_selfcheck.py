@@ -16,6 +16,7 @@ from .development_review import load_review_sources
 from .local_runtime import local_operation_plan
 from .offline_chat import ChatRehearsal, LocalMemory, MockReplyGenerator
 from .offline_settings import DEFAULTS, VOICES, validate_settings, load_settings, save_settings
+from .original_plan_persona_store import commit_character_identity
 from .requirements import validate as validate_requirements
 
 
@@ -103,9 +104,16 @@ def _temporary_settings(base: Path) -> str:
     sample["persona"]["name"] = "샘플"
     path = base / "sample" / "settings.json"
     save_settings(sample, path)
+    precommit = load_settings(path)
+    if (precommit["persona_mode"] != DEFAULTS["persona_mode"]
+            or precommit["persona"] != DEFAULTS["persona"]):
+        raise AssertionError("일반 저장이 미확정 캐릭터 초안을 확정했습니다.")
+    if any(precommit[k] != sample[k] for k in sample if k not in ("persona_mode", "persona")):
+        raise AssertionError("방송 설정 저장·재읽기 불일치")
+    commit_character_identity(precommit, sample["persona_mode"], sample["persona"], path=path)
     if load_settings(path) != sample:
-        raise AssertionError("임시 설정 저장·재읽기 불일치")
-    return "임시 설정 저장·불러오기와 사용자 선택값 유지 확인"
+        raise AssertionError("확정 캐릭터 저장·재읽기 불일치")
+    return "방송 설정과 별도 확정 캐릭터 저장·재읽기 확인"
 
 
 def _mock_chat_fifo() -> str:

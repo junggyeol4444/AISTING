@@ -67,7 +67,7 @@ class TestAvatarChoice(unittest.TestCase):
                 save_settings(value,p)
                 restored=load_settings(p)
                 self.assertEqual(restored['avatar'],code)
-                self.assertEqual(restored['persona']['name'],'수정 캐릭터')
+                self.assertEqual(restored['persona'],DEFAULTS['persona'])  # Unsaved editor input.
                 self.assertFalse(restored['streaming_enabled'])
                 self.assertFalse(restored['external_publish_enabled'])
             network.assert_not_called()

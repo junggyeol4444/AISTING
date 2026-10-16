@@ -170,8 +170,8 @@ class TestStageTenDevelopmentReview(unittest.TestCase):
 
     def test_windows_exe_packaging_includes_required_local_files(self):
         batch=(ROOT/"build_exe_windows.bat").read_text(encoding="utf-8")
-        self.assertIn('--add-data "config;config"',batch)
-        self.assertIn('--add-data "docs;docs"',batch)
+        self.assertIn('--add-data "%CD%\config;config"',batch)
+        self.assertIn('--add-data "%CD%\docs;docs"',batch)
         self.assertNotIn('git clone',batch.lower())
         self.assertNotIn('pip install',batch.lower())
 
