@@ -126,3 +126,80 @@ class TestVoiceOutputRehearsal(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestActualGptSovitsLocalWav(unittest.TestCase):
+    """Regression coverage for a real local HTTP request; not real model output."""
+
+    def setUp(self):
+        import tempfile
+        import wave
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.reference = Path(self.tmp.name) / 'authorized-reference.wav'
+        with wave.open(str(self.reference), 'wb') as voice:
+            voice.setnchannels(1)
+            voice.setsampwidth(2)
+            voice.setframerate(16000)
+            voice.writeframes(b'\x00\x00' * 200)
+
+    def test_local_real_tts_get_sends_korean_and_parses_wav(self):
+        import wave
+        from io import BytesIO
+        from urllib.parse import urlsplit, parse_qs
+        from ai_broadcaster.original_plan_tts import synthesize_local_gpt_sovits
+        buf = BytesIO()
+        with wave.open(buf, 'wb') as voice:
+            voice.setnchannels(1)
+            voice.setsampwidth(2)
+            voice.setframerate(22050)
+            voice.writeframes(b'\x00\x00' * 100)
+        with patch('http.client.HTTPConnection') as http:
+            conn = http.return_value
+            conn.getresponse.return_value.status = 200
+            conn.getresponse.return_value.read.return_value = buf.getvalue()
+            actual = synthesize_local_gpt_sovits(
+                self.reference, '참조 녹음 문장', '안녕하세요.',
+                operator_approved=True, rights_confirmed=True,
+            )
+            self.assertEqual((actual.sample_rate, actual.channels, actual.frame_count),
+                             (22050, 1, 100))
+            self.assertEqual(http.call_args.args[:2], ('127.0.0.1', 9880))
+            method, endpoint = conn.request.call_args.args[:2]
+            self.assertEqual(method, 'GET')
+            query = parse_qs(urlsplit(endpoint).query)
+            self.assertEqual(query['text_lang'], ['ko'])
+            self.assertEqual(query['prompt_lang'], ['ko'])
+            self.assertEqual(query['text'], ['안녕하세요.'])
+            self.assertEqual(query['prompt_text'], ['참조 녹음 문장'])
+            self.assertEqual(query['media_type'], ['wav'])
+            self.assertEqual(query['ref_audio_path'], [str(self.reference.resolve())])
+
+    def test_refusal_prevents_any_audio_network_request(self):
+        from ai_broadcaster.original_plan_tts import synthesize_local_gpt_sovits
+        with patch('http.client.HTTPConnection') as http:
+            with self.assertRaises(PermissionError):
+                synthesize_local_gpt_sovits(
+                    self.reference, '참조 문장', '안녕',
+                    operator_approved=False, rights_confirmed=True,
+                )
+            with self.assertRaises(PermissionError):
+                synthesize_local_gpt_sovits(
+                    self.reference, '참조 문장', '안녕',
+                    operator_approved=True, rights_confirmed=False,
+                )
+            http.assert_not_called()
+
+    def test_remote_tts_domain_rejected_before_request(self):
+        from ai_broadcaster.original_plan_tts import (
+            VoiceConfigurationError, synthesize_local_gpt_sovits,
+        )
+        with patch('http.client.HTTPConnection') as http:
+            with self.assertRaises(VoiceConfigurationError):
+                synthesize_local_gpt_sovits(
+                    self.reference, '참조 문장', '안녕',
+                    api_url='http://remote.example:9880/tts',
+                    operator_approved=True, rights_confirmed=True,
+                )
+            http.assert_not_called()
+
