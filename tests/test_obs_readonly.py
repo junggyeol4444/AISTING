@@ -358,3 +358,67 @@ class TestObsSceneInspection(unittest.TestCase):
         self.assertIn('scene_name=scene_name',ui)
         self.assertIn("avatar_capture_diagnostic(item)",ui)
         self.assertNotIn('command=self._set_scene',ui)
+
+class TestOfficialObsRealFrame(unittest.TestCase):
+    """Tests the real OBS connector request, not physical video playback."""
+
+    @staticmethod
+    def _png_1x1():
+        import zlib
+        def chunk(tag, data):
+            return (struct.pack(">I", len(data)) + tag + data
+                    + struct.pack(">I", zlib.crc32(tag + data) & 0xffffffff))
+        pixel = b"\x00\xff\x00\x00\xff"  # Filter 0, opaque red RGBA
+        return (b"\x89PNG\r\n\x1a\n"
+                + chunk(b"IHDR", struct.pack(">IIBBBBB", 1, 1, 8, 6, 0, 0, 0))
+                + chunk(b"IDAT", zlib.compress(pixel))
+                + chunk(b"IEND", b""))
+
+    def _connected(self, image_data):
+        from types import SimpleNamespace
+        from ai_broadcaster.original_plan_obs import OfficialObsWebsocket
+        from unittest.mock import Mock
+        obs = OfficialObsWebsocket("test-only")
+        actual_client = Mock()
+        actual_client.get_version.return_value = SimpleNamespace(obs_version="31.0")
+        actual_client.get_current_program_scene.return_value = (
+            SimpleNamespace(current_program_scene_name="AISTING 실제 장면")
+        )
+        actual_client.get_stream_status.return_value = SimpleNamespace(output_active=False)
+        actual_client.get_source_screenshot.return_value = (
+            SimpleNamespace(image_data=image_data)
+        )
+        obs._client = actual_client
+        return obs, actual_client
+
+    def test_real_screenshot_requires_operator_approval(self):
+        from ai_broadcaster.original_plan_obs import OfficialObsWebsocket
+        obs = OfficialObsWebsocket("test-only")
+        with self.assertRaises(PermissionError):
+            obs.read_current_scene_frame()
+
+    def test_actual_obs_get_source_screenshot_png_and_no_writes(self):
+        from ai_broadcaster.original_plan_obs import ActualObsFrame
+        uri = "data:image/png;base64," + base64.b64encode(self._png_1x1()).decode()
+        obs, client = self._connected(uri)
+        got = obs.read_current_scene_frame(operator_approved=True)
+        self.assertIsInstance(got, ActualObsFrame)
+        self.assertEqual((got.scene, got.width, got.height),
+                         ("AISTING 실제 장면", 1, 1))
+        self.assertEqual(got.png_data, self._png_1x1())
+        client.get_source_screenshot.assert_called_once_with(
+            "AISTING 실제 장면", "png", image_width=640, image_height=360
+        )
+        self.assertFalse(client.start_stream.called)
+        self.assertFalse(client.stop_stream.called)
+        self.assertFalse(client.set_input_settings.called)
+
+    def test_actual_obs_malformed_image_rejected(self):
+        from ai_broadcaster.original_plan_obs import ObsConnectionError
+        for bad in ("data:image/jpeg;base64,AAAA", "http://remote/", None,
+                    "data:image/png;base64,AAAA"):
+            with self.subTest(bad=bad):
+                obs, client = self._connected(bad)
+                with self.assertRaises(ObsConnectionError):
+                    obs.read_current_scene_frame(operator_approved=True)
+
