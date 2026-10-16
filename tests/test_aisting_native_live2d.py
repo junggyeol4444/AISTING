@@ -60,7 +60,9 @@ class NativeLive2DTests(unittest.TestCase):
         ) as popen:
             self.assertTrue(viewer.open_prechecked_frontend(self.good, operator_approved=True))
             popen.assert_called_once_with(
-                ["AISTING.exe", "--aisting-live2d-viewer", str(self.project)], close_fds=True)
+                ["AISTING.exe", "--aisting-live2d-viewer", str(self.project)],
+                close_fds=True, stdin=viewer.subprocess.PIPE, text=True,
+                encoding="utf-8", bufsize=1)
 
     def test_child_requires_approval(self):
         with self.assertRaises(PermissionError):
@@ -80,6 +82,8 @@ class NativeLive2DTests(unittest.TestCase):
             probe.assert_called_once_with(self.project, operator_approved=True)
             self.assertEqual(create.call_args.args[1], viewer.OFFICIAL_URL)
             start.assert_called_once_with(
+                func=viewer._native_frontend_input_worker,
+                args=(create.return_value,),
                 gui="edgechromium", debug=False, private_mode=True)
 
 
