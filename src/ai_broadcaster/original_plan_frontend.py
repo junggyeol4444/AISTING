@@ -108,24 +108,48 @@ def probe_official_frontend(project: str | Path, *, operator_approved: bool = Fa
 
 
 
-def native_viewer_command(*, frozen: bool | None = None) -> list[str]:
-    """Open this same AISTING Windows application as a native viewer subprocess."""
+def native_viewer_command(project: str | Path, *, frozen: bool | None = None) -> list[str]:
+    """Launch existing AISTING with the selected original official project."""
+    if not str(project).strip() or not Path(project).is_dir():
+        raise FrontendUnavailable('선택한 공식 프로젝트 폴더가 없습니다.')
     if frozen is None:
         frozen = bool(getattr(sys, 'frozen', False))
     if frozen:
-        return [sys.executable, '--aisting-live2d-viewer']
+        return [sys.executable, '--aisting-live2d-viewer', str(project)]
     root = Path(__file__).resolve().parents[2]
     entry = root / 'scripts' / 'run_desktop.py'
     if not entry.is_file():
         raise FrontendUnavailable('기존 AISTING 데스크톱 실행 진입점이 없습니다.')
-    return [sys.executable, str(entry), '--aisting-live2d-viewer']
+    return [sys.executable, str(entry), '--aisting-live2d-viewer', str(project)]
 
 
 def _check_windows_native_dependencies() -> None:
     if sys.platform != 'win32':
         raise FrontendUnavailable('Live2D Windows 네이티브 화면은 Windows에서 실행해야 합니다.')
-    if importlib.util.find_spec('webview') is None:
+    try:
+        installed = importlib.util.find_spec('webview')
+    except (ImportError, ValueError):
+        installed = None
+    if installed is None:
         raise FrontendUnavailable('Windows WebView2 창용 pywebview가 없습니다. 자동 설치하지 않습니다.')
+
+
+def _project_from_readiness(readiness: OfficialFrontendReadiness) -> Path:
+    """Revalidate the exact local official project immediately before spawn."""
+    if (not isinstance(readiness, OfficialFrontendReadiness)
+            or readiness.url != OFFICIAL_URL or readiness.http_status != 200
+            or readiness.content_type != 'text/html'):
+        raise FrontendUnavailable('공식 로컬 화면 검사 결과가 유효하지 않습니다.')
+    index = readiness.local_frontend
+    if (not isinstance(index, Path) or index.name != 'index.html'
+            or index.parent.name != 'frontend' or index.is_symlink()
+            or index.parent.is_symlink()):
+        raise FrontendUnavailable('공식 Live2D 파일 경로가 잘못됐습니다.')
+    project = index.parent.parent
+    verified = inspect_installed_official_frontend(project)
+    if verified != index:
+        raise FrontendUnavailable('승인 후 공식 Live2D 파일이 변경됐습니다.')
+    return project
 
 
 def open_prechecked_frontend(readiness: OfficialFrontendReadiness, *,
@@ -136,19 +160,16 @@ def open_prechecked_frontend(readiness: OfficialFrontendReadiness, *,
     """
     if operator_approved is not True:
         raise PermissionError('공식 Live2D Windows 창 실행의 명시적 승인이 필요합니다.')
-    if (not isinstance(readiness, OfficialFrontendReadiness)
-            or readiness.url != OFFICIAL_URL or readiness.http_status != 200
-            or readiness.content_type != 'text/html'):
-        raise FrontendUnavailable('공식 로컬 화면의 검사 결과가 없습니다.')
+    project = _project_from_readiness(readiness)
     _check_windows_native_dependencies()
     try:
-        child = subprocess.Popen(native_viewer_command(), close_fds=True)
+        child = subprocess.Popen(native_viewer_command(project), close_fds=True)
     except OSError as exc:
         raise FrontendUnavailable('AISTING Windows Live2D 창을 시작할 수 없습니다.') from exc
     return child.pid > 0
 
 
-def run_native_live2d_window(*, operator_approved: bool = False) -> None:
+def run_native_live2d_window(project: str | Path, *, operator_approved: bool = False) -> None:
     """Run official Live2D WebGL in a Windows native window in the child main thread.
 
     The official frontend manages its own upstream WebSocket conversation
@@ -157,7 +178,10 @@ def run_native_live2d_window(*, operator_approved: bool = False) -> None:
     if operator_approved is not True:
         raise PermissionError('AISTING Live2D 전용 창 실행 승인이 필요합니다.')
     _check_windows_native_dependencies()
+    # Child process checks the official local files and server again: no silent
+    # switch to another project or blank network page between approval/start.
+    probe_official_frontend(project, operator_approved=True)
     import webview
-    webview.create_window('AISTING | 공식 Live2D', OFFICIAL_URL,
+    webview.create_window('AISTING | 공식 Live2D 및 AI 대화', OFFICIAL_URL,
                           width=1100, height=760, min_size=(650, 480))
     webview.start(gui='edgechromium', debug=False, private_mode=True)
