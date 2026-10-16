@@ -38,6 +38,7 @@ class OfficialWsInitialization:
     model_name: str
     model_url: str
     messages_observed: int
+    client_uid: str = ''  # Assigned to this desktop client; browser has its own identity
 
 
 def _read_exact(sock: socket.socket, count: int, pending: bytearray, deadline: float) -> bytes:
@@ -152,7 +153,7 @@ def _extract_initialization(message: object, observed: int) -> OfficialWsInitial
     if (not isinstance(name, str) or not name.strip() or not isinstance(url, str)
             or not url.startswith('/live2d-models/') or not url.endswith('.model3.json')):
         raise OfficialWsProbeError('공식 Live2D 모델 초기화 정보가 유효하지 않습니다.')
-    return OfficialWsInitialization(conf, name, url, observed)
+    return OfficialWsInitialization(conf, name, url, observed, uid)
 
 
 def probe_official_ws_initialization(*, operator_approved: bool = False,
