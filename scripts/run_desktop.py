@@ -1,21 +1,66 @@
-"""Windows native GUI entry point. No browser/server."""
+"""Existing AISTING Windows native entry point (never a web-app launcher)."""
+from __future__ import annotations
+
+import importlib.util
+import json
 import sys
 from pathlib import Path
 
 if not getattr(sys, "frozen", False):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from ai_broadcaster.desktop import main
 
-if __name__ == "__main__":
-    if len(sys.argv) == 3 and sys.argv[1] == "--aisting-live2d-viewer":
-        # Child of the same AISTING.exe. Verify the explicitly selected
-        # installed official project again before creating the native window.
+
+def _verify_frozen_bundle() -> bool:
+    """Read-only, GUI-free smoke check of THIS built Windows EXE.
+
+    It checks bundled program modules and original plan/roadmap, but does not
+    launch Tk, create user settings, contact upstream servers, play audio, or
+    pretend that actual AI/Live2D/OBS has been validated.
+    """
+    if sys.platform != "win32" or not getattr(sys, "frozen", False):
+        return False
+    root_arg = getattr(sys, "_MEIPASS", None)
+    if not isinstance(root_arg, str) or not root_arg:
+        return False
+    try:
+        root = Path(root_arg)
+        required = (
+            root / "docs" / "ORIGINAL_PLAN.txt",
+            root / "docs" / "ROADMAP_100.md",
+            root / "config" / "roadmap.json",
+        )
+        for path in required:
+            if (path.is_symlink() or not path.is_file()
+                    or not 0 < path.stat().st_size <= 2_000_000):
+                return False
+        roadmap = json.loads(required[-1].read_text(encoding="utf-8"))
+        steps = roadmap.get("steps")
+        if (roadmap.get("total_steps") != 100 or not isinstance(steps, list)
+                or len(steps) != 100
+                or {step.get("number") for step in steps if isinstance(step, dict)}
+                   != set(range(1, 101))):
+            return False
+        from ai_broadcaster.desktop import main
+        from ai_broadcaster.original_plan_frontend import run_native_live2d_window
+        if not callable(main) or not callable(run_native_live2d_window):
+            return False
+        return importlib.util.find_spec("webview") is not None
+    except (OSError, ValueError, ImportError, AttributeError, TypeError):
+        return False
+
+
+def _run(argv: list[str] | None = None) -> int:
+    """Dispatch the original Tk window, a native child, or an offline EXE check."""
+    args = sys.argv[1:] if argv is None else argv
+    if args == ["--aisting-selftest"]:
+        return 0 if _verify_frozen_bundle() else 2
+    if len(args) == 2 and args[0] == "--aisting-live2d-viewer":
+        # An explicit user-approved AISTING UI action spawns this same EXE.
         from ai_broadcaster.original_plan_frontend import run_native_live2d_window
         try:
-            run_native_live2d_window(sys.argv[2], operator_approved=True)
+            run_native_live2d_window(args[1], operator_approved=True)
         except (OSError, RuntimeError, ValueError, ImportError) as exc:
-            # --windowed EXE has no terminal: show actual startup failure,
-            # not a silently blank WebView or false success in the operator UI.
+            # A --windowed executable has no console to display this failure.
             import tkinter as tk
             from tkinter import messagebox
             root = tk.Tk()
@@ -24,8 +69,16 @@ if __name__ == "__main__":
                 messagebox.showerror("AISTING Live2D 시작 실패", str(exc), parent=root)
             finally:
                 root.destroy()
-            raise SystemExit(2)
-    elif "--aisting-live2d-viewer" in sys.argv[1:]:
-        raise SystemExit(2)  # Missing/extra project argument: never guess.
-    else:
-        main()
+            return 2
+        return 0
+    if "--aisting-live2d-viewer" in args or any(
+        arg.startswith("--aisting-") for arg in args
+    ):
+        return 2  # Never launch the wrong GUI on invalid internal arguments.
+    from ai_broadcaster.desktop import main
+    main()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(_run())
