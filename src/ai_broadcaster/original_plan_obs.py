@@ -30,6 +30,14 @@ class ActualObsInventory:
     input_sources: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class ActualObsMediaPath:
+    """Read-only OBS routing candidates, NOT confirmed captured pictures/sound."""
+    capture_sources: tuple[str, ...]
+    audio_sources: tuple[str, ...]
+    problems: tuple[str, ...]
+
+
 class OfficialObsWebsocket:
     def __init__(self, password: str, *, port: int = 4455) -> None:
         if not isinstance(password, str) or not password:
@@ -108,6 +116,89 @@ class OfficialObsWebsocket:
             raise
         except Exception as exc:
             raise ObsConnectionError('실제 OBS 장면/입력 소스 조회 실패') from exc
+
+
+    def read_scene_media_path(self) -> ActualObsMediaPath:
+        """Inspect actual current-scene capture settings and local audio routing.
+
+        Reading OBS input mute and volume does NOT prove the operating system
+        actually delivers samples or that a configured window is visible.
+        Never change the scene, enable a source, adjust volume or start stream.
+        """
+        if self._client is None:
+            raise ObsConnectionError('실제 OBS에 먼저 연결해야 합니다.')
+        actual = self.status()
+        try:
+            scene_items = self._client.get_scene_item_list(actual.scene).scene_items
+            inputs = self._client.get_input_list().inputs
+            if not isinstance(scene_items, list) or not isinstance(inputs, list):
+                raise ValueError('OBS 장면 또는 입력 소스 목록이 올바르지 않습니다.')
+            captures: list[str] = []
+            audio: list[str] = []
+            problems: list[str] = []
+            for item in scene_items[:100]:
+                if not isinstance(item, dict):
+                    raise ValueError('OBS 장면 소스 형식이 올바르지 않습니다.')
+                name, kind = item.get('sourceName'), item.get('inputKind', '')
+                if not isinstance(name, str) or not isinstance(kind, str):
+                    raise ValueError('OBS 장면 소스 필드가 올바르지 않습니다.')
+                if kind not in ('window_capture', 'game_capture', 'monitor_capture'):
+                    continue
+                enabled = item.get('sceneItemEnabled')
+                if type(enabled) is not bool:
+                    problems.append(name + ': 활성 상태를 확인할 수 없음')
+                    continue
+                if not enabled:
+                    captures.append(name + ': 비활성')
+                    continue
+                configured = ''
+                try:
+                    settings = self._client.get_input_settings(name).input_settings
+                    if isinstance(settings, dict):
+                        window = settings.get('window', '')
+                        if isinstance(window, str) and window:
+                            configured = ' / 선택된 창 ' + window[:140]
+                except Exception:
+                    problems.append(name + ': 창 설정 세부 정보 조회 불가')
+                captures.append(name + ' (' + kind + ', 활성)' + configured)
+            # Input kinds are OBS-version/plugin-dependent. Probe each input
+            # for actual audio controls instead of presuming naming conventions.
+            for item in inputs[:100]:
+                if not isinstance(item, dict):
+                    raise ValueError('OBS 입력 소스 형식이 올바르지 않습니다.')
+                name = item.get('inputName')
+                kind = item.get('inputKind', '')
+                if not isinstance(name, str) or not isinstance(kind, str):
+                    raise ValueError('OBS 입력 소스 항목이 올바르지 않습니다.')
+                try:
+                    mute_result = self._client.get_input_mute(name)
+                    volume_result = self._client.get_input_volume(name)
+                    muted = mute_result.input_muted
+                    gain = volume_result.input_volume_mul
+                    if type(muted) is not bool or not isinstance(gain, (float, int)):
+                        raise ValueError('OBS 음소거/볼륨 데이터 오류')
+                    audio.append(
+                        name + ' (' + kind + ')' +
+                        (' / 음소거' if muted else ' / 음소거 아님') +
+                        ' / OBS 볼륨 ' + str(round(float(gain), 3))
+                    )
+                except Exception:
+                    # Video-only sources legitimately reject audio controls.
+                    # Audio-capable plugins might reject them too: record unknown,
+                    # never declare the sound path valid in either case.
+                    if any(part in kind.lower() for part in (
+                            'audio', 'wasapi', 'pulse', 'coreaudio', 'alsa',
+                            'browser_source', 'ffmpeg', 'vlc', 'application')):
+                        problems.append(name + ': 오디오 상태 조회 불가 (' + kind + ')')
+            if len(scene_items) > 100 or len(inputs) > 100:
+                problems.append('대규모 OBS 소스 목록은 앞쪽 100개만 검사')
+            if not captures:
+                problems.append('현재 장면에서 창/게임/모니터 캡처 소스를 찾지 못함')
+            if not audio:
+                problems.append('OBS에서 음소거/음량을 확인할 수 있는 입력을 찾지 못함')
+            return ActualObsMediaPath(tuple(captures), tuple(audio), tuple(problems))
+        except Exception as exc:
+            raise ObsConnectionError('OBS 화면 캡처/오디오 경로 상세 읽기 실패') from exc
 
     def set_scene(self, name: str, *, operator_confirmed: bool = False) -> ActualObsState:
         # Changing the on-air scene is an actual OBS control action. Require
