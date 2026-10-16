@@ -1,50 +1,68 @@
-name: AISTING Windows EXE build
+name: AISTING existing Windows EXE build
 
-# 예약 없음: PR, main 반영, 수동 실행일 때만 시작
+# Build the already integrated original application, never the obsolete
+# scripts/desktop_app.py entrypoint. No push, merge or installation on user PC.
 on:
-  pull_request:
-  push:
-    branches: [main]
   workflow_dispatch:
+  push:
+    branches:
+      - dev/aisting-local-source-v26-20261016
 
 permissions:
   contents: read
 
+concurrency:
+  group: aisting-existing-windows-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   windows-exe:
     runs-on: windows-latest
-    timeout-minutes: 25
+    timeout-minutes: 45
+    env:
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: 'utf-8'
+      PYTHONPATH: src
+      AISTING_PYTHON: python
     steps:
-      - name: Checkout repository
+      - name: Checkout complete existing AISTING source
         uses: actions/checkout@v4
-      - name: Set up Python
+
+      - name: Set up Windows Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           architecture: x64
-      - name: Validate project (fail on the first test error)
-        shell: bash
-        env:
-          PYTHONUTF8: "1"
-          PYTHONIOENCODING: utf-8
-        run: |
-          set -euo pipefail
-          python tools.py validate
-          python -m unittest discover -s tests -v
-          python -c "import tkinter; print('tkinter available')"
-      - name: Install free PyInstaller builder
-        run: python -m pip install "pyinstaller>=6,<7"
-      - name: Package standalone native Windows GUI
-        run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name AISTING --paths src scripts/desktop_app.py
-      - name: Check executable
+
+      - name: Install free build dependencies on disposable Windows runner
         shell: pwsh
         run: |
-          if (-not (Test-Path "dist/AISTING.exe")) { throw "AISTING.exe not found" }
-          if ((Get-Item "dist/AISTING.exe").Length -lt 1000000) { throw "Unexpectedly small EXE" }
-      - name: Upload downloadable EXE
+          python -m pip install "pyinstaller>=6,<7" "pywebview>=5,<7"
+          python -c "import tkinter, PyInstaller, webview; print('Windows build dependencies present')"
+
+      - name: Validate existing AISTING and all regression tests
+        shell: pwsh
+        run: |
+          python tools.py validate
+          python -m unittest discover -s tests -v
+
+      - name: Build real native Windows executable and run its self-test
+        shell: cmd
+        run: call build_exe_windows.bat
+
+      - name: Verify one nonempty bundled executable
+        shell: pwsh
+        run: |
+          $executables = @(Get-ChildItem -Path . -Recurse -File -Filter AISTING.exe |
+            Where-Object { $_.Directory.Name -like 'dist-native-*' })
+          if ($executables.Count -ne 1) { throw "Expected exactly one built AISTING.exe; found $($executables.Count)" }
+          if ($executables[0].Length -lt 1000000) { throw "AISTING.exe unexpectedly small" }
+          Write-Host "Windows AISTING.exe built: $($executables[0].FullName) ($($executables[0].Length) bytes)"
+
+      - name: Upload real Windows EXE artifact
         uses: actions/upload-artifact@v4
         with:
-          name: AISTING-Windows-EXE
-          path: dist/AISTING.exe
+          name: AISTING-Windows-EXE-integrated
+          path: dist-native-*/AISTING.exe
           if-no-files-found: error
           retention-days: 30
