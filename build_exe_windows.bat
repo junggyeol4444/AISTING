@@ -41,6 +41,16 @@ if not exist "%OUT%\AISTING.exe" (
   echo PyInstaller reported success but AISTING.exe is missing.
   exit /b 1
 )
+rem Run the actual frozen Windows EXE without GUI, settings writes, network,
+rem audio or broadcast. CMD needs START /WAIT for GUI-subsystem executables.
+start "" /wait "%OUT%\AISTING.exe" --aisting-selftest
+if errorlevel 1 (
+  echo The built AISTING.exe failed its offline bundled-source and 100-step check.
+  echo The file remains only in its new build folder. No prior EXE was overwritten.
+  echo Do NOT treat this build as verified.
+  exit /b 1
+)
+echo Native Windows EXE offline bundle check passed.
 echo Built original AISTING Windows desktop program: %OUT%\AISTING.exe
 echo The bundled WebView2 renderer still requires a compatible Windows Edge Runtime.
 echo Real AI, TTS, Live2D and OBS operation must be verified separately.
