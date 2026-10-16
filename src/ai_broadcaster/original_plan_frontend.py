@@ -250,7 +250,7 @@ def open_prechecked_frontend(readiness: OfficialFrontendReadiness, *,
 def send_to_native_live2d_session(text: str, *, operator_approved: bool = False) -> bool:
     """Only report successful forwarding if official React key handler consumed it.
 
-    An acknowledgement proves UI event consumption only, NOT AI, TTS, Live2D
+    An acknowledgement proves the official browser WebSocket sent text, NOT AI, TTS, Live2D
     motion, audio delivery, or broadcast. All external execution is user-approved.
     """
     if operator_approved is not True:
@@ -267,7 +267,7 @@ def send_to_native_live2d_session(text: str, *, operator_approved: bool = False)
         try:
             conn.send_bytes(json.dumps({'type': 'user-text', 'text': text.strip()},
                                        ensure_ascii=False).encode('utf-8'))
-            if not conn.poll(5):
+            if not conn.poll(9):
                 raise FrontendUnavailable('공식 Live2D 화면 입력 처리 응답을 받지 못했습니다.')
             reply = json.loads(conn.recv_bytes(2048).decode('utf-8'))
             if not isinstance(reply, dict) or reply.get('type') != 'input-result':
@@ -279,16 +279,46 @@ def send_to_native_live2d_session(text: str, *, operator_approved: bool = False)
     return True
 
 
-def _official_frontend_input_script(value: str) -> tuple[str, str]:
-    """Use original React textarea and keyboard handler, not a second AI WS."""
+def _official_frontend_input_script(value: str, nonce: str) -> tuple[str, str, str, str]:
+    """Observe ONLY the official frontend's same-session WS text send.
+
+    A one-shot hook delegates to the browser's original WebSocket.send without
+    changing outgoing payloads. It is removed after each attempt. Seeing the
+    genuine send proves the browser submitted text through its own established
+    connection; it does not prove server receipt, LLM result, TTS or lip sync.
+    """
+    if not isinstance(value, str) or not 1 <= len(value.strip()) <= 4000:
+        raise ValueError('공식 AI 질문 길이가 올바르지 않습니다.')
+    if not isinstance(nonce, str) or len(nonce) != 32 or any(
+            ch not in '0123456789abcdef' for ch in nonce):
+        raise ValueError('공식 화면 요청 식별자가 올바르지 않습니다.')
     encoded = json.dumps(value, ensure_ascii=False)
+    marker = json.dumps(nonce)
     input_script = (
         "(() => {"
         "if(location.origin!=='http://127.0.0.1:12393')return false;"
+        "if(typeof WebSocket==='undefined'||!WebSocket.prototype.send)return false;"
+        "if(window.__aistingSendAudit)return false;"
         "const nodes=Array.from(document.querySelectorAll('textarea'))"
         ".filter(x=>!x.disabled&&x.offsetParent!==null);"
         "if(nodes.length!==1)return false;"
         "const el=nodes[0];const value=" + encoded + ";"
+        "const nonce=" + marker + ";"
+        "const original=WebSocket.prototype.send;"
+        "const audit={nonce:nonce,observed:false,original:original,wrapper:null};"
+        "audit.wrapper=function(data){"
+        "const result=original.apply(this,arguments);"
+        "try{"
+        "if(this.readyState===WebSocket.OPEN&&"
+        "this.url==='ws://127.0.0.1:12393/client-ws'&&"
+        "typeof data==='string'){"
+        "const packet=JSON.parse(data);"
+        "if(packet.type==='text-input'&&packet.text===value)"
+        "audit.observed=true;"
+        "}}catch(_err){}"
+        "return result;};"
+        "window.__aistingSendAudit=audit;"
+        "WebSocket.prototype.send=audit.wrapper;"
         "const setter=Object.getOwnPropertyDescriptor("
         "HTMLTextAreaElement.prototype,'value').set;"
         "setter.call(el,value);"
@@ -299,6 +329,8 @@ def _official_frontend_input_script(value: str) -> tuple[str, str]:
     submit_script = (
         "(() => {"
         "if(location.origin!=='http://127.0.0.1:12393')return false;"
+        "const audit=window.__aistingSendAudit;"
+        "if(!audit||audit.nonce!==" + marker + ")return false;"
         "const nodes=Array.from(document.querySelectorAll('textarea'))"
         ".filter(x=>!x.disabled&&x.offsetParent!==null);"
         "if(nodes.length!==1)return false;"
@@ -309,7 +341,23 @@ def _official_frontend_input_script(value: str) -> tuple[str, str]:
         "return el.dispatchEvent(key)===false&&key.defaultPrevented;"
         "})()"
     )
-    return input_script, submit_script
+    observed_script = (
+        "(() => {"
+        "if(location.origin!=='http://127.0.0.1:12393')return false;"
+        "const audit=window.__aistingSendAudit;"
+        "return !!(audit&&audit.nonce===" + marker + "&&audit.observed===true);"
+        "})()"
+    )
+    cleanup_script = (
+        "(() => {"
+        "const audit=window.__aistingSendAudit;"
+        "if(!audit||audit.nonce!==" + marker + ")return false;"
+        "if(WebSocket.prototype.send===audit.wrapper)"
+        "WebSocket.prototype.send=audit.original;"
+        "delete window.__aistingSendAudit;return true;"
+        "})()"
+    )
+    return input_script, submit_script, observed_script, cleanup_script
 
 
 def _native_frontend_input_worker(window, address: str | None = None,
@@ -334,18 +382,34 @@ def _native_frontend_input_worker(window, address: str | None = None,
             if isinstance(request, dict) and request.get('type') == 'user-text':
                 value = request.get('text')
                 if isinstance(value, str) and 1 <= len(value.strip()) <= 4000:
-                    input_script, submit_script = _official_frontend_input_script(
-                        value.strip()
+                    request_nonce = secrets.token_hex(16)
+                    scripts = _official_frontend_input_script(
+                        value.strip(), request_nonce
                     )
+                    input_script, submit_script, observed_script, cleanup_script = scripts
                     try:
                         input_seen = window.evaluate_js(input_script) is True
                         if input_seen:
-                            # Yield to React's controlled-input state flush;
-                            # this is not a conversational reply delay.
+                            # The React form updates its controlled text on
+                            # the next browser task; never delay AI replies.
                             time.sleep(0.1)
-                            accepted = window.evaluate_js(submit_script) is True
+                            handled = window.evaluate_js(submit_script) is True
+                            if handled:
+                                # Official handleSend may await screen/media
+                                # capture before it calls the REAL WS.send.
+                                deadline = time.monotonic() + 6.0
+                                while time.monotonic() < deadline:
+                                    if window.evaluate_js(observed_script) is True:
+                                        accepted = True
+                                        break
+                                    time.sleep(0.05)
                     except Exception:
                         accepted = False
+                    finally:
+                        try:
+                            window.evaluate_js(cleanup_script)
+                        except Exception:
+                            pass
             conn.send_bytes(json.dumps(
                 {'type': 'input-result', 'accepted': accepted}
             ).encode('utf-8'))
