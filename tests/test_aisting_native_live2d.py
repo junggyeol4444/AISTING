@@ -87,6 +87,38 @@ class NativeLive2DTests(unittest.TestCase):
                 gui="edgechromium", debug=False, private_mode=True)
 
 
+    def test_real_frontend_http_fingerprint_accepts_exact_disk_bytes(self):
+        payload = self.index.read_bytes()
+        with patch.object(viewer, "inspect_installed_official_frontend",
+                          return_value=self.index), patch.object(
+            viewer.http.client, "HTTPConnection"
+        ) as http:
+            response = http.return_value.getresponse.return_value
+            response.status = 200
+            response.getheader.side_effect = lambda name, default="": (
+                "text/html; charset=utf-8" if name == "Content-Type" else default
+            )
+            response.read.return_value = payload
+            checked = viewer.probe_official_frontend(
+                self.project, operator_approved=True
+            )
+            self.assertEqual(checked.local_frontend, self.index)
+            self.assertEqual(checked.http_status, 200)
+
+    def test_real_frontend_http_fingerprint_rejects_different_page(self):
+        with patch.object(viewer, "inspect_installed_official_frontend",
+                          return_value=self.index), patch.object(
+            viewer.http.client, "HTTPConnection"
+        ) as http:
+            response = http.return_value.getresponse.return_value
+            response.status = 200
+            response.getheader.side_effect = lambda name, default="": (
+                "text/html" if name == "Content-Type" else default
+            )
+            response.read.return_value = b"<html>not official</html>"
+            with self.assertRaises(viewer.FrontendUnavailable):
+                viewer.probe_official_frontend(self.project, operator_approved=True)
+
     def test_project_path_sent_to_child(self):
         command = viewer.native_viewer_command(self.project, frozen=True)
         self.assertEqual(command[-2:], ["--aisting-live2d-viewer", str(self.project)])
