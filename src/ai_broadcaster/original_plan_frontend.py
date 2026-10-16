@@ -290,7 +290,7 @@ def run_native_live2d_window(project: str | Path, *, operator_approved: bool = F
     # switch to another project or blank network page between approval/start.
     probe_official_frontend(project, operator_approved=True)
     import webview
-    webview.create_window('AISTING | 공식 Live2D 및 AI 대화', OFFICIAL_URL,
+    window = webview.create_window('AISTING | 공식 Live2D 및 AI 대화', OFFICIAL_URL,
                           width=1100, height=760, min_size=(650, 480))
     webview.start(func=_native_frontend_input_worker, args=(window,),
                   gui='edgechromium', debug=False, private_mode=True)
