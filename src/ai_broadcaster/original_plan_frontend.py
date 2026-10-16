@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
+import hmac
 import http.client
 import json
 from pathlib import Path
@@ -111,7 +112,7 @@ def probe_official_frontend(project: str | Path, *, operator_approved: bool = Fa
         # LLM, TTS, Cubism initialization, or consent for any other action.
         _regular_file(index, max_size=_MAX_HTML)
         disk_html = index.read_bytes()
-        if not hashlib.compare_digest(hashlib.sha256(raw).digest(),
+        if not hmac.compare_digest(hashlib.sha256(raw).digest(),
                                       hashlib.sha256(disk_html).digest()):
             raise FrontendUnavailable(
                 '12393 로컬 서버 화면이 선택한 공식 프로젝트 frontend/index.html과 '
