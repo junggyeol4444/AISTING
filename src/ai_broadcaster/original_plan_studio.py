@@ -412,6 +412,21 @@ class OriginalPlanStudio:
                 self._events.put(("ws_init", result))
         threading.Thread(target=job, daemon=True).start()
 
+    def _require_confirmed_persona_for_real_ai(self) -> dict[str, str]:
+        """Fail closed before any real AI turn if confirmed disk identity is not aligned.
+
+        Read the confirmed settings file, never unsaved form fields. This checks
+        conf.yaml ON DISK; the running official server may still need restart.
+        """
+        fields = self._read_confirmed_persona_from_disk()
+        if not inspect_saved_persona_alignment(self.project_dir.get(), fields):
+            raise StageOneUnavailable(
+                '확정 저장된 캐릭터와 공식 conf.yaml이 일치하지 않습니다. '
+                '캐릭터 확정·저장 후 공식 설정 적용을 확인하세요. '
+                '현재 서버가 예전 설정을 사용한다면 별도 재시작 확인이 필요합니다.'
+            )
+        return fields
+
     def _open_real_ai_chat(self) -> None:
         """Send a real user-entered prompt to the official core, only by consent."""
         if self._real_ai_window is not None and self._real_ai_window.winfo_exists():
@@ -444,6 +459,8 @@ class OriginalPlanStudio:
                  "창을 닫거나 연결 오류가 나면 서버의 기존 세션 기억은 이어진다고 보장하지 않습니다. "
                  "앱은 응답 오디오를 재생/저장하지 않습니다. "
                  "공식 서버는 대화 기록을 저장하거나 음성 데이터를 생성할 수 있습니다. "
+                 "캐릭터 확정 저장과 공식 conf.yaml의 읽기 전용 일치 검사를 거쳐야만 전송됩니다. "
+                 "실행 중인 공식 서버에 변경 사항이 반영됐는지는 별도 확인해야 합니다. "
                  "공식 conf.yaml의 LLM이 외부/유료 서비스로 연결돼 있지 않은지 먼저 확인하세요.",
             wraplength=660, justify="left").pack(anchor="w", pady=(8, 10))
         ttk.Label(frame, text="질문 (사용자가 직접 입력 · 실행마다 별도 승인)").pack(anchor="w")
@@ -469,6 +486,12 @@ class OriginalPlanStudio:
             if not message or len(message) > 4000:
                 messagebox.showerror("질문 확인", "질문을 1~4000자로 입력하세요.", parent=win)
                 return
+            try:
+                approved_identity = self._require_confirmed_persona_for_real_ai()
+            except (StageOneUnavailable, ValueError, OSError, KeyError) as exc:
+                indicator.set('실제 AI 전송 차단 · 확정 캐릭터/공식 설정 불일치')
+                messagebox.showerror('확정 캐릭터 확인 실패', str(exc), parent=win)
+                return
             if not messagebox.askyesno(
                 "실제 AI 대화 실행 승인",
                 "실제 공식 서버의 LLM에 질문을 전송합니다. 공식 설정에 따라 외부 API 접속, "
@@ -477,6 +500,17 @@ class OriginalPlanStudio:
                 "이 질문의 실행을 명시적으로 승인하십니까?",
                 parent=win):
                 indicator.set("운영자 승인 취소 · 요청을 보내지 않았습니다")
+                return
+            try:
+                # Recheck after the approval dialog; another window may have
+                # committed a different identity while that dialog was open.
+                if self._require_confirmed_persona_for_real_ai() != approved_identity:
+                    raise StageOneUnavailable(
+                        '승인 도중 확정 캐릭터가 변경됐습니다. 확인 후 다시 전송하세요.'
+                    )
+            except (StageOneUnavailable, ValueError, OSError, KeyError) as exc:
+                indicator.set('실제 AI 전송 차단 · 확정 캐릭터 변경 감지')
+                messagebox.showerror('확정 캐릭터 재확인 실패', str(exc), parent=win)
                 return
             self._real_ai_busy = True
             self._real_ai_stream_started = False
