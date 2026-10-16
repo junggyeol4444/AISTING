@@ -40,10 +40,21 @@ jobs:
           python -m pip install "pyinstaller>=6,<7" "pywebview>=5,<7"
           python -c "import tkinter, PyInstaller, webview; print('Windows build dependencies present')"
 
-      - name: Validate existing AISTING and all regression tests
+      - name: Validate original 100-step specification and project
         shell: pwsh
         run: |
           python tools.py validate
+
+      - name: Verify integrated native Windows entrypoint and viewer
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -p "test_aisting*.py" -v
+
+      - name: Audit full original regression suite (track known legacy incompatibilities)
+        id: inherited
+        shell: pwsh
+        continue-on-error: true
+        run: |
           python -m unittest discover -s tests -v
 
       - name: Build real native Windows executable and run its self-test
@@ -66,3 +77,10 @@ jobs:
           path: dist-native-*/AISTING.exe
           if-no-files-found: error
           retention-days: 30
+
+      - name: Report unresolved original regression failures as CI failure
+        if: steps.inherited.outcome == 'failure'
+        shell: pwsh
+        run: |
+          Write-Error "Full inherited regression suite has failures. EXE artifact is a build candidate, not a fully validated program."
+          exit 1

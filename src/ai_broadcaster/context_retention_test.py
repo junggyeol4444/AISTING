@@ -119,7 +119,8 @@ def run_context_retention_test(
         try:
             reply = session.process_one()
         except Exception as exc:
-            error = f"모의 처리 중단 ({("ValueError" if isinstance(exc, ValueError) else "RuntimeError" if isinstance(exc, RuntimeError) else type(exc).__name__)}): {exc}"
+            error_type = "ValueError" if isinstance(exc, ValueError) else "RuntimeError" if isinstance(exc, RuntimeError) else type(exc).__name__
+            error = f"모의 처리 중단 ({error_type}): {exc}"
             break
         if reply is None:
             error = "입력이 예정보다 일찍 소진되었습니다."

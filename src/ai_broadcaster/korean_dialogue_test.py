@@ -108,7 +108,8 @@ def run_korean_dialogue_test(
         try:
             reply = session.process_one()
         except Exception as exc:
-            error = f"모의 응답 생성 실패 ({("ValueError" if isinstance(exc, ValueError) else "RuntimeError" if isinstance(exc, RuntimeError) else type(exc).__name__)}): {exc}"
+            error_type = "ValueError" if isinstance(exc, ValueError) else "RuntimeError" if isinstance(exc, RuntimeError) else type(exc).__name__
+            error = f"모의 응답 생성 실패 ({error_type}): {exc}"
             break
         if reply is None:
             error = "입력 대기열이 예정보다 먼저 비었습니다."

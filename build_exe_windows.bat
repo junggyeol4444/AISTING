@@ -34,7 +34,7 @@ if exist "%WORK%" (
   echo Working output exists. No overwrite permitted.
   exit /b 1
 )
-%AISTING_PYTHON% -m PyInstaller --onefile --windowed --name AISTING --paths src --collect-all webview --distpath "%OUT%" --workpath "%WORK%" --specpath "%WORK%" --add-data "config;config" --add-data "docs;docs" scripts\run_desktop.py
+%AISTING_PYTHON% -m PyInstaller --onefile --windowed --name AISTING --paths src --collect-all webview --hidden-import clr --distpath "%OUT%" --workpath "%WORK%" --specpath "%WORK%" --add-data "config;config" --add-data "docs;docs" scripts\run_desktop.py
 if errorlevel 1 (
   echo Build failed. Original program and previous EXEs were not overwritten.
   exit /b 1
