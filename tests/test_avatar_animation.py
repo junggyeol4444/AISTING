@@ -108,12 +108,18 @@ class TestAvatarAnimation(unittest.TestCase):
         self.assertNotIn("http://",code)
         self.assertNotIn("PhotoImage(",code)
 
-    def test_desktop_wires_same_activity_to_all_tabs(self):
+    def test_existing_desktop_wires_actual_tts_to_one_shared_avatar_activity(self):
         code=(ROOT/"src/ai_broadcaster/desktop.py").read_text(encoding="utf-8")
+        # AistingApp already owns both chat-reply TTS and manual voice preview;
+        # the old separate tab class names are NOT the current Windows GUI.
         self.assertIn("self._speech_activity = SpeechActivity()",code)
-        self.assertIn("LocalChatTab(chat, activity=self._speech_activity)",code)
-        self.assertIn("VoicePreviewTab(voice_preview, activity=self._speech_activity)",code)
-        self.assertIn("activity=self._speech_activity,",code)
+        self.assertIn("self._play_queued_answer()",code)
+        self.assertIn("self._start_speech(self._speech_pending.popleft())",code)
+        self.assertIn("self._start_speech(self._speech_text.get())",code)
+        self.assertIn('self._speech_activity.start("desktop_tts")',code)
+        self.assertIn('self._speech_activity.finish("desktop_tts")',code)
+        self.assertIn("self._speech_activity.talking",code)
+        self.assertIn("finally:",code)
 
     def test_audio_events_set_and_clear_avatar_state(self):
         for module,marker in (
