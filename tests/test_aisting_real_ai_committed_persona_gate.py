@@ -3,11 +3,13 @@
 No AI calls, no user settings writes, no OBS, and no GUI launch.
 """
 import ast
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from ai_broadcaster import original_plan_studio as studio
 
 
