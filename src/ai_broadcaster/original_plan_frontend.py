@@ -291,13 +291,17 @@ class OfficialLipSyncEvidence:
     active_rms_samples: int
     mouth_range: float
     changing_mouth_samples: int
+    renderer_active_samples: int = 0
+    overlapping_audio_mouth_samples: int = 0
 
     @property
     def verified_signal(self) -> bool:
         # Model/canvas presence alone is NOT audio-driven mouth motion.
         return (self.model_seen and self.canvas_seen and self.lip_sync_ids > 0
                 and self.peak_rms > 0.01 and self.active_rms_samples > 0
-                and self.mouth_range > 0.02 and self.changing_mouth_samples > 0)
+                and self.mouth_range > 0.02 and self.changing_mouth_samples > 0
+                and self.renderer_active_samples > 0
+                and self.overlapping_audio_mouth_samples > 0)
 
 
 def inspect_native_live2d_lipsync(*, operator_approved: bool = False,
@@ -331,20 +335,25 @@ def inspect_native_live2d_lipsync(*, operator_approved: bool = False,
         vals = tuple(reply[field] for field in (
             'samples', 'model_seen', 'canvas_seen', 'lip_sync_ids',
             'peak_rms', 'active_rms_samples', 'mouth_range',
-            'changing_mouth_samples',
+            'changing_mouth_samples', 'renderer_active_samples',
+            'overlapping_audio_mouth_samples',
         ))
-        samples, model_seen, canvas_seen, ids, rms, active, mouth, changes = vals
+        (samples, model_seen, canvas_seen, ids, rms, active, mouth, changes,
+         renderer_active, overlapping) = vals
         if (type(samples) is not int or not 1 <= samples <= 500
                 or type(model_seen) is not bool or type(canvas_seen) is not bool
                 or type(ids) is not int or not 0 <= ids <= 50
                 or type(active) is not int or not 0 <= active <= samples
                 or type(changes) is not int or not 0 <= changes <= samples
+                or type(renderer_active) is not int or not 0 <= renderer_active <= samples
+                or type(overlapping) is not int or not 0 <= overlapping <= samples
+                or overlapping > min(active, changes, renderer_active)
                 or type(rms) not in (int, float) or not 0 <= rms <= 10
-                or type(mouth) not in (int, float) or not 0 <= mouth <= 10):
+                or type(mouth) not in (int, float) or not 0 <= mouth <= 20):
             raise ValueError('관측값 범위 오류')
         return OfficialLipSyncEvidence(
             samples, model_seen, canvas_seen, ids, float(rms), active,
-            float(mouth), changes
+            float(mouth), changes, renderer_active, overlapping
         )
     except (KeyError, ValueError, TypeError) as exc:
         raise FrontendUnavailable('공식 Live2D 검사 결과에 유효하지 않은 데이터가 있습니다.') from exc
@@ -370,6 +379,7 @@ def _official_live2d_probe_script() -> str:
         "let rms=null;"
         "try{if(wav?.getRms)rms=wav.getRms();}catch(_error){}"
         "return JSON.stringify({canvas:visible,model:!!model,ids:count,"
+        "lipsync:model?._lipsync===true,"
         "rms:(Number.isFinite(rms)?rms:null),"
         "mouth:(Number.isFinite(mouth)?mouth:null)});"
         "})()"
@@ -380,7 +390,7 @@ def _observe_actual_live2d_model(window, seconds: float) -> dict:
     """Sample real renderer state; no generated/sample/placeholder values."""
     samples = 0
     model_seen = canvas_seen = False
-    ids = active = changing = 0
+    ids = active = changing = renderer_active = overlapping = 0
     peak_rms = 0.0
     low = high = previous = None
     deadline = time.monotonic() + seconds
@@ -396,6 +406,9 @@ def _observe_actual_live2d_model(window, seconds: float) -> dict:
                 count = item.get('ids')
                 if type(count) is int and 0 <= count <= 50:
                     ids = max(ids, count)
+                lipsync_enabled = item.get('lipsync') is True
+                if lipsync_enabled:
+                    renderer_active += 1
                 rms = item.get('rms')
                 if type(rms) in (int, float) and 0 <= rms <= 10:
                     peak_rms = max(peak_rms, float(rms))
@@ -408,6 +421,9 @@ def _observe_actual_live2d_model(window, seconds: float) -> dict:
                     high = m if high is None else max(high, m)
                     if previous is not None and abs(m - previous) > 0.01:
                         changing += 1
+                        if (lipsync_enabled and type(rms) in (int, float)
+                                and 0.01 < rms <= 10):
+                            overlapping += 1
                     previous = m
         except (ValueError, TypeError, OSError):
             pass
@@ -421,6 +437,8 @@ def _observe_actual_live2d_model(window, seconds: float) -> dict:
         'active_rms_samples': active,
         'mouth_range': round((high - low) if low is not None else 0.0, 6),
         'changing_mouth_samples': changing,
+        'renderer_active_samples': renderer_active,
+        'overlapping_audio_mouth_samples': overlapping,
     }
 
 
