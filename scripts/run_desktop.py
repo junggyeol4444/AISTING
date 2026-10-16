@@ -96,6 +96,33 @@ def _run(argv: list[str] | None = None) -> int:
         return 0 if _verify_frozen_bundle() else 2
     if args == ["--aisting-gui-selftest"]:
         return 0 if _verify_frozen_gui() else 2
+    if (len(args) == 5 and args[0] == "--aisting-live2d-viewer"
+            and args[2] == "--aisting-ipc"):
+        from ai_broadcaster.original_plan_frontend import run_native_live2d_window
+        import re
+        # Only the same AISTING.exe's Windows named-pipe relay is accepted.
+        # This is a child of a one-shot operator-approved official viewer.
+        if (sys.platform != 'win32'
+                or not re.fullmatch(r'\\\\\.\\pipe\\aisting-live2d-[0-9a-f]{32}',
+                                    args[3])
+                or not re.fullmatch(r'[0-9a-f]{64}', args[4])):
+            return 2
+        try:
+            run_native_live2d_window(
+                args[1], operator_approved=True,
+                ipc_address=args[3], ipc_auth=args[4],
+            )
+        except (OSError, RuntimeError, ValueError, ImportError) as exc:
+            import tkinter as tk
+            from tkinter import messagebox
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                messagebox.showerror("AISTING Live2D 시작 실패", str(exc), parent=root)
+            finally:
+                root.destroy()
+            return 2
+        return 0
     if len(args) == 2 and args[0] == "--aisting-live2d-viewer":
         # An explicit user-approved AISTING UI action spawns this same EXE.
         from ai_broadcaster.original_plan_frontend import run_native_live2d_window
