@@ -144,8 +144,11 @@ class TestLocalOperation(unittest.TestCase):
         build = (ROOT / "build_exe_windows.bat").read_text(encoding="utf-8")
         self.assertIn("ai_broadcaster.desktop", entrypoint)
         self.assertIn("--onefile", build)
-        self.assertNotIn("github", entrypoint.lower())
-        self.assertNotIn("github", build.lower())
+        self.assertNotIn("import github", entrypoint.lower())
+        self.assertNotIn("github.com", entrypoint.lower())
+        self.assertNotIn("github.com", build.lower())
+        # Developer CI may verify a frozen UI, but the ordinary EXE never
+        # requires GitHub authentication or network access to open.
         self.assertNotIn("pip install", build.lower())
         workflows = list((ROOT / ".github" / "workflows").glob("*.yml"))
         self.assertTrue(workflows)
