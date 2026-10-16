@@ -226,6 +226,79 @@ class NativeLive2DTests(unittest.TestCase):
         child.join(timeout=2)
         self.assertFalse(child.is_alive())
 
+    def test_official_lipsync_readonly_probe_uses_actual_cubism_fields(self):
+        script = viewer._official_live2d_probe_script()
+        self.assertIn("window.getLive2DManager", script)
+        self.assertIn("model._model.getParameterValueById", script)
+        self.assertIn("wav.getRms()", script)
+        self.assertIn("getElementById('canvas')", script)
+        self.assertNotIn("new Audio(", script)
+        self.assertNotIn(".start(", script)
+
+    def test_lipsync_evidence_requires_both_real_audio_and_mouth_motion(self):
+        from ai_broadcaster.original_plan_frontend import OfficialLipSyncEvidence
+        good = OfficialLipSyncEvidence(40, True, True, 1, .30, 12, .55, 8)
+        self.assertTrue(good.verified_signal)
+        self.assertFalse(OfficialLipSyncEvidence(40, True, True, 1, 0, 0, .55, 8).verified_signal)
+        self.assertFalse(OfficialLipSyncEvidence(40, True, True, 1, .3, 12, 0, 0).verified_signal)
+        self.assertFalse(OfficialLipSyncEvidence(40, True, True, 0, .3, 12, .55, 8).verified_signal)
+
+    def test_lipsync_inspection_requires_user_consent_and_active_viewer(self):
+        with self.assertRaises(PermissionError):
+            viewer.inspect_native_live2d_lipsync()
+        with self.assertRaises(viewer.FrontendUnavailable):
+            viewer.inspect_native_live2d_lipsync(operator_approved=True)
+
+    def test_lipsync_bridge_reports_real_signal_only_from_received_frames(self):
+        import json
+        from unittest.mock import MagicMock
+        viewer._native_viewer = types.SimpleNamespace(poll=lambda: None)
+        viewer._native_bridge = MagicMock()
+        viewer._native_bridge.poll.return_value = True
+        payload = {
+            'type': 'lip-sync-result',
+            'samples': 24,
+            'model_seen': True,
+            'canvas_seen': True,
+            'lip_sync_ids': 1,
+            'peak_rms': 0.42,
+            'active_rms_samples': 9,
+            'mouth_range': 0.31,
+            'changing_mouth_samples': 5,
+        }
+        viewer._native_bridge.recv_bytes.return_value = json.dumps(payload).encode()
+        report = viewer.inspect_native_live2d_lipsync(
+            operator_approved=True, duration=2.0
+        )
+        self.assertTrue(report.verified_signal)
+        sent = json.loads(viewer._native_bridge.send_bytes.call_args.args[0])
+        self.assertEqual(sent, {'type': 'observe-lipsync', 'seconds': 2.0})
+        payload['peak_rms'] = 0.0
+        payload['active_rms_samples'] = 0
+        viewer._native_bridge.recv_bytes.return_value = json.dumps(payload).encode()
+        self.assertFalse(viewer.inspect_native_live2d_lipsync(
+            operator_approved=True, duration=2.0
+        ).verified_signal)
+
+    def test_lipsync_probe_samples_real_viewer_values_not_random(self):
+        from unittest.mock import MagicMock
+        import json
+        child = MagicMock()
+        child.evaluate_js.side_effect = [
+            json.dumps({'canvas': True,'model': True,'ids': 1,'rms': 0,'mouth': 0}),
+            json.dumps({'canvas': True,'model': True,'ids': 1,'rms': .21,'mouth': .15}),
+            json.dumps({'canvas': True,'model': True,'ids': 1,'rms': .43,'mouth': .55}),
+        ]
+        with patch.object(viewer.time, 'monotonic', side_effect=[0., .1, .2, .3, 1.1]), patch.object(
+            viewer.time, 'sleep'
+        ):
+            report = viewer._observe_actual_live2d_model(child, 1)
+        self.assertEqual(report['samples'], 3)
+        self.assertAlmostEqual(report['peak_rms'], .43)
+        self.assertAlmostEqual(report['mouth_range'], .55)
+        self.assertEqual(report['changing_mouth_samples'], 2)
+        self.assertEqual(report['active_rms_samples'], 2)
+
     def test_project_path_sent_to_child(self):
         command = viewer.native_viewer_command(self.project, frozen=True)
         self.assertEqual(command[-2:], ["--aisting-live2d-viewer", str(self.project)])
