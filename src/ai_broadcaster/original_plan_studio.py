@@ -316,7 +316,7 @@ class OriginalPlanStudio:
         ttk.Label(
             screen,
             text="임시 그림이나 가짜 답변으로 실제 작동을 대신하지 않습니다."
-                 " 실제 렌더러는 별도 브라우저 창을 사용하며 AI 대화 창과 자동 동기화하지 않습니다."
+                 " 실제 렌더러는 AISTING Windows 창에서 실행되며 AI 텍스트 창과 자동 동기화하지 않습니다."
                  " 공식 프로그램과 모델이 준비되지 않으면 연결 실패로 표시합니다.",
             wraplength=780, justify="left",
         ).pack(anchor="w", pady=(0, 15))
@@ -336,7 +336,7 @@ class OriginalPlanStudio:
                    command=self._start).pack(side="left", padx=(0, 8))
         ttk.Button(buttons, text="실제 로컬 서버 연결 확인",
                    command=self._check).pack(side="left", padx=(0, 8))
-        ttk.Button(buttons, text="공식 Live2D 화면 열기 (별도 브라우저 · 승인 필요)",
+        ttk.Button(buttons, text="공식 Live2D Windows 창 열기 (승인 필요)",
                    command=self._open).pack(side="left", padx=(0, 8))
         ttk.Button(buttons, text="이 앱이 실행한 공식 서버 중지",
                    command=self._stop_own_server).pack(side="left")
@@ -899,7 +899,7 @@ class OriginalPlanStudio:
         ).start()
 
     def _open(self) -> None:
-        """Use the REAL upstream renderer, only after an explicit browser consent."""
+        """Use the real upstream renderer in a native Windows window after approval."""
         try:
             from .original_plan_frontend import inspect_installed_official_frontend
             inspect_installed_official_frontend(self.project_dir.get())
@@ -908,11 +908,11 @@ class OriginalPlanStudio:
             return
         if not messagebox.askyesno(
             '실제 공식 Live2D 화면 열기 승인',
-            '설치된 Open-LLM-VTuber의 기존 WebGL/Live2D 화면을 로컬 브라우저에서 엽니다. '
+            '설치된 Open-LLM-VTuber의 기존 WebGL/Live2D 화면을 AISTING Windows 네이티브 창에서 엽니다. '
             '공식 프런트엔드는 별도 AI WebSocket 세션을 만들고, 공식 설정에 따라 '
             '대화 기록 저장, 외부 API 연결, 리소스 다운로드, TTS 음성 재생을 할 수 있습니다. '
             'AISTING의 텍스트 대화 창과 이 화면은 자동으로 동기화되지 않습니다. '
-            '사용 전 공식 설정을 확인했으며 이번 로컬 서버 접속과 브라우저 실행을 승인합니까?',
+            '사용 전 공식 설정을 확인했으며 이번 로컬 서버 접속과 Windows 창 실행을 승인합니까?',
             parent=self.parent,
         ):
             self.state.set('사용자 승인 취소 · 프런트엔드 접속/실행하지 않음')
@@ -1047,7 +1047,7 @@ class OriginalPlanStudio:
                                                 ' · 공식 Live2D 초기화 모델: ' + response.model_name +
                                                 ' (' + response.model_url + ')' +
                                                 ' · ' + audio_note + ' · ' + avatar_note +
-                                                ' · 공식 브라우저와 데스크톱 AI 세션 분리 가능' +
+                                                ' · 공식 Live2D 창과 데스크톱 AI 세션 분리 가능' +
                                                 ' · 청취/송출 미검증')
                         if self._real_ai_window is not None and self._real_ai_window.winfo_exists():
                             self._ai_indicator.set('같은 서버 세션 ' + str(response.session_number) +
@@ -1109,10 +1109,10 @@ class OriginalPlanStudio:
                         try:
                             opened = open_prechecked_frontend(details, operator_approved=True)
                         except (RuntimeError, OSError, ValueError, PermissionError) as exc:
-                            self.state.set('공식 로컬 브라우저 실행 실패: ' + str(exc))
+                            self.state.set('공식 Windows Live2D 창 실행 실패: ' + str(exc))
                         else:
                             self.state.set(
-                                '기존 공식 Live2D 로컬 화면 ' + ('열기 요청됨' if opened else '실행 실패') +
+                                '기존 공식 Live2D Windows 창 ' + ('열기 요청됨' if opened else '실행 실패') +
                                 ' · 별도 AI 대화 세션 · 실제 렌더링/립싱크/음성 미검증'
                             )
                 elif kind == 'check':
