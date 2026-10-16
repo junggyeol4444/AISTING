@@ -336,7 +336,7 @@ class OriginalPlanStudio:
                    command=self._start).pack(side="left", padx=(0, 8))
         ttk.Button(buttons, text="실제 로컬 서버 연결 확인",
                    command=self._check).pack(side="left", padx=(0, 8))
-        ttk.Button(buttons, text="공식 Live2D Windows 창 열기 (승인 필요)",
+        ttk.Button(buttons, text="공식 AI 대화 + Live2D Windows 창 (같은 세션 · 승인 필요)",
                    command=self._open).pack(side="left", padx=(0, 8))
         ttk.Button(buttons, text="이 앱이 실행한 공식 서버 중지",
                    command=self._stop_own_server).pack(side="left")
@@ -943,7 +943,9 @@ class OriginalPlanStudio:
         if not messagebox.askyesno(
             '실제 공식 Live2D 화면 열기 승인',
             '설치된 Open-LLM-VTuber의 기존 WebGL/Live2D 화면을 AISTING Windows 네이티브 창에서 엽니다. '
-            '공식 프런트엔드는 별도 AI WebSocket 세션을 만들고, 공식 설정에 따라 '
+            '공식 창 안의 AI 텍스트 입력과 Live2D·음성은 공식 프런트엔드의 같은 WebSocket 세션을 사용합니다. '
+            '기존 AISTING의 별도 텍스트 AI 대화창과는 서로 동기화되지 않습니다. '
+            '공식 프런트엔드는 공식 설정에 따라 '
             '대화 기록 저장, 외부 API 연결, 리소스 다운로드, TTS 음성 재생을 할 수 있습니다. '
             'AISTING의 텍스트 대화 창과 이 화면은 자동으로 동기화되지 않습니다. '
             '사용 전 공식 설정을 확인했으며 이번 로컬 서버 접속과 Windows 창 실행을 승인합니까?',
