@@ -227,7 +227,7 @@ class OfficialObsWebsocket:
             raise ObsConnectionError('실제 OBS에 먼저 연결해야 합니다.')
         try:
             result = self._client.get_source_screenshot(
-                actual.scene, 'png', image_width=640, image_height=360
+                actual.scene, 'png', 640, 360, -1
             )
             encoded = result.image_data
             if (not isinstance(encoded, str)
