@@ -118,11 +118,16 @@ class TestAvatarChoice(unittest.TestCase):
         road['steps'][7]['status']='pending'
         self.assertTrue(any('8단계' in e for e in validate(req,road)))
 
-    def test_no_git_actions_or_scheduled_files(self):
-        self.assertFalse((ROOT/'.git').exists())
-        self.assertFalse((ROOT/'.github').exists())
+    def test_avatar_choice_does_not_require_ci_or_scheduled_work(self):
         self.assertFalse((ROOT/'package.json').exists())
-        self.assertFalse(any(ROOT.rglob('*.yml')))
+        workflows = sorted((ROOT/'.github'/'workflows').glob('*.yml'))
+        self.assertTrue(workflows)
+        for path in workflows:
+            content = path.read_text(encoding='utf-8')
+            self.assertIn('contents: read', content)
+            self.assertNotIn('schedule:', content)
+        gui = (ROOT/'src/ai_broadcaster/desktop.py').read_text(encoding='utf-8')
+        self.assertNotIn('git clone', gui)
 
 
 if __name__=='__main__':

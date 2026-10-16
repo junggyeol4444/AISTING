@@ -160,8 +160,10 @@ class TestChatRehearsal(unittest.TestCase):
 
     def test_exe_wires_rehearsal_tab(self):
         code=(ROOT/"src/ai_broadcaster/desktop.py").read_text(encoding="utf-8")
-        self.assertIn('pages.add(rehearsal, text="시청자 채팅 연습")',code)
-        self.assertIn('ChatRehearsalTab(rehearsal)',code)
+        self.assertIn('(rehearsal, "시청자 채팅 연습")',code)
+        self.assertIn('tabs.add(tab, text=label)',code)
+        self.assertIn('self._build_rehearsal(rehearsal)',code)
+        self.assertIn('self._runner = ChatRehearsal()',code)
 
 
 if __name__=="__main__":

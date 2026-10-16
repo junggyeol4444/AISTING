@@ -147,8 +147,10 @@ class TestLocalOperation(unittest.TestCase):
         self.assertNotIn("github", entrypoint.lower())
         self.assertNotIn("github", build.lower())
         self.assertNotIn("pip install", build.lower())
-        self.assertFalse((ROOT / ".github").exists())
-        self.assertFalse((ROOT / ".git").exists())
+        workflows = list((ROOT / ".github" / "workflows").glob("*.yml"))
+        self.assertTrue(workflows)
+        self.assertTrue(all("schedule:" not in p.read_text(encoding="utf-8") for p in workflows))
+        self.assertNotIn("github.com", entrypoint.lower())
 
 
 if __name__ == "__main__":

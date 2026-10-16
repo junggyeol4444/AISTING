@@ -75,10 +75,15 @@ class TestAvatarFrame(unittest.TestCase):
         self.assertNotIn("webbrowser.open", code)
         self.assertNotIn("StartStream", code)
 
-    def test_no_git_workflows_in_local_project(self):
-        self.assertFalse((ROOT / ".github").exists())
-        self.assertFalse((ROOT / ".git").exists())
+    def test_local_avatar_has_no_runtime_ci_or_schedule(self):
+        workflows = sorted((ROOT / ".github" / "workflows").glob("*.yml"))
+        self.assertTrue(workflows)
         self.assertFalse(any((ROOT / "src").rglob(".github")))
+        for path in workflows:
+            self.assertIn("contents: read", path.read_text(encoding="utf-8"))
+            self.assertNotIn("schedule:", path.read_text(encoding="utf-8"))
+        code = (ROOT / "src/ai_broadcaster/avatar_renderer.py").read_text(encoding="utf-8")
+        self.assertNotIn("github.com", code)
 
 
 if __name__ == "__main__":
