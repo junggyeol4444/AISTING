@@ -542,7 +542,7 @@ class OriginalPlanStudio:
 
         def send_to_same_live2d_session():
             """One consented AI text message over the official viewer's own WS."""
-            from .original_plan_frontend import send_to_native_live2d_session
+            from .original_plan_frontend import send_to_native_live2d_session_with_observation
             if self._real_ai_busy:
                 indicator.set("현재 실제 AI 전송이 진행 중입니다")
                 return
@@ -562,7 +562,9 @@ class OriginalPlanStudio:
                 "기존 WebSocket에 질문을 전송합니다. 별도 AI 세션을 만들지 않습니다. "
                 "공식 설정에 따라 외부/유료 AI 요청, 음성 합성 및 대화 기록이 "
                 "발생할 수 있습니다. OBS 송출은 시작하지 않습니다. "
-                "이번 한 번의 질문 전송을 승인합니까?",
+                "공식 창에서 질문이 전송된 후 8초 동안 실제 음성 RMS와 "
+                "입 파라미터를 읽기 전용으로 관찰합니다. "
+                "이번 한 번의 질문 전송과 관찰을 승인합니까?",
                 parent=win,
             ):
                 indicator.set("운영자 승인 취소 · 요청을 보내지 않았습니다")
@@ -576,18 +578,20 @@ class OriginalPlanStudio:
             self._real_ai_busy = True
             send_button.configure(state="disabled")
             same_session_button.configure(state="disabled")
-            indicator.set("공식 Live2D 창의 실제 WebSocket 전송 확인 중…")
+            indicator.set("공식 Live2D 같은 세션 전송 및 실제 립싱크 관찰 중…")
             self.real_ai_status.set("공식 Live2D 동일 세션 요청 중 · 아직 전송 미확인")
 
             def send_worker():
                 try:
-                    send_to_native_live2d_session(message, operator_approved=True)
+                    evidence = send_to_native_live2d_session_with_observation(
+                        message, operator_approved=True, duration=8.0
+                    )
                 except Exception as exc:
                     self._events.put(("live2d_send_result",
-                                      (current_generation, message, str(exc))))
+                                      (current_generation, message, str(exc), None)))
                 else:
                     self._events.put(("live2d_send_result",
-                                      (current_generation, message, None)))
+                                      (current_generation, message, None, evidence)))
             threading.Thread(
                 target=send_worker, name="aisting-official-live2d-real-send",
                 daemon=True,
@@ -1367,7 +1371,7 @@ class OriginalPlanStudio:
                     )
                     continue
                 if kind == 'live2d_send_result':
-                    generation, sent_text, failure = connected
+                    generation, sent_text, failure, evidence = connected
                     if generation != self._real_ai_generation:
                         continue
                     self._real_ai_busy = False
