@@ -32,13 +32,22 @@ class WindowsExeSelftestTests(unittest.TestCase):
         desktop.main = lambda: None
         frontend = types.ModuleType("ai_broadcaster.original_plan_frontend")
         frontend.run_native_live2d_window = lambda *a, **kw: None
+        obs_backend = types.ModuleType("ai_broadcaster.original_plan_obs")
+        obs_backend.OfficialObsWebsocket = lambda *a, **kw: None
+        obs_sdk = types.ModuleType("obsws_python")
+        obs_sdk.ReqClient = lambda *a, **kw: None
         self.mods = {"ai_broadcaster": pkg, "ai_broadcaster.desktop": desktop,
-                     "ai_broadcaster.original_plan_frontend": frontend}
+                     "ai_broadcaster.original_plan_frontend": frontend,
+                     "ai_broadcaster.original_plan_obs": obs_backend,
+                     "obsws_python": obs_sdk}
         with patch.dict(sys.modules, self.mods):
             self.app = runpy.run_path(str(ENTRY), run_name="selftest_module")
 
-    def _check(self, spec_present=True):
-        with patch.dict(sys.modules, self.mods), patch.object(
+    def _check(self, spec_present=True, obs_present=True):
+        modules = dict(self.mods)
+        if not obs_present:
+            modules["obsws_python"] = None
+        with patch.dict(sys.modules, modules), patch.object(
             sys, "platform", "win32"
         ), patch.object(sys, "frozen", True, create=True), patch.object(
             sys, "_MEIPASS", str(self.root), create=True
@@ -50,6 +59,13 @@ class WindowsExeSelftestTests(unittest.TestCase):
 
     def test_webview_missing_fails_without_install(self):
         self.assertFalse(self._check(False))
+
+    def test_missing_obs_sdk_fails_frozen_bundle_without_connection(self):
+        self.assertFalse(self._check(obs_present=False))
+
+    def test_frozen_obs_sdk_import_requires_client_constructor(self):
+        with patch.object(self.mods["obsws_python"], "ReqClient", None):
+            self.assertFalse(self._check())
 
     def test_roadmap_missing_fails(self):
         (self.root / "config" / "roadmap.json").unlink()

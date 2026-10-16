@@ -5,9 +5,9 @@ rem Build the EXISTING AISTING native Windows GUI, not a website.
 rem Never install dependencies or overwrite the user's previous EXE.
 rem CI may select its isolated Python; manual Windows builds keep py -3.
 if not defined AISTING_PYTHON set "AISTING_PYTHON=py -3"
-%AISTING_PYTHON% -c "import tkinter, PyInstaller, webview" >nul 2>&1
+%AISTING_PYTHON% -c "import tkinter, PyInstaller, webview, obsws_python" >nul 2>&1
 if errorlevel 1 (
-  echo Windows native build requires already installed Python, PyInstaller and pywebview.
+  echo Windows native build requires already installed Python, PyInstaller, pywebview and obsws-python.
   echo Nothing has been installed or downloaded. Existing EXE is preserved.
   exit /b 1
 )
@@ -34,7 +34,7 @@ if exist "%WORK%" (
   echo Working output exists. No overwrite permitted.
   exit /b 1
 )
-%AISTING_PYTHON% -m PyInstaller --onefile --windowed --name AISTING --paths src --collect-all webview --hidden-import clr --distpath "%OUT%" --workpath "%WORK%" --specpath "%WORK%" --add-data "%CD%\config;config" --add-data "%CD%\docs;docs" scripts\run_desktop.py
+%AISTING_PYTHON% -m PyInstaller --onefile --windowed --name AISTING --paths src --collect-all webview --collect-all obsws_python --hidden-import clr --distpath "%OUT%" --workpath "%WORK%" --specpath "%WORK%" --add-data "%CD%\config;config" --add-data "%CD%\docs;docs" scripts\run_desktop.py
 if errorlevel 1 (
   echo Build failed. Original program and previous EXEs were not overwritten.
   exit /b 1

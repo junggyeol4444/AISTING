@@ -43,7 +43,11 @@ def _verify_frozen_bundle() -> bool:
             return False
         from ai_broadcaster.desktop import main
         from ai_broadcaster.original_plan_frontend import run_native_live2d_window
-        if not callable(main) or not callable(run_native_live2d_window):
+        from ai_broadcaster.original_plan_obs import OfficialObsWebsocket
+        import obsws_python
+        if (not callable(main) or not callable(run_native_live2d_window)
+                or not callable(OfficialObsWebsocket)
+                or not callable(obsws_python.ReqClient)):
             return False
         return importlib.util.find_spec("webview") is not None
     except (OSError, ValueError, ImportError, AttributeError, TypeError):
