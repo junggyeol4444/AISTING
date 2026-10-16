@@ -36,10 +36,12 @@ class WindowsExeSelftestTests(unittest.TestCase):
         obs_backend.OfficialObsWebsocket = lambda *a, **kw: None
         obs_sdk = types.ModuleType("obsws_python")
         obs_sdk.ReqClient = lambda *a, **kw: None
+        winsound = types.ModuleType("winsound")
+        winsound.PlaySound = lambda *a, **kw: None
         self.mods = {"ai_broadcaster": pkg, "ai_broadcaster.desktop": desktop,
                      "ai_broadcaster.original_plan_frontend": frontend,
                      "ai_broadcaster.original_plan_obs": obs_backend,
-                     "obsws_python": obs_sdk}
+                     "obsws_python": obs_sdk, "winsound": winsound}
         with patch.dict(sys.modules, self.mods):
             self.app = runpy.run_path(str(ENTRY), run_name="selftest_module")
 
@@ -65,6 +67,10 @@ class WindowsExeSelftestTests(unittest.TestCase):
 
     def test_frozen_obs_sdk_import_requires_client_constructor(self):
         with patch.object(self.mods["obsws_python"], "ReqClient", None):
+            self.assertFalse(self._check())
+
+    def test_frozen_speaker_api_requires_windows_audio_backend(self):
+        with patch.object(self.mods["winsound"], "PlaySound", None):
             self.assertFalse(self._check())
 
     def test_roadmap_missing_fails(self):
