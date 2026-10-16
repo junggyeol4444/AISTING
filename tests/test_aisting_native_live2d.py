@@ -322,6 +322,88 @@ class NativeLive2DTests(unittest.TestCase):
         self.assertEqual(result['renderer_active_samples'],0)
         self.assertEqual(result['overlapping_audio_mouth_samples'],0)
 
+    def test_same_session_send_and_lipsync_sampling_share_one_authenticated_request(self):
+        import json
+        from unittest.mock import MagicMock
+        viewer._native_viewer = types.SimpleNamespace(poll=lambda: None)
+        viewer._native_bridge = MagicMock()
+        viewer._native_bridge.poll.return_value = True
+        signal = {
+            'type':'lip-sync-result', 'samples':6,
+            'model_seen':True, 'canvas_seen':True, 'lip_sync_ids':1,
+            'peak_rms':0.32,'active_rms_samples':3,
+            'mouth_range':0.2,'changing_mouth_samples':2,
+            'renderer_active_samples':4, 'overlapping_audio_mouth_samples':2,
+        }
+        viewer._native_bridge.recv_bytes.return_value = json.dumps({
+            'type':'input-with-lipsync-result', 'accepted':True,
+            'evidence':signal,
+        }).encode()
+        report = viewer.send_to_native_live2d_session_with_observation(
+            '안녕하세요',operator_approved=True,duration=2
+        )
+        self.assertTrue(report.verified_signal)
+        sent=json.loads(viewer._native_bridge.send_bytes.call_args.args[0])
+        self.assertEqual(sent,{'type':'user-text-with-lipsync',
+                               'text':'안녕하세요','seconds':2.0})
+        self.assertEqual(viewer._native_bridge.send_bytes.call_count,1)
+
+    def test_same_session_observation_never_invents_send_acknowledgement(self):
+        import json
+        from unittest.mock import MagicMock
+        with self.assertRaises(PermissionError):
+            viewer.send_to_native_live2d_session_with_observation('안녕')
+        viewer._native_viewer = types.SimpleNamespace(poll=lambda: None)
+        viewer._native_bridge = MagicMock()
+        viewer._native_bridge.poll.return_value = True
+        viewer._native_bridge.recv_bytes.return_value = (
+            b'{"type":"input-result","accepted":false}'
+        )
+        with self.assertRaises(viewer.FrontendUnavailable):
+            viewer.send_to_native_live2d_session_with_observation(
+                '안녕',operator_approved=True,duration=1
+            )
+
+    @unittest.skipUnless(sys.platform == 'win32', 'Actual Windows AF_PIPE only')
+    def test_real_windows_pipe_combined_submit_and_lipsync_observation(self):
+        import threading
+        import time
+        viewer._native_viewer=types.SimpleNamespace(poll=lambda: None)
+        listener,address,key=viewer._create_native_bridge()
+        viewer._native_listener=listener
+        parent=threading.Thread(target=viewer._receive_native_bridge,
+                                args=(listener,listener),daemon=True)
+        parent.start()
+        from unittest.mock import MagicMock
+        win=MagicMock()
+        win.events.loaded.wait.return_value=True
+        evidence={
+            'type':'lip-sync-result','samples':4,
+            'model_seen':True,'canvas_seen':True,'lip_sync_ids':1,
+            'peak_rms':.5,'active_rms_samples':3,'mouth_range':.6,
+            'changing_mouth_samples':2,'renderer_active_samples':4,
+            'overlapping_audio_mouth_samples':2,
+        }
+        with patch.object(viewer,'_submit_original_live2d_text',return_value=True) as submit, patch.object(
+            viewer,'_observe_actual_live2d_model',return_value=evidence
+        ) as observe:
+            child=threading.Thread(target=viewer._native_frontend_input_worker,
+                         args=(win,address,key.hex()),daemon=True)
+            child.start()
+            deadline=time.monotonic()+5
+            while viewer._native_bridge is None and time.monotonic()<deadline:
+                time.sleep(.02)
+            self.assertIsNotNone(viewer._native_bridge)
+            proof=viewer.send_to_native_live2d_session_with_observation(
+                '한국어 대화',operator_approved=True,duration=1
+            )
+            self.assertTrue(proof.verified_signal)
+            submit.assert_called_once_with(win,'한국어 대화')
+            observe.assert_called_once_with(win,1.0)
+            viewer._native_bridge.close()
+            child.join(timeout=2)
+            self.assertFalse(child.is_alive())
+
     def test_project_path_sent_to_child(self):
         command = viewer.native_viewer_command(self.project, frozen=True)
         self.assertEqual(command[-2:], ["--aisting-live2d-viewer", str(self.project)])
