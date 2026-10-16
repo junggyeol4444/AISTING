@@ -280,6 +280,7 @@ class NativeLive2DTests(unittest.TestCase):
         self.assertEqual(sent, {'type': 'observe-lipsync', 'seconds': 2.0})
         payload['peak_rms'] = 0.0
         payload['active_rms_samples'] = 0
+        payload['overlapping_audio_mouth_samples'] = 0
         viewer._native_bridge.recv_bytes.return_value = json.dumps(payload).encode()
         self.assertFalse(viewer.inspect_native_live2d_lipsync(
             operator_approved=True, duration=2.0
