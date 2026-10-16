@@ -1,0 +1,121 @@
+"""Open the *installed upstream* Open-LLM-VTuber Live2D frontend, never a mock.
+
+The Windows AISTING desktop remains the operator program. The real official
+frontend is the WebGL/Cubism viewer already shipped by Open-LLM-VTuber.
+This module neither downloads nor installs a renderer and never starts a server.
+Opening it is opt-in and may let upstream JavaScript connect to real LLM/TTS
+services, use microphones, create history or fetch resources: warn before open.
+A successful local HTTP response is NOT proof of rendering, lip sync, or audio.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+import http.client
+from pathlib import Path
+import re
+import webbrowser
+
+OFFICIAL_HOST = '127.0.0.1'
+OFFICIAL_PORT = 12393
+OFFICIAL_URL = f'http://{OFFICIAL_HOST}:{OFFICIAL_PORT}/'
+_MAX_HTML = 128 * 1024
+
+
+class FrontendUnavailable(RuntimeError):
+    """Not enough evidence that the installed official frontend is served."""
+
+
+@dataclass(frozen=True)
+class OfficialFrontendReadiness:
+    url: str
+    local_frontend: Path
+    http_status: int
+    content_type: str
+
+
+def _regular_file(path: Path, *, max_size: int) -> None:
+    if path.is_symlink() or not path.is_file():
+        raise FrontendUnavailable('공식 프로젝트의 필수 일반 파일이 없습니다: ' + str(path.name))
+    if not 0 < path.stat().st_size <= max_size:
+        raise FrontendUnavailable('공식 프런트엔드 파일 크기가 예상 범위를 벗어납니다.')
+
+
+def inspect_installed_official_frontend(project: str | Path) -> Path:
+    """Read-only preflight; never call run_server.py (can fetch submodules)."""
+    if not str(project).strip():
+        raise FrontendUnavailable('공식 Open-LLM-VTuber 설치 폴더를 선택하세요.')
+    try:
+        root = Path(project).expanduser().resolve(strict=True)
+        if not root.is_dir() or (root / 'frontend').is_symlink():
+            raise FrontendUnavailable('공식 프런트엔드 폴더가 없거나 심볼릭 링크입니다.')
+        _regular_file(root / 'run_server.py', max_size=2_000_000)
+        _regular_file(root / 'pyproject.toml', max_size=2_000_000)
+        _regular_file(root / 'conf.yaml', max_size=2_000_000)
+        frontend = root / 'frontend' / 'index.html'
+        _regular_file(frontend, max_size=_MAX_HTML)
+        with frontend.open('rb') as f:
+            head = f.read(_MAX_HTML)
+        if not re.search(rb'<html(?:\s|>)', head, flags=re.I):
+            raise FrontendUnavailable('설치된 공식 frontend/index.html에 HTML 문서가 없습니다.')
+        return frontend
+    except (OSError, RuntimeError) as exc:
+        if isinstance(exc, FrontendUnavailable):
+            raise
+        raise FrontendUnavailable('공식 프런트엔드 파일을 검사할 수 없습니다.') from exc
+
+
+def probe_official_frontend(project: str | Path, *, operator_approved: bool = False,
+                            timeout: float = 4.0) -> OfficialFrontendReadiness:
+    """Probe actual localhost HTML; no redirects or external HTTP requests.
+
+    Requires one-shot approval because the installed server may log requests.
+    HTTP does not prove what binary occupies the local port or that WebGL works.
+    """
+    if operator_approved is not True:
+        raise PermissionError('이번 공식 프런트엔드 로컬 접속 승인이 필요합니다.')
+    if type(timeout) not in (int, float) or not (0.5 <= timeout <= 15):
+        raise ValueError('HTTP 제한 시간이 올바르지 않습니다.')
+    index = inspect_installed_official_frontend(project)
+    connection = http.client.HTTPConnection(OFFICIAL_HOST, OFFICIAL_PORT, timeout=timeout)
+    try:
+        connection.request('GET', '/', headers={'Host': '127.0.0.1:12393',
+                                                'Accept': 'text/html'})
+        response = connection.getresponse()
+        # Do not follow 3xx (including external-location redirects).
+        if response.status != 200:
+            raise FrontendUnavailable('공식 로컬 화면의 HTTP 응답이 200이 아닙니다: ' +
+                                      str(response.status))
+        content_type = response.getheader('Content-Type', '').split(';', 1)[0].strip().lower()
+        if content_type != 'text/html':
+            raise FrontendUnavailable('로컬 서버가 HTML 프런트엔드를 제공하지 않습니다.')
+        if response.getheader('Content-Length'):
+            try:
+                size = int(response.getheader('Content-Length'))
+            except ValueError as exc:
+                raise FrontendUnavailable('HTTP Content-Length 값이 잘못됐습니다.') from exc
+            if size > _MAX_HTML:
+                raise FrontendUnavailable('로컬 프런트엔드 HTML이 검사 상한을 초과했습니다.')
+        raw = response.read(_MAX_HTML + 1)
+        if len(raw) > _MAX_HTML or not re.search(rb'<html(?:\s|>)', raw, flags=re.I):
+            raise FrontendUnavailable('로컬 HTTP 본문에서 HTML 문서를 확인하지 못했습니다.')
+        return OfficialFrontendReadiness(OFFICIAL_URL, index, response.status, content_type)
+    except (OSError, http.client.HTTPException) as exc:
+        raise FrontendUnavailable('기존 공식 로컬 프런트엔드 서버에 연결하지 못했습니다.') from exc
+    finally:
+        connection.close()
+
+
+def open_prechecked_frontend(readiness: OfficialFrontendReadiness, *,
+                             operator_approved: bool = False) -> bool:
+    """Open only the fixed LOCAL address, from an explicit UI approval.
+
+    This does not embed WebGL in Tkinter, nor join AISTING's other WS session.
+    The operator uses the real official frontend's own UI for real rendering.
+    """
+    if operator_approved is not True:
+        raise PermissionError('실제 브라우저 화면 실행에 대한 별도 승인이 필요합니다.')
+    if (not isinstance(readiness, OfficialFrontendReadiness)
+            or readiness.url != OFFICIAL_URL or readiness.http_status != 200
+            or readiness.content_type != 'text/html'):
+        raise FrontendUnavailable('공식 로컬 화면의 검사 결과가 없습니다.')
+    return bool(webbrowser.open_new(readiness.url))
