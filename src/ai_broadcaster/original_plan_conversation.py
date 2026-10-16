@@ -18,6 +18,7 @@ import base64
 from dataclasses import dataclass
 import hashlib
 import json
+import math
 import os
 import socket
 import time
@@ -53,6 +54,11 @@ class RealConversationResult:
     invalid_audio_packets: int = 0
     silent_audio_packets: int = 0
     model_url: str = ''  # Actual upstream initialization metadata, NOT animation proof
+    live2d_expression_signals: int = 0
+    lip_sync_volume_samples: int = 0
+    lip_sync_packets: int = 0
+    malformed_visual_signals: int = 0
+    upstream_client_uid: str = ''  # This desktop session; not an external browser
 
 
 def inspect_upstream_audio_event(msg: dict) -> tuple[str, int] | None:
@@ -105,6 +111,43 @@ def inspect_upstream_audio_event(msg: dict) -> tuple[str, int] | None:
     if offset != len(raw) or not found_fmt or not found_data:
         return ('invalid', 0)
     return ('wav', len(raw))
+
+
+
+def inspect_official_avatar_signals(msg: dict) -> tuple[tuple[str | int, ...], int, bool] | None:
+    """Read the real upstream action and volume hints, without rendering or audio playback.
+
+    Signals on this WebSocket do not prove a separate browser saw them.
+    """
+    if not isinstance(msg, dict) or msg.get('type') != 'audio':
+        return None
+    actions = msg.get('actions')
+    expressions: tuple[str | int, ...] = ()
+    malformed = False
+    if actions is not None:
+        if not isinstance(actions, dict):
+            malformed = True
+        else:
+            names = actions.get('expressions')
+            if names is not None:
+                if (not isinstance(names, list) or len(names) > 256
+                        or any((type(x) is not str and type(x) is not int)
+                               or (type(x) is str and (len(x) > 128 or not x.strip()))
+                               or (type(x) is int and x < 0) for x in names)):
+                    malformed = True
+                else:
+                    expressions = tuple(names)
+    samples = msg.get('volumes')
+    if samples is None:
+        return (expressions, 0, malformed)
+    if (not isinstance(samples, list) or len(samples) > 100000
+            or any(type(x) not in (int, float) or not math.isfinite(x)
+                   or x < 0 for x in samples)):
+        return (expressions, 0, True)
+    slice_length = msg.get('slice_length')
+    if type(slice_length) is not int or slice_length <= 0:
+        return (expressions, 0, True)
+    return (expressions, len(samples), malformed)
 
 
 def _exact(sock: socket.socket, count: int, pending: bytearray,
@@ -325,6 +368,10 @@ class OfficialConversationSession:
                 wav_audio_bytes = 0
                 invalid_audio_packets = 0
                 silent_audio_packets = 0
+                live2d_expression_signals = 0
+                lip_sync_volume_samples = 0
+                lip_sync_packets = 0
+                malformed_visual_signals = 0
                 for observed in range(1, MAX_FRAMES + 1):
                     if self._shutdown.is_set():
                         raise RealConversationError('대화 창이 종료되었습니다.')
@@ -360,6 +407,21 @@ class OfficialConversationSession:
                                 on_progress('audio_' + audio_status, audio_bytes)
                             except Exception:
                                 pass
+                    avatar_signals = inspect_official_avatar_signals(evt)
+                    if avatar_signals is not None:
+                        expressions, volume_count, malformed = avatar_signals
+                        live2d_expression_signals += len(expressions)
+                        lip_sync_volume_samples += volume_count
+                        lip_sync_packets += int(volume_count > 0)
+                        malformed_visual_signals += int(malformed)
+                        if on_progress is not None:
+                            try:
+                                if expressions:
+                                    on_progress('official_expressions', ', '.join(map(str, expressions)))
+                                if volume_count:
+                                    on_progress('official_lip_sync_samples', volume_count)
+                            except Exception:
+                                pass
                     if kind == 'control' and evt.get('text') == 'conversation-chain-end':
                         answer = ''.join(segments).strip()
                         if not answer:
@@ -376,6 +438,11 @@ class OfficialConversationSession:
                             invalid_audio_packets=invalid_audio_packets,
                             silent_audio_packets=silent_audio_packets,
                             model_url=self._initialization.model_url,
+                            live2d_expression_signals=live2d_expression_signals,
+                            lip_sync_volume_samples=lip_sync_volume_samples,
+                            lip_sync_packets=lip_sync_packets,
+                            malformed_visual_signals=malformed_visual_signals,
+                            upstream_client_uid=self._initialization.client_uid,
                         )
                 raise RealConversationError('공식 AI 응답 프레임 한도를 초과했습니다.')
             except (OfficialWsProbeError, OSError, TimeoutError, RealConversationError) as exc:
