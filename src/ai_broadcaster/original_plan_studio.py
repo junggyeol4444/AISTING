@@ -1351,6 +1351,8 @@ class OriginalPlanStudio:
                             " / 모델 " + ("확인" if evidence.model_seen else "미확인") +
                             " / 립싱크 파라미터 " + str(evidence.lip_sync_ids) + "개" +
                             " / 관찰 " + str(evidence.samples) + "회" +
+                            " / 립싱크 엔진 활성 " + str(evidence.renderer_active_samples) + "회" +
+                            " / RMS·입 변화 동시 확인 " + str(evidence.overlapping_audio_mouth_samples) + "회" +
                             " / 최대 RMS " + str(evidence.peak_rms) +
                             " / 활성 RMS " + str(evidence.active_rms_samples) + "회" +
                             " / 입 파라미터 변화폭 " + str(evidence.mouth_range) +
