@@ -12,6 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import hashlib
 import http.client
+import json
 from pathlib import Path
 import re
 import importlib.util
@@ -22,6 +23,8 @@ OFFICIAL_HOST = '127.0.0.1'
 OFFICIAL_PORT = 12393
 OFFICIAL_URL = f'http://{OFFICIAL_HOST}:{OFFICIAL_PORT}/'
 _MAX_HTML = 128 * 1024
+_native_viewer: subprocess.Popen | None = None
+_native_viewer_project: Path | None = None
 
 
 class FrontendUnavailable(RuntimeError):
@@ -176,11 +179,102 @@ def open_prechecked_frontend(readiness: OfficialFrontendReadiness, *,
         raise PermissionError('공식 Live2D Windows 창 실행의 명시적 승인이 필요합니다.')
     project = _project_from_readiness(readiness)
     _check_windows_native_dependencies()
+    global _native_viewer, _native_viewer_project
+    if _native_viewer is not None and _native_viewer.poll() is None:
+        if _native_viewer_project != project:
+            raise FrontendUnavailable('다른 공식 프로젝트 Live2D 창이 이미 열려 있습니다.')
+        return True
     try:
-        child = subprocess.Popen(native_viewer_command(project), close_fds=True)
+        child = subprocess.Popen(
+            native_viewer_command(project), close_fds=True,
+            stdin=subprocess.PIPE, text=True, encoding='utf-8', bufsize=1,
+        )
     except OSError as exc:
         raise FrontendUnavailable('AISTING Windows Live2D 창을 시작할 수 없습니다.') from exc
+    _native_viewer, _native_viewer_project = child, project
     return child.pid > 0
+
+
+def send_to_native_live2d_session(text: str, *, operator_approved: bool = False) -> bool:
+    """Deliver an explicitly approved text input to the SAME official WebView session.
+
+    The child acts through the official React textarea instead of creating a
+    competing WebSocket. A successful pipe write is only delivery *attempt*,
+    not an acknowledged upstream text-input, voice or Live2D motion.
+    """
+    if operator_approved is not True:
+        raise PermissionError('공식 Live2D 실제 AI 세션 질문은 매번 승인이 필요합니다.')
+    if not isinstance(text, str) or not 1 <= len(text.strip()) <= 4000:
+        raise FrontendUnavailable('공식 Live2D 질문은 1~4000글자여야 합니다.')
+    child = _native_viewer
+    if child is None or child.poll() is not None or child.stdin is None:
+        raise FrontendUnavailable('AISTING 안에서 먼저 공식 Live2D Windows 창을 열어주세요.')
+    try:
+        child.stdin.write(json.dumps({'type': 'user-text', 'text': text.strip()},
+                                     ensure_ascii=False) + '\n')
+        child.stdin.flush()
+    except (OSError, ValueError, UnicodeError) as exc:
+        raise FrontendUnavailable('공식 Live2D Windows 창으로 메시지를 전달하지 못했습니다.') from exc
+    return True
+
+
+def _native_frontend_input_worker(window) -> None:
+    """Pipe requests onto the unmodified official frontend's own UI/WS session.
+
+    pywebview runs this function on a worker thread after GUI startup. No
+    microphone, audio-device, or browser profile access is introduced here.
+    """
+    try:
+        if not window.events.loaded.wait(timeout=30):
+            return
+        source = getattr(sys.stdin, 'buffer', None)
+        if source is None:
+            return
+        for raw in source:
+            if len(raw) > 20_000:
+                continue
+            try:
+                message = json.loads(raw.decode('utf-8'))
+            except (UnicodeError, ValueError):
+                continue
+            if not isinstance(message, dict) or message.get('type') != 'user-text':
+                continue
+            value = message.get('text')
+            if not isinstance(value, str) or not 1 <= len(value.strip()) <= 4000:
+                continue
+            encoded = json.dumps(value.strip(), ensure_ascii=False)
+            # The official Web UI's React input triggers its existing
+            # text-input handler and the SAME WebSocket that receives audio
+            # payloads and drives the official Cubism renderer. The short
+            # timer yields to React controlled-input state updates; it is
+            # not an artificial conversational reply delay.
+            script = (
+                "(() => {"
+                "if (location.origin !== 'http://127.0.0.1:12393') return false;"
+                "const nodes=Array.from(document.querySelectorAll('textarea'))"
+                ".filter(x => !x.disabled && x.offsetParent !== null);"
+                "if (nodes.length !== 1) return false;"
+                "const el=nodes[0];const val=" + encoded + ";"
+                "const setter=Object.getOwnPropertyDescriptor("
+                "HTMLTextAreaElement.prototype,'value').set;"
+                "setter.call(el,val);"
+                "el.dispatchEvent(new Event('input',{bubbles:true}));"
+                "setTimeout(() => {"
+                "if(el.isConnected && el.value === val)"
+                "el.dispatchEvent(new KeyboardEvent('keydown',"
+                "{key:'Enter',code:'Enter',bubbles:true,cancelable:true}));"
+                "},200);"
+                "return true;"
+                "})()"
+            )
+            try:
+                window.evaluate_js(script)
+            except Exception:
+                # The official frontend may have closed/reloaded mid-send.
+                # Do not retry automatically; re-sending can duplicate turns.
+                continue
+    except (OSError, ValueError):
+        return
 
 
 def run_native_live2d_window(project: str | Path, *, operator_approved: bool = False) -> None:
@@ -198,4 +292,5 @@ def run_native_live2d_window(project: str | Path, *, operator_approved: bool = F
     import webview
     webview.create_window('AISTING | 공식 Live2D 및 AI 대화', OFFICIAL_URL,
                           width=1100, height=760, min_size=(650, 480))
-    webview.start(gui='edgechromium', debug=False, private_mode=True)
+    webview.start(func=_native_frontend_input_worker, args=(window,),
+                  gui='edgechromium', debug=False, private_mode=True)
