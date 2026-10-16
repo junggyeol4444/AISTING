@@ -10,6 +10,7 @@ A successful local HTTP response is NOT proof of rendering, lip sync, or audio.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 import http.client
 from pathlib import Path
 import re
@@ -100,6 +101,19 @@ def probe_official_frontend(project: str | Path, *, operator_approved: bool = Fa
         raw = response.read(_MAX_HTML + 1)
         if len(raw) > _MAX_HTML or not re.search(rb'<html(?:\s|>)', raw, flags=re.I):
             raise FrontendUnavailable('로컬 HTTP 본문에서 HTML 문서를 확인하지 못했습니다.')
+        # The official upstream mounts its installed 'frontend' directory as
+        # static files. A 200 HTML response alone could come from a different
+        # process/project occupying port 12393. Do not show that in AISTING.
+        # This proves matching index bytes only, NOT running-server identity,
+        # LLM, TTS, Cubism initialization, or consent for any other action.
+        _regular_file(index, max_size=_MAX_HTML)
+        disk_html = index.read_bytes()
+        if not hashlib.compare_digest(hashlib.sha256(raw).digest(),
+                                      hashlib.sha256(disk_html).digest()):
+            raise FrontendUnavailable(
+                '12393 로컬 서버 화면이 선택한 공식 프로젝트 frontend/index.html과 '
+                '일치하지 않습니다. 다른 서버/프로젝트 화면 실행을 차단했습니다.'
+            )
         return OfficialFrontendReadiness(OFFICIAL_URL, index, response.status, content_type)
     except (OSError, http.client.HTTPException) as exc:
         raise FrontendUnavailable('기존 공식 로컬 프런트엔드 서버에 연결하지 못했습니다.') from exc
