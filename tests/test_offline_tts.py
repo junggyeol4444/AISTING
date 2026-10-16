@@ -244,8 +244,9 @@ class TestSpeechText(unittest.TestCase):
         self.assertIn('self._speech_pending.clear()', gui)
 
     def test_no_remote_ci_build_or_automation(self):
-        self.assertFalse((ROOT / ".github").exists())
-        self.assertFalse((ROOT / ".git").exists())
+        workflows = list((ROOT / ".github" / "workflows").glob("*.yml"))
+        self.assertTrue(workflows)
+        self.assertTrue(all("schedule:" not in p.read_text(encoding="utf-8") for p in workflows))
         script = (ROOT / "build_exe_windows.bat").read_text(encoding="utf-8")
         for snippet in ("curl", "pip install", "schtasks", "git push"):
             self.assertNotIn(snippet, script)

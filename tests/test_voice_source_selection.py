@@ -177,7 +177,9 @@ class TestVoiceSelection(unittest.TestCase):
         self.assertIn("self._voice_volume", gui)
         self.assertIn("preferred_installed_voice", gui)
         self.assertIn("self._voice_source_changed", gui)
-        self.assertIn("save_settings(data)", gui)
+        self.assertIn("save_broadcast_without_persona(self.settings, data)", gui)
+        self.assertIn("def _save_character_identity(self)", gui)
+        self.assertIn("commit_character_identity(self.settings, mode, draft)", gui)
         self.assertNotIn("StartStream", gui)
         self.assertNotIn("auto_clone", gui)
 

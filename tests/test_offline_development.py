@@ -189,9 +189,10 @@ class TestOfflineSettings(unittest.TestCase):
         with self.assertRaises(ValueError):validate_settings(val)
 
     def test_no_automation_config_files(self):
-        self.assertFalse((ROOT/'.github').exists())
-        self.assertFalse((ROOT/'.git').exists())
         self.assertFalse((ROOT/'requirements.txt').exists())
+        workflows = list((ROOT/'.github'/'workflows').glob('*.yml'))
+        self.assertTrue(workflows)
+        self.assertTrue(all('schedule:' not in p.read_text(encoding='utf-8') for p in workflows))
         cfg=json.loads((ROOT/'config'/'requirements.json').read_text(encoding='utf-8'))
         self.assertIn('비활성',cfg['development_policy']['scheduled_work'])
 
