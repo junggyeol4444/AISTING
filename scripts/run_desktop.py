@@ -7,4 +7,10 @@ if not getattr(sys, "frozen", False):
 from ai_broadcaster.desktop import main
 
 if __name__ == "__main__":
-    main()
+    if sys.argv[1:] == ["--aisting-live2d-viewer"]:
+        # The same Windows EXE hosts official Live2D in its own WebView2 window.
+        # The original Tk application remains the default launch path.
+        from ai_broadcaster.original_plan_frontend import run_native_live2d_window
+        run_native_live2d_window(operator_approved=True)
+    else:
+        main()
