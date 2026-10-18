@@ -109,3 +109,76 @@ jobs:
         run: |
           Write-Error "Full inherited regression suite has failures. EXE artifact is a build candidate, not a fully validated program."
           exit 1
+
+
+  # Real OBS Studio, not a mocked obsws response. Runs in a disposable Windows VM.
+  # Does not connect to the user's device, access accounts, start recording or stream.
+  obs-real-readonly:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    env:
+      PYTHONPATH: src
+      PYTHONUTF8: '1'
+    steps:
+      - name: Checkout same existing AISTING development source
+        uses: actions/checkout@v4
+
+      - name: Set up Windows Python and actual OBS websocket client
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          architecture: x64
+      - name: Install original official OBS Studio only on disposable CI VM
+        shell: pwsh
+        run: |
+          choco install obs-studio --yes --no-progress --limit-output
+          if ($LASTEXITCODE -ne 0) { throw 'OBS Studio installation failed on the temporary CI machine' }
+
+      - name: Connect to running official OBS v5 and read actual scene / frame
+        shell: pwsh
+        timeout-minutes: 5
+        run: |
+          python -m pip install "obsws-python==1.8.0"
+          if ($LASTEXITCODE -ne 0) { throw 'Existing OBS SDK installation failed' }
+          $obs = Join-Path $env:ProgramFiles 'obs-studio\bin\64bit\obs64.exe'
+          if (-not (Test-Path $obs)) { throw "Official OBS binary not found at $obs" }
+          $env:AISTING_CI_OBS_PASSWORD = [guid]::NewGuid().ToString('N')
+          $runner = Start-Process -FilePath $obs -WorkingDirectory (Split-Path $obs -Parent) -ArgumentList @(
+            '--disable-updater', '--disable-shutdown-check', '--websocket_ipv4_only',
+            '--websocket_port=4455', "--websocket_password=$env:AISTING_CI_OBS_PASSWORD"
+          ) -PassThru
+          try {
+            $probe = Join-Path $env:RUNNER_TEMP 'aisting_real_obs_probe.py'
+            @'
+          import os
+          import time
+          from ai_broadcaster.original_plan_obs import OfficialObsWebsocket
+          password = os.environ["AISTING_CI_OBS_PASSWORD"]
+          deadline = time.monotonic() + 90
+          last_error = None
+          while time.monotonic() < deadline:
+              try:
+                  client = OfficialObsWebsocket(password, port=4455)
+                  state = client.connect()
+                  break
+              except Exception as error:
+                  last_error = error
+                  time.sleep(2)
+          else:
+              raise AssertionError("Official OBS WebSocket 5 did not start") from last_error
+          print("REAL_OBS_CONNECTED:", state.version, state.scene, "streaming:", state.streaming)
+          assert not state.streaming, "AISTING must never broadcast during CI"
+          inventory = client.read_scene_inventory()
+          print("REAL_OBS_SCENE_ITEMS:", inventory.scene_items)
+          print("REAL_OBS_INPUTS:", inventory.input_names)
+          frame = client.read_current_scene_frame(operator_approved=True)
+          print("REAL_OBS_RENDERED_PNG:", frame.width, frame.height, len(frame.png_data))
+          assert frame.png_data.startswith(b'\x89PNG\r\n\x1a\n')
+          assert not client.status().streaming
+          '@ | Set-Content -Path $probe -Encoding utf8
+            python $probe
+            if ($LASTEXITCODE -ne 0) { throw 'Read-only real OBS integration failed; no mock fallback' }
+          } finally {
+            if (-not $runner.HasExited) { Stop-Process -Id $runner.Id -Force -ErrorAction SilentlyContinue }
+            Remove-Item Env:AISTING_CI_OBS_PASSWORD -ErrorAction SilentlyContinue
+          }
