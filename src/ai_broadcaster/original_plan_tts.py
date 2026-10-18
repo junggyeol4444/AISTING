@@ -397,7 +397,8 @@ def synthesize_local_gpt_sovits(
         content = response.read(20_000_001)
         if len(content) > 20_000_000:
             raise VoiceConfigurationError("합성 음성이 20MB 상한을 초과했습니다.")
-        if declared_http_length is not None:
+        # In chunked HTTP responses the decoded payload length takes precedence.
+        if declared_http_length is not None and not response.chunked:
             if (not declared_http_length.isdecimal()
                     or int(declared_http_length) != len(content)):
                 raise VoiceConfigurationError("GPT-SoVITS HTTP 응답 길이가 실제 수신 데이터와 다릅니다.")
