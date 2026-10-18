@@ -613,7 +613,12 @@ def _native_frontend_input_worker(window, address: str | None = None,
         conn.send_bytes(b'{"type":"ready"}')
         while True:
             raw = conn.recv_bytes(24_000)
-            request = json.loads(raw.decode('utf-8'))
+            try:
+                request = json.loads(raw.decode('utf-8'))
+            except (UnicodeError, ValueError):
+                # Reject only the malformed request; keep the authenticated pipe alive.
+                conn.send_bytes(b'{"type":"input-invalid"}')
+                continue
             if isinstance(request, dict) and request.get('type') == 'observe-lipsync':
                 period = request.get('seconds')
                 if type(period) not in (int, float) or not 1 <= period <= 12:
@@ -625,13 +630,14 @@ def _native_frontend_input_worker(window, address: str | None = None,
             accepted = False
             if isinstance(request, dict) and request.get('type') in ('user-text', 'user-text-with-lipsync'):
                 value = request.get('text')
+                if request.get('type') == 'user-text-with-lipsync':
+                    period = request.get('seconds')
+                    if type(period) not in (int, float) or not 1 <= period <= 12:
+                        conn.send_bytes(b'{"type":"input-with-lipsync-invalid"}')
+                        continue
                 if isinstance(value, str) and 1 <= len(value.strip()) <= 4000:
                     accepted = _submit_original_live2d_text(window, value)
                     if accepted and request.get('type') == 'user-text-with-lipsync':
-                        period = request.get('seconds')
-                        if type(period) not in (int, float) or not 1 <= period <= 12:
-                            conn.send_bytes(b'{"type":"input-with-lipsync-invalid"}')
-                            continue
                         evidence = _observe_actual_live2d_model(window, float(period))
                         conn.send_bytes(json.dumps({
                             'type': 'input-with-lipsync-result', 'accepted': True,
