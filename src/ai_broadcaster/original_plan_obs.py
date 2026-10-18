@@ -131,7 +131,8 @@ class ActualObsProgramMediaObservation:
     def selected_audio_route_stable(self) -> bool:
         return (self.before_audio_route.confirmed
                 and self.before_audio_route == self.after_audio_route
-                and self.before_audio_route.scene == self.frame.scene)
+                and self.before_audio_route.scene == self.frame.scene
+                and self.before_audio_route.input_name == self.audio.selected_input)
 
     @property
     def stable_program_scene(self) -> bool:
@@ -143,7 +144,11 @@ class ActualObsProgramMediaObservation:
 
     @property
     def coherent_media_candidate(self) -> bool:
-        return (self.stable_program_scene and self.audio.usable_output_candidate
+        # A final OBS status read and the exact selected audio input must
+        # both agree before these separate observations form one candidate.
+        # This still does not prove encoder or audience delivery.
+        return (self.after_route is not None and self.stable_program_scene
+                and self.audio.usable_output_candidate
                 and self.selected_audio_route_stable)
 
 
@@ -1029,7 +1034,12 @@ class OfficialObsWebsocket:
             before_audio_route=before_audio_route,
             after_audio_route=after_audio_route,
         )
-        if preliminary.coherent_media_candidate:
+        # The final status read has not happened yet. Check the provisional
+        # path explicitly here, then require the final OBS state in the
+        # returned observation before reporting a coherent candidate.
+        if (preliminary.stable_program_scene
+                and preliminary.audio.usable_output_candidate
+                and preliminary.selected_audio_route_stable):
             try:
                 final_muted = self._client.get_input_mute(input_name).input_muted
                 final_gain = self._client.get_input_volume(input_name).input_volume_mul
