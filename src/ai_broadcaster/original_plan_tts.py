@@ -48,43 +48,160 @@ def inspect_reference_audio_container(reference_audio: Path) -> str:
                 sample_rate = int.from_bytes(streaminfo[10:13], 'big') >> 4
                 if min_block < 16 or max_block < min_block or sample_rate == 0:
                     raise VoiceConfigurationError('FLAC 음성 형식 메타데이터가 유효하지 않습니다.')
+                # STREAMINFO alone is not an audio recording. Follow the
+                # actual FLAC metadata chain without decoding, playing or
+                # training; require a plausible first audio-frame sync after
+                # the final metadata block. A frame sync is NOT a sound/voice
+                # quality guarantee (decoding belongs to the real TTS engine).
+                last_metadata = bool(header[4] & 0x80)
+                while not last_metadata:
+                    block = audio.read(4)
+                    if len(block) != 4 or (block[0] & 0x7f) in (0, 127):
+                        raise VoiceConfigurationError('FLAC 메타데이터 블록이 손상되었습니다.')
+                    length = int.from_bytes(block[1:4], 'big')
+                    if audio.tell() + length > size:
+                        raise VoiceConfigurationError('FLAC 메타데이터 길이가 실제 파일보다 큽니다.')
+                    last_metadata = bool(block[0] & 0x80)
+                    audio.seek(length, 1)
+                if size - audio.tell() < 8:
+                    raise VoiceConfigurationError('FLAC 파일에 실제 음성 프레임이 없습니다.')
+                frame_sync = audio.read(2)
+                if frame_sync[0] != 0xff or (frame_sync[1] & 0xfe) != 0xf8:
+                    raise VoiceConfigurationError('FLAC 메타데이터 뒤에 음성 프레임이 없습니다.')
                 return f'FLAC 헤더 확인 · {sample_rate}Hz · {size}바이트 (실제 합성 미검증)'
             head = audio.read(12)
             if len(head) != 12 or head[:4] not in (b'RIFF', b'RF64') or head[8:] != b'WAVE':
                 raise VoiceConfigurationError('WAV RIFF/RF64 WAVE 헤더를 찾지 못했습니다.')
             declared_end = 8 + int.from_bytes(head[4:8], 'little')
-            if head[:4] == b'RIFF' and declared_end > size:
-                raise VoiceConfigurationError('WAV 선언된 길이가 실제 파일보다 큽니다.')
-            riff_end = size if head[:4] == b'RF64' else declared_end
+            if head[:4] == b'RIFF' and declared_end != size:
+                # Bytes outside the RIFF container are not part of the
+                # reference recording, even when its fmt/data chunks decode.
+                raise VoiceConfigurationError('WAV 선언된 길이가 실제 파일 크기와 다릅니다.')
+            rf64 = head[:4] == b'RF64'
+            if rf64 and head[4:8] != b'\xff' * 4:
+                raise VoiceConfigurationError('RF64 파일 크기 표식이 유효하지 않습니다.')
+            riff_end = size if rf64 else declared_end
+            rf64_data_size = None
+            ds64_seen = False
             if riff_end < 44:
                 raise VoiceConfigurationError('WAV 헤더가 손상되었거나 비어 있습니다.')
             found_fmt = False
             found_data = False
+            data_chunks = 0
             sample_rate = 0
+            pcm_frame_size = None
             while audio.tell() + 8 <= riff_end:
                 chunk = audio.read(8)
                 if len(chunk) != 8:
                     break
                 tag, length = chunk[:4], int.from_bytes(chunk[4:], 'little')
                 position = audio.tell()
+                if rf64 and tag == b'ds64':
+                    if ds64_seen or length < 28 or position + length > size:
+                        raise VoiceConfigurationError('RF64 ds64 청크가 손상되었습니다.')
+                    header64 = audio.read(28)
+                    declared_riff64, rf64_data_size, _samples64, table_count = (
+                        int.from_bytes(header64[:8], 'little'),
+                        int.from_bytes(header64[8:16], 'little'),
+                        int.from_bytes(header64[16:24], 'little'),
+                        int.from_bytes(header64[24:28], 'little'),
+                    )
+                    if (table_count > (length - 28) // 12
+                            or declared_riff64 + 8 != size
+                            or declared_riff64 + 8 < position + length
+                            or rf64_data_size < 1):
+                        raise VoiceConfigurationError('RF64 실제 데이터 길이가 잘못되었습니다.')
+                    riff_end = declared_riff64 + 8
+                    ds64_seen = True
                 if tag == b'fmt ':
+                    if found_fmt:
+                        raise VoiceConfigurationError('WAV fmt 청크가 중복되었습니다.')
                     if length < 16 or position + 16 > size:
                         raise VoiceConfigurationError('WAV fmt 청크가 손상되었습니다.')
                     fields = audio.read(16)
+                    format_tag = int.from_bytes(fields[:2], 'little')
                     channels = int.from_bytes(fields[2:4], 'little')
                     sample_rate = int.from_bytes(fields[4:8], 'little')
-                    if int.from_bytes(fields[:2], 'little') == 0 or channels == 0 or sample_rate == 0:
+                    byte_rate = int.from_bytes(fields[8:12], 'little')
+                    block_align = int.from_bytes(fields[12:14], 'little')
+                    bits_per_sample = int.from_bytes(fields[14:16], 'little')
+                    if format_tag == 0 or channels == 0 or sample_rate == 0:
                         raise VoiceConfigurationError('WAV 음성 형식 정보가 유효하지 않습니다.')
+                    if format_tag == 0xfffe:
+                        # WAVE_FORMAT_EXTENSIBLE is a common Windows recorder
+                        # format. Its 16-byte base header is not sufficient:
+                        # the extra 24 bytes identify the actual PCM/float
+                        # encoding and valid sample/channel layout. Without
+                        # this check malformed or unknown audio was accepted
+                        # as a rights-approved GPT-SoVITS reference.
+                        if length < 40 or position + 40 > riff_end:
+                            raise VoiceConfigurationError('WAV 확장 fmt 청크가 잘렸습니다.')
+                        extension = audio.read(24)
+                        if len(extension) != 24:
+                            raise VoiceConfigurationError('WAV 확장 fmt 데이터가 잘렸습니다.')
+                        extension_size = int.from_bytes(extension[:2], 'little')
+                        valid_bits = int.from_bytes(extension[2:4], 'little')
+                        channel_mask = int.from_bytes(extension[4:8], 'little')
+                        subtype = extension[8:24]
+                        if extension_size < 22 or extension_size > length - 18:
+                            raise VoiceConfigurationError('WAV 확장 fmt 길이가 잘못되었습니다.')
+                        if subtype == bytes.fromhex('0100000000001000800000aa00389b71'):
+                            format_tag = 1  # WAVE_FORMAT_PCM subtype
+                        elif subtype == bytes.fromhex('0300000000001000800000aa00389b71'):
+                            format_tag = 3  # WAVE_FORMAT_IEEE_FLOAT subtype
+                        else:
+                            raise VoiceConfigurationError('WAV 확장 fmt 인코딩을 지원하지 않습니다.')
+                        if (not 1 <= valid_bits <= bits_per_sample
+                                or (format_tag == 3 and valid_bits != bits_per_sample)
+                                or (channel_mask != 0 and channel_mask.bit_count() != channels)):
+                            raise VoiceConfigurationError('WAV 확장 샘플·채널 정보가 유효하지 않습니다.')
+                    # For uncompressed PCM/IEEE-float WAV, header fields must
+                    # describe the same number of bytes per audio frame.
+                    # GPT-SoVITS uses the selected reference in its real
+                    # decoder; a corrupt fmt header must not pass inspection.
+                    # Leave compressed/extended WAV format-specific parsing
+                    # to the real decoder instead of guessing its layout.
+                    if format_tag in (1, 3):
+                        if (bits_per_sample == 0 or bits_per_sample % 8
+                                or (format_tag == 3 and bits_per_sample not in (32, 64))):
+                            raise VoiceConfigurationError('WAV PCM/float 비트 깊이가 잘못되었습니다.')
+                        pcm_frame_size = channels * (bits_per_sample // 8)
+                        if (block_align != pcm_frame_size
+                                or byte_rate != sample_rate * pcm_frame_size):
+                            raise VoiceConfigurationError('WAV PCM/float 프레임·전송률 정보가 일치하지 않습니다.')
                     found_fmt = True
-                if tag == b'data' and length > 0:
-                    if head[:4] == b'RF64' or position + length <= size:
+                actual_length = length
+                if rf64 and tag == b'data':
+                    if not ds64_seen or rf64_data_size is None:
+                        raise VoiceConfigurationError('RF64 ds64 정보 없이 음성 데이터를 읽을 수 없습니다.')
+                    if length == 0xffffffff:
+                        actual_length = rf64_data_size
+                    elif length != rf64_data_size:
+                        raise VoiceConfigurationError('RF64 데이터 길이 정보가 서로 다릅니다.')
+                if tag == b'data':
+                    data_chunks += 1
+                    if data_chunks > 1:
+                        raise VoiceConfigurationError('WAV data 청크가 중복되었습니다.')
+                if tag == b'data' and not found_fmt:
+                    # Standard RIFF/RF64 decoders (including Python wave) need
+                    # the format description before the audio payload. Do not
+                    # accept a reference the real decoder cannot open.
+                    raise VoiceConfigurationError('WAV fmt 청크보다 data 청크가 먼저 나왔습니다.')
+                if tag == b'data' and actual_length > 0:
+                    if pcm_frame_size is not None and actual_length % pcm_frame_size:
+                        raise VoiceConfigurationError('WAV PCM/float data 길이가 프레임 크기와 맞지 않습니다.')
+                    if position + actual_length <= riff_end:
                         found_data = True
-                next_pos = position + length + (length & 1)
+                next_pos = position + actual_length + (actual_length & 1)
                 if next_pos > riff_end or next_pos <= position:
-                    if tag == b'data' and head[:4] == b'RF64' and found_data:
-                        break  # RF64 data length may be 0xffffffff; ds64 holds real length.
                     raise VoiceConfigurationError('WAV 청크 길이가 실제 파일 크기와 맞지 않습니다.')
                 audio.seek(next_pos)
+            if audio.tell() != riff_end:
+                # The old loop silently accepted 1..7 leftover bytes that
+                # could not even form a complete RIFF chunk header.
+                raise VoiceConfigurationError('WAV 마지막 청크 헤더가 잘렸습니다.')
+            if rf64 and not ds64_seen:
+                raise VoiceConfigurationError('RF64 ds64 크기 정보를 찾지 못했습니다.')
             if not (found_fmt and found_data):
                 raise VoiceConfigurationError('WAV fmt/data 음성 청크가 존재하지 않습니다.')
             return f'WAV 헤더 확인 · {sample_rate}Hz · {size}바이트 (실제 합성 미검증)'
@@ -227,6 +344,10 @@ def synthesize_local_gpt_sovits(
     """
     if operator_approved is not True or rights_confirmed is not True:
         raise PermissionError("사용 권리 확인과 이번 실제 음성 합성 승인이 모두 필요합니다.")
+    # The separate speaker opt-in must be an actual boolean. An accidental
+    # truthy value must never silently turn into a synth-only request.
+    if type(play_to_speaker) is not bool:
+        raise VoiceConfigurationError("스피커 미리듣기 승인 값이 올바르지 않습니다.")
     if not isinstance(utterance, str) or not 1 <= len(utterance.strip()) <= 200:
         raise VoiceConfigurationError("시험 발화는 1~200글자여야 합니다.")
     if any(ord(ch) < 32 for ch in utterance):
@@ -255,24 +376,139 @@ def synthesize_local_gpt_sovits(
         "streaming_mode": "false",
     }
     target = "/tts?" + urlencode(params)
-    conn = http.client.HTTPConnection("127.0.0.1", parts.port, timeout=float(timeout))
+    # The endpoint was already restricted to loopback above. Respect its
+    # actual address family (127.0.0.1 / localhost / ::1), and let http.client
+    # generate the matching Host header including the non-default port.
+    conn = http.client.HTTPConnection(parts.hostname, parts.port, timeout=float(timeout))
     try:
-        conn.request("GET", target, headers={"Host": "127.0.0.1",
-                                            "Accept": "audio/wav, audio/x-wav, application/octet-stream"})
+        conn.request("GET", target, headers={
+            "Accept": "audio/wav, audio/x-wav, application/octet-stream"
+        })
         response = conn.getresponse()
         if response.status != 200:
             raise VoiceConfigurationError(
                 "GPT-SoVITS 실제 합성 HTTP 상태 오류: " + str(response.status)
             )
         # A small test utterance still has bounded, potentially large output.
+        # http.client.read(amount) may return a *short* body without raising
+        # IncompleteRead, even when Content-Length advertises more bytes.
+        # A complete WAV prefix must not conceal a truncated HTTP response.
+        declared_http_length = response.getheader("Content-Length")
         content = response.read(20_000_001)
         if len(content) > 20_000_000:
             raise VoiceConfigurationError("합성 음성이 20MB 상한을 초과했습니다.")
+        if declared_http_length is not None:
+            if (not declared_http_length.isdecimal()
+                    or int(declared_http_length) != len(content)):
+                raise VoiceConfigurationError("GPT-SoVITS HTTP 응답 길이가 실제 수신 데이터와 다릅니다.")
         if len(content) < 44 or content[:4] != b"RIFF" or content[8:12] != b"WAVE":
             raise VoiceConfigurationError("GPT-SoVITS가 실제 WAV 음성을 반환하지 않았습니다.")
-        with wave.open(BytesIO(content), "rb") as wav:
-            if wav.getnframes() < 1 or wav.getframerate() < 1 or wav.getnchannels() < 1:
+        # Python's wave decoder can accept a RIFF header claiming *more*
+        # bytes than the HTTP response actually contains, provided the PCM
+        # data chunk itself is complete. Such a file is structurally broken
+        # and may fail in the actual Windows audio path. Reject it before
+        # reporting successful synthesis or playing any sound.
+        riff_end = 8 + int.from_bytes(content[4:8], "little")
+        if riff_end < 44 or riff_end != len(content):
+            # A complete HTTP body may still contain bytes outside its RIFF
+            # container (including an appended second WAV). Such bytes are
+            # not part of the decoded audio; do not report a clean voice file.
+            raise VoiceConfigurationError("GPT-SoVITS 합성 WAV의 RIFF 선언 길이가 실제 응답과 다릅니다.")
+        # Python wave reads the FIRST data chunk and silently ignores later
+        # RIFF chunks, including a second data chunk. It also rounds down an
+        # odd-sized 16-bit/stereo PCM chunk to whole frames. Verify the exact
+        # chunk boundaries before treating the HTTP response as usable audio.
+        chunk_offset = 12
+        data_sizes = []
+        fmt_count = 0
+        extensible_pcm_fmt_offset = None
+        while chunk_offset < riff_end:
+            if chunk_offset + 8 > riff_end:
+                raise VoiceConfigurationError("GPT-SoVITS 합성 WAV 청크 헤더가 잘렸습니다.")
+            chunk_tag = content[chunk_offset:chunk_offset + 4]
+            chunk_size = int.from_bytes(content[chunk_offset + 4:chunk_offset + 8], "little")
+            chunk_start = chunk_offset + 8
+            chunk_end = chunk_start + chunk_size
+            padded_end = chunk_end + (chunk_size & 1)
+            if padded_end > riff_end:
+                raise VoiceConfigurationError("GPT-SoVITS 합성 WAV 청크 크기가 잘못되었습니다.")
+            if chunk_tag == b"fmt ":
+                fmt_count += 1
+                if fmt_count != 1 or chunk_size < 16 or data_sizes:
+                    # Python wave uses the first fmt chunk. A second or late
+                    # conflicting fmt must not be passed to Windows playback.
+                    raise VoiceConfigurationError("GPT-SoVITS 합성 WAV fmt 청크가 중복·손상되었습니다.")
+                fmt = content[chunk_start:chunk_end]
+                format_tag = int.from_bytes(fmt[0:2], "little")
+                channels = int.from_bytes(fmt[2:4], "little")
+                rate = int.from_bytes(fmt[4:8], "little")
+                byte_rate = int.from_bytes(fmt[8:12], "little")
+                block_align = int.from_bytes(fmt[12:14], "little")
+                bits = int.from_bytes(fmt[14:16], "little")
+                if format_tag == 0xfffe:
+                    # Windows WAVE_FORMAT_EXTENSIBLE PCM: validate its actual
+                    # subtype rather than treating the 0xfffe tag as PCM.
+                    pcm_guid = bytes.fromhex('0100000000001000800000aa00389b71')
+                    extension_size = int.from_bytes(fmt[16:18], "little") if chunk_size >= 18 else 0
+                    valid_bits = int.from_bytes(fmt[18:20], "little") if chunk_size >= 20 else 0
+                    channel_mask = int.from_bytes(fmt[20:24], "little") if chunk_size >= 24 else 0
+                    if (chunk_size < 40 or not 22 <= extension_size <= chunk_size - 18
+                            or not 1 <= valid_bits <= bits
+                            or (channel_mask != 0 and channel_mask.bit_count() != channels)
+                            or fmt[24:40] != pcm_guid):
+                        raise VoiceConfigurationError("GPT-SoVITS 합성 WAV fmt 확장 PCM 형식이 잘못되었습니다.")
+                    extensible_pcm_fmt_offset = chunk_start
+                elif format_tag != 1:
+                    raise VoiceConfigurationError("GPT-SoVITS 합성 WAV fmt PCM 인코딩이 아닙니다.")
+                if (channels < 1 or rate < 1 or bits < 8 or bits % 8
+                        or block_align != channels * (bits // 8)
+                        or byte_rate != rate * block_align):
+                    # wave.open ignores corrupt block-align and byte-rate
+                    # headers even though Windows audio devices use them.
+                    raise VoiceConfigurationError("GPT-SoVITS 합성 WAV fmt 프레임·전송률 정보가 잘못되었습니다.")
+            if chunk_tag == b"data":
+                if fmt_count != 1:
+                    raise VoiceConfigurationError("GPT-SoVITS 합성 WAV fmt 이전에 data 청크가 있습니다.")
+                data_sizes.append(chunk_size)
+            chunk_offset = padded_end
+        if fmt_count != 1 or len(data_sizes) != 1:
+            raise VoiceConfigurationError("GPT-SoVITS 합성 WAV fmt/data 청크는 각각 정확히 하나여야 합니다.")
+        # Python 3.11's wave reader does not recognize WAVE_FORMAT_EXTENSIBLE
+        # (0xfffe), even when its subtype is ordinary PCM. All 40-byte fmt
+        # fields, subtype, channels, bit depth, rate and frame boundaries have
+        # already been checked above. Decode an IN-MEMORY inspection copy with
+        # the equivalent PCM tag; keep the original upstream WAV bytes intact
+        # for any separately approved Windows speaker playback.
+        decoder_content = content
+        if extensible_pcm_fmt_offset is not None:
+            at = extensible_pcm_fmt_offset
+            decoder_content = content[:at] + b'\x01\x00' + content[at + 2:]
+        with wave.open(BytesIO(decoder_content), "rb") as wav:
+            if (wav.getnframes() < 1 or wav.getframerate() < 1
+                    or wav.getnchannels() < 1 or wav.getsampwidth() < 1):
                 raise VoiceConfigurationError("합성 WAV에 유효한 소리 프레임이 없습니다.")
+            # A RIFF header can claim valid frames even if the HTTP body ends
+            # mid-audio. Verify the *actual* PCM data before reporting success.
+            expected_pcm_bytes = wav.getnframes() * wav.getnchannels() * wav.getsampwidth()
+            if data_sizes[0] != expected_pcm_bytes:
+                raise VoiceConfigurationError("GPT-SoVITS 합성 WAV data 길이가 PCM 프레임과 맞지 않습니다.")
+            pcm = wav.readframes(wav.getnframes())
+            if len(pcm) != expected_pcm_bytes:
+                raise VoiceConfigurationError("GPT-SoVITS 합성 WAV의 실제 음성 프레임이 잘렸습니다.")
+            # A syntactically valid WAV may contain nothing but digital silence.
+            # For unsigned 8-bit PCM the silent midpoint is 0x80; signed PCM
+            # (16/24/32-bit) uses all-zero samples. Do not report this as an
+            # audible voice response or attempt the approved speaker preview.
+            if (all(value == 128 for value in pcm) if wav.getsampwidth() == 1
+                    else not any(pcm)):
+                raise VoiceConfigurationError("GPT-SoVITS 합성 WAV에 실제 음성 신호가 없습니다.")
+            # A constant nonzero PCM value (including stereo DC offsets) is
+            # not speech. Check changes across *frames*, not across channels:
+            # two constant stereo channels can differ while both are DC.
+            frame_size = wav.getnchannels() * wav.getsampwidth()
+            first_frame = pcm[:frame_size]
+            if wav.getnframes() > 1 and pcm == first_frame * wav.getnframes():
+                raise VoiceConfigurationError("GPT-SoVITS 합성 WAV에 시간에 따른 음성 신호 변화가 없습니다.")
             report = ActualGptSovitsSynthesis(
                 sample_rate=wav.getframerate(),
                 channels=wav.getnchannels(),
