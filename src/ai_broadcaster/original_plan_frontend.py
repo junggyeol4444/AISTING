@@ -226,6 +226,8 @@ def open_prechecked_frontend(readiness: OfficialFrontendReadiness, *,
     if _native_viewer is not None and _native_viewer.poll() is None:
         if _native_viewer_project != project:
             raise FrontendUnavailable('다른 공식 프로젝트 Live2D 창이 이미 열려 있습니다.')
+        if _native_bridge is None or getattr(_native_bridge, 'closed', False):
+            raise FrontendUnavailable('공식 Live2D Windows 창이 열려 있지만 인증 통신이 연결되지 않았습니다. 기존 창을 닫고 다시 열어주세요.')
         return True
     _native_bridge = None
     listener, address, key = _create_native_bridge()
@@ -268,17 +270,31 @@ def send_to_native_live2d_session(text: str, *, operator_approved: bool = False)
             conn.send_bytes(json.dumps({'type': 'user-text', 'text': text.strip()},
                                        ensure_ascii=False).encode('utf-8'))
             if not conn.poll(9):
+                _invalidate_untrusted_native_bridge(conn)
                 raise FrontendUnavailable('공식 Live2D 화면 입력 처리 응답을 받지 못했습니다.')
             reply = json.loads(conn.recv_bytes(2048).decode('utf-8'))
             if not isinstance(reply, dict) or reply.get('type') != 'input-result':
+                _invalidate_untrusted_native_bridge(conn)
                 raise FrontendUnavailable('공식 Live2D 응답 형식이 올바르지 않습니다.')
             if reply.get('accepted') is not True:
                 raise FrontendUnavailable('공식 Live2D 입력창의 전송 이벤트가 처리되지 않았습니다.')
         except (EOFError, BrokenPipeError, OSError, UnicodeError, ValueError) as exc:
+            _invalidate_untrusted_native_bridge(conn)
             raise FrontendUnavailable('공식 Live2D Windows 창 입력 통신에 실패했습니다.') from exc
     return True
 
 
+
+
+def _invalidate_untrusted_native_bridge(conn) -> None:
+    """Discard a pipe after an untrusted reply; never replay a user request."""
+    global _native_bridge
+    if _native_bridge is conn:
+        _native_bridge = None
+    try:
+        conn.close()
+    except OSError:
+        pass
 
 
 def send_to_native_live2d_session_with_observation(
@@ -304,18 +320,21 @@ def send_to_native_live2d_session_with_observation(
                        'seconds': float(duration)}
             conn.send_bytes(json.dumps(request, ensure_ascii=False).encode('utf-8'))
             if not conn.poll(float(duration) + 9):
+                _invalidate_untrusted_native_bridge(conn)
                 raise FrontendUnavailable(
                     '공식 질문·립싱크 검사 응답 시간 초과 · 자동 재시도하지 않습니다.'
                 )
             reply = json.loads(conn.recv_bytes(4096).decode('utf-8'))
         except (OSError, EOFError, UnicodeError, ValueError) as exc:
+            _invalidate_untrusted_native_bridge(conn)
             raise FrontendUnavailable(
                 '공식 Live2D 질문·립싱크 전달 오류 · 중복 전송 방지를 위해 자동 재시도하지 않습니다.'
             ) from exc
-    if not isinstance(reply, dict) or reply.get('type') != 'input-with-lipsync-result':
-        raise FrontendUnavailable('공식 Live2D 질문 전송 또는 관찰이 확인되지 않았습니다.')
-    if reply.get('accepted') is not True:
-        raise FrontendUnavailable('공식 Live2D 질문의 실제 WebSocket 전송이 확인되지 않았습니다.')
+        if not isinstance(reply, dict) or reply.get('type') != 'input-with-lipsync-result':
+            _invalidate_untrusted_native_bridge(conn)
+            raise FrontendUnavailable('공식 Live2D 질문 전송 또는 관찰이 확인되지 않았습니다.')
+        if reply.get('accepted') is not True:
+            raise FrontendUnavailable('공식 Live2D 질문의 실제 WebSocket 전송이 확인되지 않았습니다.')
     return _parse_official_lipsync_evidence(reply.get('evidence'))
 
 
@@ -366,10 +385,15 @@ def inspect_native_live2d_lipsync(*, operator_approved: bool = False,
                 'type': 'observe-lipsync', 'seconds': float(duration)
             }).encode('utf-8'))
             if not conn.poll(float(duration) + 6):
+                _invalidate_untrusted_native_bridge(conn)
                 raise FrontendUnavailable('Live2D 실제 입 움직임 검사 결과가 도착하지 않았습니다.')
             reply = json.loads(conn.recv_bytes(4096).decode('utf-8'))
         except (EOFError, OSError, ValueError, UnicodeError) as exc:
+            _invalidate_untrusted_native_bridge(conn)
             raise FrontendUnavailable('Live2D 실시간 관찰 IPC 연결 실패') from exc
+        if not isinstance(reply, dict) or reply.get('type') != 'lip-sync-result':
+            _invalidate_untrusted_native_bridge(conn)
+            raise FrontendUnavailable('공식 Live2D 검사 응답 형식이 올바르지 않습니다.')
     return _parse_official_lipsync_evidence(reply)
 
 
@@ -470,8 +494,13 @@ def _observe_actual_live2d_model(window, seconds: float) -> dict:
                                 and 0.01 < rms <= 10):
                             overlapping += 1
                     previous = m
-        except (ValueError, TypeError, OSError):
-            pass
+                else:
+                    previous = None
+            else:
+                previous = None
+        except Exception:
+            # A WebView2 read failure breaks continuity; do not invent movement.
+            previous = None
         time.sleep(0.08)
     return {
         'type': 'lip-sync-result',
@@ -644,8 +673,12 @@ def _native_frontend_input_worker(window, address: str | None = None,
                             'evidence': evidence,
                         }).encode('utf-8'))
                         continue
+            reply_type = ('input-with-lipsync-result'
+                          if isinstance(request, dict) and
+                          request.get('type') == 'user-text-with-lipsync'
+                          else 'input-result')
             conn.send_bytes(json.dumps(
-                {'type': 'input-result', 'accepted': accepted}
+                {'type': reply_type, 'accepted': accepted}
             ).encode('utf-8'))
     except (OSError, EOFError, UnicodeError, ValueError):
         return
