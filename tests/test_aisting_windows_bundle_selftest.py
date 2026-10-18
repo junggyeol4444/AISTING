@@ -120,7 +120,7 @@ class WindowsExeSelftestTests(unittest.TestCase):
                                       "AISTING_GUI_SELFTEST": "approved_ci_only"}):
             self.assertFalse(self.app["_verify_frozen_gui"]())
 
-    def test_gui_selftest_constructs_actual_app_interface(self):
+    def test_gui_selftest_rejects_fake_gui_without_isolated_windows_runner(self):
         created = []
         names = ["방송인 홈", "내 캐릭터", "방송 설정",
                  "시청자 채팅 연습", "아바타 미리보기"]
@@ -142,10 +142,9 @@ class WindowsExeSelftestTests(unittest.TestCase):
             sys, "frozen", True, create=True
         ), patch.dict("os.environ", {"GITHUB_ACTIONS": "true",
                                       "AISTING_GUI_SELFTEST": "approved_ci_only"}):
-            self.assertTrue(self.app["_verify_frozen_gui"]())
-            self.assertEqual(self.app["_run"](["--aisting-gui-selftest"]), 0)
-        self.assertEqual(len(created), 2)
-        self.assertTrue(all(x.destroyed for x in created))
+            self.assertFalse(self.app["_verify_frozen_gui"]())
+            self.assertEqual(self.app["_run"](["--aisting-gui-selftest"]), 2)
+        self.assertEqual(created, [])
 
     def test_gui_selftest_requires_all_original_main_pages(self):
         class FakeApp:
