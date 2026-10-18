@@ -177,7 +177,23 @@ jobs:
           assert not client.status().streaming
           '@ | Set-Content -Path $probe -Encoding utf8
             python $probe
-            if ($LASTEXITCODE -ne 0) { throw 'Read-only real OBS integration failed; no mock fallback' }
+            if ($LASTEXITCODE -ne 0) {
+              $runner.Refresh()
+              Write-Host "OBS_PROCESS_EXITED=$($runner.HasExited)"
+              if ($runner.HasExited) { Write-Host "OBS_EXIT_CODE=$($runner.ExitCode)" }
+              $logFolder = Join-Path $env:APPDATA 'obs-studio\logs'
+              Write-Host "OBS_LOG_FOLDER_PRESENT=$(Test-Path $logFolder)"
+              if (Test-Path $logFolder) {
+                Get-ChildItem -Path $logFolder -File | Sort-Object LastWriteTime -Descending |
+                  Select-Object -First 2 | ForEach-Object {
+                    Write-Host "OFFICIAL_OBS_LOG=$($_.Name)"
+                    Get-Content $_.FullName -Tail 110 | ForEach-Object {
+                      $_.Replace($env:AISTING_CI_OBS_PASSWORD, '<REDACTED>')
+                    }
+                  }
+              }
+              throw 'Read-only real OBS integration failed; OBS process and logs recorded above'
+            }
           } finally {
             if (-not $runner.HasExited) { Stop-Process -Id $runner.Id -Force -ErrorAction SilentlyContinue }
             Remove-Item Env:AISTING_CI_OBS_PASSWORD -ErrorAction SilentlyContinue
