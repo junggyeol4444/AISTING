@@ -143,6 +143,14 @@ jobs:
           $obs = Join-Path $env:ProgramFiles 'obs-studio\bin\64bit\obs64.exe'
           if (-not (Test-Path $obs)) { throw "Official OBS binary not found at $obs" }
           $env:AISTING_CI_OBS_PASSWORD = [guid]::NewGuid().ToString('N')
+          # A fresh OBS user profile has its WebSocket server DISABLED by
+          # default. OBS v5 stores this in plugin_config/obs-websocket/config.json.
+          # Enable ONLY the isolated CI profile; CLI supplies a throwaway password.
+          $confDir = Join-Path $env:APPDATA 'obs-studio\plugin_config\obs-websocket'
+          New-Item -ItemType Directory -Path $confDir -Force | Out-Null
+          $conf = '{"FirstLoad":false,"ServerEnabled":true,"AuthRequired":true,"ServerPort":4455}'
+          Set-Content -Path (Join-Path $confDir 'config.json') -Value $conf -Encoding utf8
+
           $runner = Start-Process -FilePath $obs -WorkingDirectory (Split-Path $obs -Parent) -ArgumentList @(
             '--disable-updater', '--disable-shutdown-check', '--websocket_ipv4_only',
             '--websocket_port=4455', "--websocket_password=$env:AISTING_CI_OBS_PASSWORD"
