@@ -150,6 +150,16 @@ jobs:
           New-Item -ItemType Directory -Path $confDir -Force | Out-Null
           $conf = '{"FirstLoad":false,"ServerEnabled":true,"AuthRequired":true,"ServerPort":4455}'
           Set-Content -Path (Join-Path $confDir 'config.json') -Value $conf -Encoding utf8
+          # The official OBS first-run wizard can block completion of module
+          # initialization on unattended Windows CI. Only this throwaway
+          # runner profile is marked as initialized; no real profile touched.
+          $obsUser = Join-Path $env:APPDATA 'obs-studio'
+          @('[General]', 'FirstRun=true') | Set-Content (Join-Path $obsUser 'user.ini') -Encoding ascii
+          # Also support upstream's global.ini -> plugin JSON migration path.
+          @('[General]', 'LastVersion=320202', '[OBSWebSocket]',
+            'FirstLoad=false', 'ServerEnabled=true', 'AuthRequired=true',
+            'ServerPort=4455') | Set-Content (Join-Path $obsUser 'global.ini') -Encoding ascii
+          Write-Host 'Configured real OBS websocket and first-run state in isolated Windows CI profile'
 
           $runner = Start-Process -FilePath $obs -WorkingDirectory (Split-Path $obs -Parent) -ArgumentList @(
             '--disable-updater', '--disable-shutdown-check', '--websocket_ipv4_only',
