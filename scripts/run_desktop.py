@@ -58,34 +58,137 @@ def _verify_frozen_bundle() -> bool:
 
 
 def _verify_frozen_gui() -> bool:
-    """Actually construct the ORIGINAL Tkinter Windows UI in disposable CI.
+    """Run real Tk command callbacks and restart with isolated Windows CI data.
 
-    This runs only in a Windows GitHub Actions runner, with an isolated
-    LOCALAPPDATA supplied by the build step. It does not enter mainloop,
-    connect to AI/OBS, play audio, or operate on the user's PC.
+    These are actual widgets from the existing AISTING.exe, not a replica UI.
+    All writes stay beneath RUNNER_TEMP; real accounts, audio, OBS, AI and
+    streaming are never touched. This does not certify live integration.
     """
     if (sys.platform != "win32" or not getattr(sys, "frozen", False)
             or os.environ.get("GITHUB_ACTIONS") != "true"
             or os.environ.get("AISTING_GUI_SELFTEST") != "approved_ci_only"):
         return False
+    local = os.environ.get("LOCALAPPDATA")
+    runner = os.environ.get("RUNNER_TEMP")
+    if not local or not runner:
+        return False
+    # Never run this state-writing journey against a real Windows profile.
+    try:
+        local_root = Path(local).resolve()
+        runner_root = Path(runner).resolve()
+        if not local_root.is_relative_to(runner_root):
+            return False
+        target = local_root / "AISTING" / "settings.json"
+        if target.exists():
+            return False
+    except (OSError, ValueError):
+        return False
+
+    from tkinter import ttk
+    from ai_broadcaster.desktop import AistingApp
+    from ai_broadcaster.offline_settings import load_settings
+
+    def button(parent, caption):
+        found = []
+        def search(widget):
+            if isinstance(widget, ttk.Button) and widget.cget("text") == caption:
+                found.append(widget)
+            for child in widget.winfo_children():
+                search(child)
+        search(parent)
+        if len(found) != 1:
+            raise AssertionError("Real Tk control missing or ambiguous: " + caption)
+        return found[0]
+
     app = None
     try:
-        from ai_broadcaster.desktop import AistingApp
         app = AistingApp()
         app.withdraw()
         app.update_idletasks()
-        names = {app._tabs.tab(t, "text") for t in app._tabs.tabs()}
-        return (app.title().startswith("AISTING")
-                and {"방송인 홈", "내 캐릭터", "방송 설정",
-                     "시청자 채팅 연습", "아바타 미리보기"}.issubset(names))
+        names = {app._tabs.tab(tab, "text") for tab in app._tabs.tabs()}
+        if not (app.title().startswith("AISTING") and
+                {"방송인 홈", "내 캐릭터", "방송 설정",
+                 "시청자 채팅 연습", "아바타 미리보기"}.issubset(names)):
+            return False
+        button(app, "내 캐릭터").invoke()
+        if app._tabs.tab(app._tabs.select(), "text") != "내 캐릭터":
+            return False
+
+        # Use the original character-confirm button, not an internal setter.
+        confirmed = {"name": "CI검증캐릭터", "style": "또렷한 한국어",
+                     "character": "저장 검증용 성격"}
+        app._persona_mode.set("직접 만들기")
+        for key, value in confirmed.items():
+            entry = app._persona[key]
+            entry.delete(0, "end")
+            entry.insert(0, value)
+        button(app, "캐릭터 확정·저장").invoke()
+        if (not target.is_file()
+                or load_settings(target)["persona"] != confirmed
+                or app.settings["persona_mode"] != "custom"):
+            return False
+
+        # Editing an unconfirmed draft must not change the saved identity,
+        # even when the operator clicks the OTHER, broadcast-settings button.
+        app._persona["name"].delete(0, "end")
+        app._persona["name"].insert(0, "미확정초안")
+        button(app, "방송 설정").invoke()
+        app._platforms["chzzk"].set(True)
+        app._content.set("수다")
+        button(app, "방송 설정 저장 (캐릭터 제외)").invoke()
+        disk = load_settings(target)
+        if (disk["persona"] != confirmed
+                or disk["persona_mode"] != "custom"
+                or disk["platforms"] != ["chzzk"]
+                or disk["content"] != "chat"
+                or disk["streaming_enabled"] or disk["scheduled_execution"]
+                or disk["external_publish_enabled"]):
+            return False
+
+        # Start a second actual Windows GUI instance after closing the first.
+        app.destroy()
+        app = None
+        app = AistingApp()
+        app.withdraw()
+        app.update_idletasks()
+        if (app.settings["persona"] != confirmed
+                or app.settings["persona_mode"] != "custom"
+                or app._persona["name"].get() != confirmed["name"]
+                or "CI검증캐릭터" not in app._original_studio.saved_persona.get()):
+            return False
+
+        # Open actual existing integration panels without pressing the
+        # audio/network/model/OBS/streaming controls or using mock services.
+        button(app, "2단계 · 실제 GPT-SoVITS 한국어 음성 연결 설정").invoke()
+        def top_levels(root):
+            result = []
+            def walk(node):
+                for child in node.winfo_children():
+                    if child.winfo_class() == "Toplevel":
+                        result.append(child)
+                    walk(child)
+            walk(root)
+            return result
+        voice = [item for item in top_levels(app)
+                 if "GPT-SoVITS" in item.title()]
+        if len(voice) != 1:
+            return False
+        button(voice[0], "취소 / 닫기").invoke()
+        button(app, "3단계 · 실제 OBS 연결 확인 (송출 안 함)").invoke()
+        obs = app._original_studio._obs_window
+        if (obs is None or not obs.winfo_exists()
+                or "OBS" not in obs.title()):
+            return False
+        button(obs, "닫기").invoke()
+        app.update_idletasks()
+        # A Windows GUI integration rehearsal is not live broadcasting.
+        return (app._original_studio._obs_window is None
+                and load_settings(target)["persona"] == confirmed)
     except Exception:
-        # No false positives from a window that failed to construct.
         return False
     finally:
         if app is not None:
             try:
-                # No broadcaster shutdown actions or TTS stop call; the test
-                # never started playback. Tk cancels callbacks on destroy.
                 app.destroy()
             except Exception:
                 pass
