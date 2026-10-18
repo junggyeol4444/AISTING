@@ -154,7 +154,7 @@ jobs:
           # initialization on unattended Windows CI. Only this throwaway
           # runner profile is marked as initialized; no real profile touched.
           $obsUser = Join-Path $env:APPDATA 'obs-studio'
-          @('[General]', 'FirstRun=true') | Set-Content (Join-Path $obsUser 'user.ini') -Encoding ascii
+          # Retain OBS-generated user.ini; only seed disposable global.ini and plugin configuration.
           # Also support upstream's global.ini -> plugin JSON migration path.
           @('[General]', 'LastVersion=320202', '[OBSWebSocket]',
             'FirstLoad=false', 'ServerEnabled=true', 'AuthRequired=true',
