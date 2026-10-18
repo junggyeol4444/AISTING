@@ -153,11 +153,13 @@ class TestActualGptSovitsLocalWav(unittest.TestCase):
             voice.setnchannels(1)
             voice.setsampwidth(2)
             voice.setframerate(22050)
-            voice.writeframes(b'\x00\x00' * 100)
+            voice.writeframes((b'\x01\x00\x02\x00') * 50)
         with patch('http.client.HTTPConnection') as http:
             conn = http.return_value
             conn.getresponse.return_value.status = 200
             conn.getresponse.return_value.read.return_value = buf.getvalue()
+            conn.getresponse.return_value.getheader.return_value = str(len(buf.getvalue()))
+            conn.getresponse.return_value.chunked = False
             actual = synthesize_local_gpt_sovits(
                 self.reference, '참조 녹음 문장', '안녕하세요.',
                 operator_approved=True, rights_confirmed=True,
@@ -187,7 +189,7 @@ class TestActualGptSovitsLocalWav(unittest.TestCase):
             out.setnchannels(1)
             out.setsampwidth(2)
             out.setframerate(22050)
-            out.writeframes(b'\x01\x01' * 100)
+            out.writeframes((b'\x01\x01\x02\x02') * 50)
         memory_wav = buf.getvalue()
         sound = Mock()
         fake_winsound = SimpleNamespace(
@@ -198,6 +200,8 @@ class TestActualGptSovitsLocalWav(unittest.TestCase):
         ), patch.dict(sys.modules, {'winsound': fake_winsound}):
             http.return_value.getresponse.return_value.status = 200
             http.return_value.getresponse.return_value.read.return_value = memory_wav
+            http.return_value.getresponse.return_value.getheader.return_value = str(len(memory_wav))
+            http.return_value.getresponse.return_value.chunked = False
             result = synthesize_local_gpt_sovits(
                 self.reference, '참조 녹음 문장', '안녕하세요.',
                 operator_approved=True, rights_confirmed=True, play_to_speaker=True,
@@ -217,7 +221,7 @@ class TestActualGptSovitsLocalWav(unittest.TestCase):
             out.setnchannels(1)
             out.setsampwidth(2)
             out.setframerate(16000)
-            out.writeframes(b'\x01\x01' * 10)
+            out.writeframes((b'\x01\x01\x02\x02') * 5)
         sound = Mock()
         fake_winsound = SimpleNamespace(
             SND_MEMORY=4, SND_NODEFAULT=2, PlaySound=sound
@@ -227,6 +231,8 @@ class TestActualGptSovitsLocalWav(unittest.TestCase):
         ), patch.dict(sys.modules, {'winsound': fake_winsound}):
             http.return_value.getresponse.return_value.status = 200
             http.return_value.getresponse.return_value.read.return_value = buf.getvalue()
+            http.return_value.getresponse.return_value.getheader.return_value = str(len(buf.getvalue()))
+            http.return_value.getresponse.return_value.chunked = False
             synthesize_local_gpt_sovits(
                 self.reference, '참조 문장', '안녕',
                 operator_approved=True, rights_confirmed=True
