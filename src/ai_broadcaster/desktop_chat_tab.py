@@ -16,6 +16,8 @@ from .desktop_chat import run_local_chat
 from .reply_voice import ReplyVoicePlayer, should_auto_read
 from .windows_tts import Voice
 from .avatar_animation import SpeechActivity
+from .twitch_readonly import TwitchReadOnlySession, TwitchReadError
+from .offline_settings import load_settings
 
 
 class LocalChatTab(ttk.Frame):
@@ -34,6 +36,10 @@ class LocalChatTab(ttk.Frame):
         self._voice_name = tk.StringVar()
         self._auto_voice = tk.BooleanVar(value=False)
         self._last_reply: str | None = None
+        self._twitch_session: TwitchReadOnlySession | None = None
+        self._twitch_channel = tk.StringVar()
+        self._twitch_status = tk.StringVar(value="읽기 전용 미연결 · 로그인·채팅 송신 없음")
+        self._twitch_received = 0
         self._tts_status = tk.StringVar(value="음성 읽기는 기본 꺼짐. 먼저 한국어 음성을 확인하세요.")
 
         intro = (
@@ -84,6 +90,21 @@ class LocalChatTab(ttk.Frame):
         self._tts_stop.pack(side="left", padx=(8, 0))
         self._tts_stop.configure(state="disabled")
         ttk.Label(audio, textvariable=self._tts_status, wraplength=580).pack(anchor="w", pady=(5, 0))
+        public_chat = ttk.LabelFrame(
+            self, text="트위치 공개 실시간 채팅 읽기 (계정 로그인·송신 없음)", padding=8)
+        public_chat.pack(fill="x", pady=(10, 0))
+        ttk.Label(public_chat, text="채널 ID").pack(side="left")
+        ttk.Entry(public_chat, textvariable=self._twitch_channel, width=20).pack(
+            side="left", padx=5)
+        self._twitch_start = ttk.Button(
+            public_chat, text="읽기 전용 연결", command=self._start_twitch)
+        self._twitch_start.pack(side="left", padx=3)
+        self._twitch_end = ttk.Button(
+            public_chat, text="읽기 중지", command=self._stop_twitch,
+            state="disabled")
+        self._twitch_end.pack(side="left", padx=3)
+        ttk.Label(self, textvariable=self._twitch_status, wraplength=600).pack(
+            anchor="w", pady=(2, 5))
         self._refresh_memory_count()
         self.after(150, self._poll)
 
@@ -126,10 +147,68 @@ class LocalChatTab(ttk.Frame):
         else:
             self._results.put(("ok",result))
 
+    def _start_twitch(self) -> None:
+        if self._twitch_session is not None:
+            return
+        if "twitch" not in load_settings()["platforms"]:
+            messagebox.showinfo(
+                "플랫폼 선택", "방송 설정에서 트위치를 선택하고 저장해 주세요.",
+                parent=self)
+            return
+        try:
+            session = TwitchReadOnlySession(
+                self._twitch_channel.get().strip(),
+                lambda kind, item: self._results.put(("twitch_" + kind, item)))
+        except (ValueError, TypeError) as exc:
+            messagebox.showinfo("트위치 채널", str(exc), parent=self)
+            return
+        self._twitch_session = session
+        self._twitch_received = 0
+        self._twitch_start.configure(state="disabled")
+        self._twitch_end.configure(state="normal")
+        self._twitch_status.set("공개 트위치 채팅 연결 요청 중 · 실제 플랫폼 응답 대기")
+        threading.Thread(target=self._work_twitch, args=(session,), daemon=True).start()
+
+    def _work_twitch(self, session: TwitchReadOnlySession) -> None:
+        try:
+            session.run()
+        except Exception as exc:
+            self._results.put(("twitch_error", str(exc)))
+        finally:
+            self._results.put(("twitch_finished", session))
+
+    def _stop_twitch(self) -> None:
+        if self._twitch_session is not None:
+            self._twitch_session.stop()
+
+    def destroy(self) -> None:
+        self._stop_twitch()
+        super().destroy()
+
     def _poll(self) -> None:
         try:
             while True:
                 kind, payload = self._results.get_nowait()
+                if kind.startswith("twitch_"):
+                    if kind == "twitch_ready":
+                        self._twitch_status.set(
+                            "트위치 #" + str(payload) + " 채팅방 연결 완료 · 공개 채팅 수신 대기")
+                    elif kind == "twitch_chat":
+                        self._twitch_received += 1
+                        self._append(
+                            "[트위치 #" + payload.channel + "] "
+                            + payload.sender + ": " + payload.text)
+                        self._twitch_status.set(
+                            "실제 공개 채팅 수신 " + str(self._twitch_received)
+                            + "건 · 자동 AI 답변/송출은 아직 미연결")
+                    elif kind == "twitch_error":
+                        self._twitch_status.set("실제 트위치 읽기 오류: " + str(payload))
+                    elif kind == "twitch_finished":
+                        if payload is self._twitch_session:
+                            self._twitch_session = None
+                            self._twitch_start.configure(state="normal")
+                            self._twitch_end.configure(state="disabled")
+                    continue
                 if kind in ("ok", "error"):
                     self._busy = False
                     self._send.configure(state="normal")
