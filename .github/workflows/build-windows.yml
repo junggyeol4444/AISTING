@@ -429,6 +429,8 @@ jobs:
           $env:OLLAMA_MODELS = Join-Path $env:RUNNER_TEMP 'ollama-models'
           $env:LOCALAPPDATA = Join-Path $env:RUNNER_TEMP 'AISTING-real-local-AI'
           New-Item -ItemType Directory -Path $env:LOCALAPPDATA -Force | Out-Null
+          python -m pip install "websocket-client==1.9.0"
+          if ($LASTEXITCODE -ne 0) { throw 'Real Twitch WebSocket dependency unavailable' }
           $server = Start-Process -FilePath $cli -ArgumentList 'serve' -PassThru -WindowStyle Hidden
           try {
             $healthy = $false
@@ -451,7 +453,7 @@ jobs:
           from tkinter import ttk
           from ai_broadcaster.desktop import AistingApp
           from ai_broadcaster.offline_settings import load_settings
-          from ai_broadcaster.twitch_readonly import TwitchChatLine
+          from ai_broadcaster.twitch_readonly import TwitchChatLine, TwitchReadOnlySession
           from ai_broadcaster.desktop_chat_tab import LocalChatTab
 
           def find_button(node, name):
@@ -516,6 +518,47 @@ jobs:
               )
               assert "AI → [트위치] testviewer:" in tab._dialog.get("1.0", "end")
               print("REAL_OLLAMA_VIEWER_FIFO_REPLIES:", tab._twitch_replied)
+
+              # REAL network viewer message -> existing AISTING Tk results
+              # queue -> real local Ollama model -> same GUI reply display.
+              # No login, user identifiers in CI logs, platform chat posting,
+              # OBS broadcast, TTS recording or voice cloning.
+              observed = []
+              reader = TwitchReadOnlySession(
+                  "xqc", lambda kind, item: observed.append((kind, item)))
+              reader.run(max_seconds=19)
+              real_chats = [
+                  item for kind, item in observed
+                  if kind == "chat" and item.text.strip() and len(item.text) <= 4000
+              ]
+              assert any(kind == "ready" for kind, _ in observed), (
+                  "Public Twitch server JOIN not confirmed")
+              assert real_chats, (
+                  "No real live viewer message arrived; cannot claim a real chat-to-AI integration")
+              tab._twitch_received = 0
+              tab._twitch_replied = 0
+              tab._twitch_ai_failures = 0
+              tab._twitch_ai_inbox = queue.SimpleQueue()
+              worker = threading.Thread(
+                  target=tab._work_twitch_ai,
+                  args=("qwen2.5:0.5b", tab._twitch_ai_inbox), daemon=True)
+              worker.start()
+              # Pass the actual parsed viewer event through the REAL Tk
+              # results event handler, rather than directly invoking a model.
+              tab._results.put(("twitch_chat", real_chats[0]))
+              deadline = time.monotonic() + 155
+              while time.monotonic() < deadline and (
+                  tab._twitch_replied + tab._twitch_ai_failures < 1):
+                  app.update()
+                  time.sleep(.15)
+              assert tab._twitch_received == 1, "Real viewer was not shown in the existing GUI"
+              assert tab._twitch_replied == 1 and tab._twitch_ai_failures == 0, (
+                  "Real viewer chat did not produce an actual local AI reply")
+              assert "AI → [트위치]" in tab._dialog.get("1.0", "end")
+              tab._twitch_ai_inbox.put(None)
+              tab._twitch_ai_inbox = None
+              print("REAL_TWITCH_TO_OLLAMA_GUI_E2E:", tab._twitch_received,
+                    tab._twitch_replied)
               assert not app.settings["streaming_enabled"]
           finally:
               if app is not None:
