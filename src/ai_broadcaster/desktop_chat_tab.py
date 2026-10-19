@@ -8,10 +8,11 @@ from __future__ import annotations
 
 import queue
 import threading
+from collections import deque
 import tkinter as tk
 from tkinter import ttk, messagebox
 
-from .conversation_memory import ConversationMemory
+from .conversation_memory import ConversationMemory, DEFAULT_MEMORY_FILE
 from .desktop_chat import run_local_chat
 from .reply_voice import ReplyVoicePlayer, should_auto_read
 from .windows_tts import Voice
@@ -36,6 +37,8 @@ class LocalChatTab(ttk.Frame):
         self._voice_name = tk.StringVar()
         self._auto_voice = tk.BooleanVar(value=False)
         self._last_reply: str | None = None
+        self._queued_voice: deque[tuple[str, Voice]] = deque()
+        self._closed = False
         self._twitch_session: TwitchReadOnlySession | None = None
         self._twitch_channel = tk.StringVar()
         self._twitch_status = tk.StringVar(value="읽기 전용 미연결 · 로그인·채팅 송신 없음")
@@ -119,6 +122,9 @@ class LocalChatTab(ttk.Frame):
 
     def _refresh_memory_count(self) -> None:
         try:
+            if not DEFAULT_MEMORY_FILE.exists():
+                self._memory_count.set('저장된 대화: 0개')
+                return
             count = ConversationMemory().count()
             self._memory_count.set(f"저장된 대화: {count}개")
         except (OSError, ValueError, Exception) as exc:
@@ -216,6 +222,8 @@ class LocalChatTab(ttk.Frame):
             self._twitch_session.stop()
 
     def destroy(self) -> None:
+        self._closed = True
+        self._queued_voice.clear()
         self._stop_twitch()
         if self._twitch_ai_inbox is not None:
             self._twitch_ai_inbox.put(None)
@@ -223,6 +231,8 @@ class LocalChatTab(ttk.Frame):
         super().destroy()
 
     def _poll(self) -> None:
+        if self._closed:
+            return
         try:
             while True:
                 kind, payload = self._results.get_nowait()
@@ -254,11 +264,7 @@ class LocalChatTab(ttk.Frame):
                         self._refresh_voice_buttons()
                         selected = self._tts_voices.get(self._voice_name.get())
                         if should_auto_read(self._auto_voice.get(), selected, result.reply):
-                            if not self._tts_busy:
-                                self._begin_read(result.reply, selected)
-                            else:
-                                self._tts_status.set(
-                                    "AI 답변은 표시됐지만 음성 재생이 진행 중입니다.")
+                            self._queue_voice_reply(result.reply, selected)
                         self._twitch_status.set(
                             "실제 채팅 " + str(self._twitch_received)
                             + "건 · AI 응답 " + str(self._twitch_replied)
@@ -293,10 +299,7 @@ class LocalChatTab(ttk.Frame):
                     self._refresh_voice_buttons()
                     selected = self._tts_voices.get(self._voice_name.get())
                     if should_auto_read(self._auto_voice.get(), selected, payload.reply):
-                        if not self._tts_busy:
-                            self._begin_read(payload.reply, selected)
-                        else:
-                            self._tts_status.set("음성 재생 중이므로 새 답변은 자동 재생하지 않았습니다.")
+                        self._queue_voice_reply(payload.reply, selected)
                 elif kind in ("voices", "voices_error"):
                     self._tts_loading = False
                     self._tts_find.configure(state="normal")
@@ -322,12 +325,14 @@ class LocalChatTab(ttk.Frame):
                         "AI 답변 음성 재생이 완료됐습니다." if kind == "speech_done"
                         else "음성 재생 종료 또는 오류: " + str(payload)
                     )
+                    self._start_next_queued_voice()
                 else:
                     self._append("연결 오류: " + str(payload))
                     self._input_info.set("PC에 Ollama와 해당 모델이 설치·실행 중인지 확인해 주세요.")
         except queue.Empty:
             pass
-        self.after(150,self._poll)
+        if not self._closed:
+            self.after(150,self._poll)
 
     def _refresh_voice_buttons(self) -> None:
         selected = self._tts_voices.get(self._voice_name.get())
@@ -363,6 +368,21 @@ class LocalChatTab(ttk.Frame):
             return
         self._begin_read(self._last_reply, voice)
 
+    def _queue_voice_reply(self, reply: str, voice: Voice) -> None:
+        """Keep every opted-in AI reply instead of dropping it when audio is busy."""
+        if self._closed:
+            return
+        if not self._tts_busy and not self._queued_voice:
+            self._begin_read(reply, voice)
+        else:
+            self._queued_voice.append((reply, voice))
+            self._tts_status.set("음성 재생 대기: " + str(len(self._queued_voice)) + "건")
+
+    def _start_next_queued_voice(self) -> None:
+        if not self._closed and not self._tts_busy and self._queued_voice:
+            reply, voice = self._queued_voice.popleft()
+            self._begin_read(reply, voice)
+
     def _begin_read(self, reply: str, voice: Voice) -> None:
         if self._tts_busy:
             return
@@ -383,6 +403,7 @@ class LocalChatTab(ttk.Frame):
             self._results.put(("speech_done", result))
 
     def _stop_voice(self) -> None:
+        self._queued_voice.clear()
         if self._tts_busy and self._voice_player.stop():
             self._tts_status.set("음성 재생 중지를 요청했습니다.")
 

@@ -112,6 +112,20 @@ def _verify_frozen_gui() -> bool:
                 {"방송인 홈", "내 캐릭터", "방송 설정",
                  "시청자 채팅 연습", "아바타 미리보기"}.issubset(names)):
             return False
+        # Verify live chat GUI is actually reachable inside packaged EXE.
+        button(app, "실제 채팅·AI").invoke()
+        if (app._tabs.tab(app._tabs.select(), "text") != "실제 채팅·AI"
+                or not app._real_chat_tab.winfo_exists()):
+            return False
+        names = []
+        def visit(widget):
+            for child in widget.winfo_children():
+                if isinstance(child, ttk.Button):
+                    names.append(child.cget("text"))
+                visit(child)
+        visit(app._real_chat_tab)
+        if not {"텍스트 전송", "읽기 전용 연결", "읽기 중지"}.issubset(names):
+            return False
         button(app, "내 캐릭터").invoke()
         if app._tabs.tab(app._tabs.select(), "text") != "내 캐릭터":
             return False

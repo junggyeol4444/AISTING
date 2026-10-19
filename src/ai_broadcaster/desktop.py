@@ -141,6 +141,7 @@ from .content_modes import content_preview
 from .persona_modes import chosen_persona
 from .offline_settings import active_persona
 from .original_plan_studio import OriginalPlanStudio
+from .desktop_chat_tab import LocalChatTab
 from .persona_drafts import EXAMPLE_DRAFTS, apply_draft_example, compact_persona_preview, preview_persona_guidance
 from .local_runtime import local_operation_plan, check_local_storage
 from .os_readiness import (
@@ -245,7 +246,7 @@ class AistingApp(tk.Tk):
         ttk.Label(main, text="Windows 데스크톱 · 무료 · 수동 실행 · 외부 방송 비활성").pack(anchor="w", pady=(2, 9))
         navigation = ttk.Frame(main)
         navigation.pack(fill="x", pady=(0, 8))
-        for name in ("방송인 홈", "내 캐릭터", "방송 설정", "시청자 채팅 연습", "아바타 미리보기"):
+        for name in ("방송인 홈", "내 캐릭터", "방송 설정", "시청자 채팅 연습", "실제 채팅·AI", "아바타 미리보기"):
             ttk.Button(navigation, text=name, command=lambda page=name: self._goto_page(page)).pack(side="left", padx=(0, 4))
         ttk.Label(navigation, text="전체 도구").pack(side="left", padx=(10, 0))
         self._tab_nav = tk.StringVar(value="방송인 홈")
@@ -260,6 +261,7 @@ class AistingApp(tk.Tk):
         character_tab = ttk.Frame(tabs, padding=14)
         settings = ttk.Frame(tabs)
         rehearsal = ttk.Frame(tabs, padding=12)
+        self._real_chat_tab = LocalChatTab(tabs, activity=self._speech_activity)
         avatar = ttk.Frame(tabs, padding=12)
         voice_test = ttk.Frame(tabs, padding=12)
         local_operation = ttk.Frame(tabs, padding=12)
@@ -346,6 +348,7 @@ class AistingApp(tk.Tk):
         about = ttk.Frame(tabs, padding=12)
         for tab, label in ((studio, "방송인 홈"), (character_tab, "내 캐릭터"),
                            (settings, "방송 설정"), (rehearsal, "시청자 채팅 연습"),
+                           (self._real_chat_tab, "실제 채팅·AI"),
                            (voice_test, "무료 한국어 음성"), (avatar, "아바타 미리보기"),
                            (local_operation, "PC 로컬 운영"),
                            (os_review, "OS 확인 준비"),
