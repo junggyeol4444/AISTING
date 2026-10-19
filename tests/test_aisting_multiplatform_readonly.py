@@ -50,6 +50,64 @@ class MultiplePlatformChatTests(unittest.TestCase):
             [x.text for x in parse_soop_frame(one + one, "bj/1")],
             ["첫째", "첫째"])
 
+    def test_soop_waits_for_connect_ack_then_joins_and_reads_chat(self):
+        """A socket handshake alone must never be mistaken for chat-room entry."""
+        from io import BytesIO
+        from types import SimpleNamespace
+
+        sent = []
+        events = []
+        replies = [
+            "\x1b\t000100000600\x0c\x0c\x0c16\x0c",
+            "\x1b\t000200000600\x0c\x0c\x0cjoined\x0c",
+            ("\x1b\t000500002000\x0c안녕😀\x0ctester"
+             "\x0c닉네임\x0c0\x0c0\x0c시청자\x0c") * 2,
+        ]
+        session = SoopReadOnlySession(
+            "streamer/123", lambda kind, value: events.append((kind, value)))
+        test_case = self
+
+        class Socket:
+            def send(self, packet):
+                sent.append(packet)
+
+            def recv(self):
+                if len(replies) == 3:
+                    test_case.assertEqual(len(sent), 1, "JOIN before CONNECT ack")
+                if len(replies) == 2:
+                    test_case.assertEqual(len(sent), 2, "JOIN not sent on ack")
+                if replies:
+                    return replies.pop(0)
+                session.stop()
+                return "\x1b\t000000000100\x0c"
+
+            def settimeout(self, timeout):
+                pass
+
+            def close(self):
+                pass
+
+        socket = Socket()
+        fake_websocket = SimpleNamespace(
+            create_connection=lambda *args, **kwargs: socket,
+            WebSocketTimeoutException=TimeoutError,
+        )
+        metadata = BytesIO(json.dumps({
+            "CHANNEL": {"CHDOMAIN": "chat.example.test",
+                        "CHATNO": "123456", "CHPT": "12345"}
+        }).encode("utf-8"))
+        with patch.dict(sys.modules, {"websocket": fake_websocket}), \
+                patch("urllib.request.urlopen", return_value=metadata):
+            session.run(max_seconds=3)
+
+        self.assertEqual(len(sent), 2)
+        self.assertTrue(sent[0].startswith("\x1b\t0001"))
+        self.assertTrue(sent[1].startswith("\x1b\t0002"))
+        self.assertEqual(sum(k == "ready" for k, _ in events), 1)
+        self.assertEqual(
+            [value.text for k, value in events if k == "chat"],
+            ["안녕😀", "안녕😀"])
+
     def test_youtube_page_chat_and_superchat(self):
         items = [
             {"snippet":{"type":"textMessageEvent","displayMessage":"안녕"},
