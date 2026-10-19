@@ -1,0 +1,4 @@
+# Original evidence is hashed as bytes: prevent Windows checkout CRLF conversions.
+docs/ORIGINAL_PLAN.txt -text
+docs/ROADMAP_100.md -text
+config/roadmap.json -text

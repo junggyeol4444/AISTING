@@ -1,0 +1,112 @@
+name: AISTING v105 Windows branch validation
+
+# Only the testing branch can trigger this Windows build on push.
+on:
+  push:
+    branches:
+      - test/v105-windows-validation-20261015
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-v105:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: "utf-8"
+    steps:
+      - name: Checkout isolated test branch
+        uses: actions/checkout@v4
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          architecture: x64
+      - name: Verify source files and Python syntax
+        shell: pwsh
+        run: |
+          python -m compileall -q src tests scripts tools.py
+          python tools.py validate
+      - name: Run strict SQLite and application unit tests
+        shell: pwsh
+        run: python -W error::ResourceWarning -m unittest discover -s tests -q
+      - name: Verify native Tkinter and full operator rehearsal
+        shell: pwsh
+        run: |
+          python -c "import tkinter; print('Tkinter import passed')"
+          python scripts/gui_operator_journey_smoke.py
+      - name: Run additional isolated Tk GUI regression smokes (required)
+        shell: pwsh
+        timeout-minutes: 15
+        run: python scripts/run_gui_regression_offline.py
+      - name: Install packaging dependency in temporary GitHub Windows runner
+        shell: pwsh
+        run: python -m pip install --disable-pip-version-check "pyinstaller>=6,<7"
+      - name: Package the v105 native Windows entry point
+        shell: pwsh
+        run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name AISTING --paths src --add-data "config;config" --add-data "docs;docs" --add-data "logs/STAGE100_FINAL_VALIDATION.txt;logs" --add-data "logs/STAGE100_UNITTEST.log;logs" scripts/run_desktop.py
+      - name: Verify generated EXE exists
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "dist/AISTING.exe")) { throw "AISTING.exe not found" }
+          $length = (Get-Item "dist/AISTING.exe").Length
+          if ($length -lt 1000000) { throw "Unexpectedly small EXE: $length bytes" }
+          Write-Host "AISTING.exe verified ($length bytes)"
+      - name: Verify frozen EXE can read all six original project evidence files
+        shell: pwsh
+        timeout-minutes: 3
+        run: |
+          $exe = (Resolve-Path "dist/AISTING.exe").Path
+          $probe = Start-Process -FilePath $exe -ArgumentList "--verify-bundled-resources" -PassThru -Wait
+          if ($probe.ExitCode -ne 0) { throw "EXE bundled document inspection failed with exit $($probe.ExitCode)" }
+          Write-Host "EXE six original evidence files / roadmap pending status: PASS"
+      - name: Verify first-launch GUI from PyInstaller one-file child process
+        shell: pwsh
+        timeout-minutes: 3
+        run: |
+          $exe = (Resolve-Path "dist/AISTING.exe").Path
+          $root = Start-Process -FilePath $exe -PassThru
+          $found = $false
+          try {
+            for ($i = 0; $i -lt 45; $i++) {
+              Start-Sleep -Seconds 1
+              $processes = @(Get-Process -Name "AISTING" -ErrorAction SilentlyContinue)
+              foreach ($candidate in $processes) {
+                $candidate.Refresh()
+                if ($candidate.MainWindowHandle -ne 0) {
+                  $found = $true
+                  Write-Host "Native GUI observed in AISTING PID $($candidate.Id), HWND $($candidate.MainWindowHandle)"
+                  break
+                }
+              }
+              if ($found) { break }
+              $root.Refresh()
+              if ($root.HasExited -and $processes.Count -eq 0) {
+                throw "AISTING.exe and its child processes exited before GUI appeared. Exit $($root.ExitCode)"
+              }
+            }
+            if (-not $found) {
+              Get-Process -Name "AISTING" -ErrorAction SilentlyContinue |
+                Select-Object Id, ProcessName, MainWindowHandle, MainWindowTitle |
+                Format-Table | Out-String | Write-Host
+              throw "No AISTING native GUI HWND detected; Windows EXE first launch NOT verified"
+            }
+          } finally {
+            Get-Process -Name "AISTING" -ErrorAction SilentlyContinue |
+              Stop-Process -Force -ErrorAction SilentlyContinue
+          }
+      - name: Verify frozen EXE normal window close and restart (required)
+        shell: pwsh
+        timeout-minutes: 4
+        run: ./scripts/windows_exe_lifecycle_smoke.ps1
+      - name: Upload test-branch Windows EXE
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: AISTING-v105-Windows-EXE-TEST-BRANCH
+          path: dist/AISTING.exe
+          if-no-files-found: error
+          retention-days: 14

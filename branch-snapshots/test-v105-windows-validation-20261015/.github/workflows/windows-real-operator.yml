@@ -1,0 +1,51 @@
+name: Windows real EXE operator interaction (screenshots)
+on:
+  push:
+    branches:
+      - test/v105-windows-validation-20261015
+    paths:
+      - scripts/windows_exe_real_operator.py
+      - scripts/windows_exe_additional_operator.py
+      - scripts/windows_exe_corrupt_settings_operator.py
+      - scripts/windows_exe_unsaved_changes_operator.py
+      - src/ai_broadcaster/desktop.py
+      - .github/workflows/windows-real-operator.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  windows-real-ui:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      PYTHONIOENCODING: utf-8
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install packaging and Windows GUI operator dependencies on ephemeral runner
+        run: python -m pip install --disable-pip-version-check "pyinstaller>=6,<7" "pyautogui>=0.9.54,<1"
+      - name: Build current testing branch's native Windows EXE
+        run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name AISTING --paths src --add-data "config;config" --add-data "docs;docs" --add-data "logs/STAGE100_FINAL_VALIDATION.txt;logs" --add-data "logs/STAGE100_UNITTEST.log;logs" scripts/run_desktop.py
+      - name: Full synthetic-user mouse and keyboard journey on actual Windows EXE
+        run: python scripts/windows_exe_real_operator.py
+      - name: Additional native Windows GUI 3D fallback, restore and voice screen scenario
+        run: python scripts/windows_exe_additional_operator.py
+      - name: Real Windows user recovers broken settings via warning Save and restart
+        run: python scripts/windows_exe_corrupt_settings_operator.py
+      - name: Real Windows GUI edits without Save do not persist after restart
+        run: python scripts/windows_exe_unsaved_changes_operator.py
+      - name: Upload actual screen evidence and failure logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: AISTING-Windows-REAL-operator-screen-evidence
+          path: |
+            operator_e2e_evidence/
+          if-no-files-found: warn
+          retention-days: 14
