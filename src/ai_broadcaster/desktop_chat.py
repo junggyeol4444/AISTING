@@ -35,15 +35,18 @@ def run_local_chat(
     port: int = 11434,
     settings_path: Path = DEFAULT_FILE,
     memory_path: Path = DEFAULT_MEMORY_FILE,
+    sender: str = "운영자",
 ) -> ChatResult:
     if not isinstance(text, str) or not text.strip() or len(text) > 4000:
         raise ValueError("내용은 공백이 아닌 1~4000글자로 입력해 주세요.")
+    if not isinstance(sender, str) or not sender.strip() or len(sender) > 160:
+        raise ValueError("채팅 작성자 정보가 올바르지 않습니다.")
     cfg = LocalModelConfig(model=model, port=port)
     memory = ConversationMemory(path=memory_path)
     generator = LocalOllamaReplyGenerator(cfg, load_settings(settings_path), memory=memory)
     queue = SessionController()
     output = _TextOutput()
-    queue.receive_chat(ChatMessage(str(uuid4()), "운영자", text.strip()))
+    queue.receive_chat(ChatMessage(str(uuid4()), sender.strip(), text.strip()))
     pipeline = ChatPipeline(queue, generator, output)
     result = pipeline.process_next()
     if result is None:
