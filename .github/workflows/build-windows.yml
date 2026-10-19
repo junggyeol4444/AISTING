@@ -661,12 +661,21 @@ jobs:
                       except Exception as ex:
                           print("REAL_SOOP_FALLBACK_META_ERROR_TYPE:",type(ex).__name__)
               print("SOOP_LIVE_CANDIDATES:",len(rows))
-              for row in rows[:12]:
+              # Validate chat against genuinely active public broadcasts, not
+              # whatever order the public directory happens to return.
+              # This ranks test rooms only; it does not filter live messages.
+              def viewers(row):
+                  value = str(row.get("view_cnt") or "0").replace(",", "")
+                  return int(value) if value.isdecimal() else 0
+              rows = sorted((row for row in rows if isinstance(row, dict)),
+                            key=viewers, reverse=True)
+              print("SOOP_PROBE_VIEWER_COUNTS:", [viewers(row) for row in rows[:6]])
+              for row in rows[:6]:
                   channel=str(row.get("user_id") or "")+"/"+str(row.get("broad_no") or "")
                   events=[]
                   try:
                       SoopReadOnlySession(channel,
-                          lambda k,v: events.append((k,v))).run(max_seconds=10)
+                          lambda k,v: events.append((k,v))).run(max_seconds=20)
                       print("REAL_SOOP_SOCKET_CONNECTED:", any(k=="connected" for k,_ in events))
                       print("REAL_SOOP_ROOM_ENTERED:", any(k=="ready" for k,_ in events))
                       print("REAL_SOOP_WEBSOCKET_FRAMES:", sum(v for k,v in events if k=="packet_count"))

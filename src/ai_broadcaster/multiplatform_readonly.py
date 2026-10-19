@@ -145,6 +145,14 @@ class ReadOnlySession:
                 data = sock.recv()
             except websocket.WebSocketTimeoutException:
                 continue
+            except Exception:
+                # The operator may close the socket while recv() is blocking.
+                # An intentional stop is not a connection or chat failure.
+                if self._stop.is_set():
+                    return
+                raise
+            if self._stop.is_set():
+                return
             if not data:
                 raise RuntimeError("채팅 서버 연결이 종료됐습니다.")
             for item in parser(data, self.channel):

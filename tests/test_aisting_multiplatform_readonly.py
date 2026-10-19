@@ -175,6 +175,36 @@ class MultiplePlatformChatTests(unittest.TestCase):
         self.assertEqual([item.text for kind, item in events if kind == "chat"],
                          ["첫째", "첫째"])
 
+    def test_readonly_socket_stop_during_blocking_receive_is_normal(self):
+        """A stopped socket must not deliver stale chat or show an error."""
+        from types import SimpleNamespace
+        for failure_mode in ("empty", "closed"):
+            with self.subTest(failure_mode=failure_mode):
+                events = []
+                session = SoopReadOnlySession(
+                    "streamer/123", lambda kind, item: events.append((kind, item)))
+
+                class Socket:
+                    def settimeout(self, timeout):
+                        pass
+
+                    def recv(self):
+                        session.stop()
+                        if failure_mode == "closed":
+                            raise OSError("Socket closed by the Stop button")
+                        return ""
+
+                    def close(self):
+                        pass
+
+                transport = SimpleNamespace(
+                    WebSocketTimeoutException=TimeoutError)
+                with patch.dict(sys.modules, {"websocket": transport}):
+                    session._receive_socket(
+                        Socket(),
+                        lambda raw, channel: self.fail("Parsed after Stop"))
+                self.assertEqual(events, [])
+
     def test_youtube_page_chat_and_superchat(self):
         items = [
             {"snippet":{"type":"textMessageEvent","displayMessage":"안녕"},
