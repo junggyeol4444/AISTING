@@ -152,9 +152,9 @@ class ChzzkReadOnlySession(ReadOnlySession):
             raise ValueError("치지직 채널 ID는 32자리 16진수입니다.")
 
     def run(self, *, max_seconds=None):
-        import websocket
         if self._stop.is_set():
             return
+        import websocket
         live = _json_get("https://api.chzzk.naver.com/polling/v2/channels/"
                          + self.channel + "/live-status")
         live_id = (live.get("content") or {}).get("chatChannelId")
@@ -213,10 +213,10 @@ class SoopReadOnlySession(ReadOnlySession):
             raise ValueError("SOOP은 방송자ID/방송번호 형태로 입력하세요.")
 
     def run(self, *, max_seconds=None):
-        import websocket
-        from urllib.request import Request, urlopen
         if self._stop.is_set():
             return
+        import websocket
+        from urllib.request import Request, urlopen
         bjid, bno = self.channel.split("/")
         data = urlencode({"bid":bjid,"bno":bno,"type":"live",
                           "confirm_adult":"false","player_type":"html5",
