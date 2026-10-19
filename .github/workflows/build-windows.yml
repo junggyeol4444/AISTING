@@ -632,16 +632,34 @@ jobs:
           except Exception as error:
               print("REAL_CHZZK_DISCOVERY_ERROR:", type(error).__name__)
           try:
-              req = Request("https://api.m.sooplive.co.kr/broad/a/items2",
-                  data=urlencode({"theme_id":"all","group_id":"",
-                     "category_no":"","current_page":"1"}).encode(),
-                  headers={"Content-Type":"application/x-www-form-urlencoded"})
-              with urlopen(req,timeout=12) as response:
-                  listing=json.loads(response.read(1000000))
-              groups=(listing.get("data") or {}).get("groups") or []
-              rows=groups[0].get("contents",[]) if groups else []
-              print("SOOP_PUBLIC_LIST_GROUPS:",len(groups))
-              print("SOOP_PUBLIC_LIST_ROWS:",len(rows))
+              # Prefer SOOP's public popular LIVE directory. The legacy
+              # mobile first page exposed only 4-5 viewer broadcasts and
+              # cannot reliably verify real incoming public chat.
+              rows = []
+              try:
+                  popular_url = ("https://live.sooplive.com/api/main_broad_list_api.php?"
+                      + urlencode({"selectType":"action", "orderType":"view_cnt",
+                                   "pageNo":"1", "lang":"ko_KR"}))
+                  popular_req = Request(popular_url, headers={
+                      "User-Agent":"Mozilla/5.0", "Accept":"application/json"})
+                  with urlopen(popular_req, timeout=12) as response:
+                      popular = json.loads(response.read(2000000))
+                  if isinstance(popular, dict) and isinstance(popular.get("broad"), list):
+                      rows = popular["broad"]
+                  print("SOOP_POPULAR_LIST_ROWS:",len(rows))
+              except Exception as error:
+                  print("SOOP_POPULAR_LIST_ERROR_TYPE:",type(error).__name__)
+              if not rows:
+                  req = Request("https://api.m.sooplive.co.kr/broad/a/items2",
+                      data=urlencode({"theme_id":"all","group_id":"",
+                         "category_no":"","current_page":"1"}).encode(),
+                      headers={"Content-Type":"application/x-www-form-urlencoded"})
+                  with urlopen(req,timeout=12) as response:
+                      listing=json.loads(response.read(1000000))
+                  groups=(listing.get("data") or {}).get("groups") or []
+                  rows=groups[0].get("contents",[]) if groups else []
+                  print("SOOP_MOBILE_LIST_GROUPS:",len(groups))
+                  print("SOOP_MOBILE_LIST_ROWS:",len(rows))
               if not rows:
                   # Query live-status for established channel IDs and accept
                   # only a real SOOP server result RESULT=1 with a live BNO.
@@ -665,7 +683,7 @@ jobs:
               # whatever order the public directory happens to return.
               # This ranks test rooms only; it does not filter live messages.
               def viewers(row):
-                  value = str(row.get("view_cnt") or "0").replace(",", "")
+                  value = str(row.get("total_view_cnt") or row.get("view_cnt") or "0").replace(",", "")
                   return int(value) if value.isdecimal() else 0
               rows = sorted((row for row in rows if isinstance(row, dict)),
                             key=viewers, reverse=True)

@@ -82,12 +82,10 @@ def parse_soop_frame(raw: bytes | str, channel: str) -> list[PlatformChat]:
         if len(fields) < 3:
             continue
         content, uid = fields[1], fields[2]
-        if not content.strip() or content in ("1", "-1") or "fw=" in content:
-            continue
-        if not uid or "fw=" in uid:
-            continue
+        # 0005 means an actual chat message. Never filter messages by
+        # viewer-entered words like "1", "-1", "fw=", or whitespace.
         nick = (fields[6] if len(fields) > 6 and fields[6] not in ("0", "-1", "")
-                else fields[3] if len(fields) > 3 and fields[3] else uid)
+                else fields[3] if len(fields) > 3 and fields[3] else uid or "anonymous")
         result.append(PlatformChat(channel, nick, content, "soop"))
     return result
 

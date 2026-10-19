@@ -117,6 +117,12 @@ class TwitchReadOnlySession:
                     data = sock.recv()
                 except websocket.WebSocketTimeoutException:
                     continue
+                except Exception:
+                    if self._stop.is_set():
+                        break
+                    raise
+                if self._stop.is_set():
+                    break
                 if not isinstance(data, str):
                     raise TwitchReadError("트위치 채팅 응답 형식 오류")
                 if not data:

@@ -50,6 +50,20 @@ class MultiplePlatformChatTests(unittest.TestCase):
             [x.text for x in parse_soop_frame(one + one, "bj/1")],
             ["첫째", "첫째"])
 
+    def test_soop_real_chat_content_is_never_silently_selected(self):
+        """Every 0005 text, including numeric/control-like words, is chat."""
+        texts = ("1", "-1", "fw=something", " ", "", "안녕", "안녕")
+        frames = [
+            "\x1b\t000500002000\x0c" + text +
+            "\x0cuser\x0c닉네임\x0c0\x0c0\x0c시청자\x0c"
+            for text in texts
+        ]
+        frames.insert(3, "\x1b\t000100000600\x0c\x0c\x0c16\x0c")
+        results = parse_soop_frame("".join(frames), "bj/123")
+        self.assertEqual([item.text for item in results], list(texts))
+        self.assertEqual([item.sender for item in results],
+                         ["시청자"] * len(texts))
+
     def test_soop_waits_for_connect_ack_then_joins_and_reads_chat(self):
         """A socket handshake alone must never be mistaken for chat-room entry."""
         from io import BytesIO

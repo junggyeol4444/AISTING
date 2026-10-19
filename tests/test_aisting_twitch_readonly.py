@@ -31,6 +31,41 @@ class TwitchParserTests(unittest.TestCase):
                     ":abc!x@y PRIVMSG #otherroom :secret", "NOTICE #mychannel :info"):
             self.assertIsNone(parse_irc_chat_line(row, "mychannel"))
 
+    def test_operator_stop_during_receive_is_not_a_network_error(self):
+        from types import SimpleNamespace
+        for mode in ("empty", "socket_closed"):
+            with self.subTest(mode=mode):
+                observed = []
+
+                class Socket:
+                    def send(self, item):
+                        pass
+
+                    def settimeout(self, seconds):
+                        pass
+
+                    def recv(self):
+                        session.stop()
+                        if mode == "socket_closed":
+                            raise OSError("Operator clicked Stop")
+                        return ""
+
+                    def close(self):
+                        pass
+
+                socket = Socket()
+                session = TwitchReadOnlySession(
+                    "streamer", lambda kind, item: observed.append((kind, item)))
+                transport = SimpleNamespace(
+                    create_connection=lambda *args, **kwargs: socket,
+                    WebSocketTimeoutException=TimeoutError)
+                with patch.dict(sys.modules, {"websocket": transport}):
+                    session.run(max_seconds=3)
+                self.assertEqual(
+                    [kind for kind, _ in observed],
+                    ["connecting", "stopped"])
+                self.assertEqual(observed[-1], ("stopped", 0))
+
     def test_reject_invalid_operator_channel(self):
         for bad in ("", "a", "www.twitch.tv", "#streamer", "한글채널", "a" * 26, "../secret"):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
