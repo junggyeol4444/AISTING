@@ -65,6 +65,7 @@ def verify_gpt_sovits_to_obs(
     import secrets
     input_name = "AISTING-verification-" + secrets.token_hex(8)
     created = False
+    creation_attempted = False
     with tempfile.TemporaryDirectory(prefix="AISTING_real_voice_") as root:
         wav_path = Path(root) / "one_shot.wav"
         wav_path.write_bytes(raw)
@@ -79,11 +80,13 @@ def verify_gpt_sovits_to_obs(
                 raise RuntimeError("음성 합성 중 OBS 프로그램 장면이 변경되어 검사를 중단했습니다.")
             # OBS media source plays the WAV into the OBS mixer only.
             # It does not start recording or stream output.
+            creation_attempted = True
             client.create_input(state.scene, input_name, "ffmpeg_source", {
                 "is_local_file": True,
                 "local_file": str(wav_path),
-                "looping": True,
-                "restart_on_activate": True,
+                # One authorized voice probe is never indefinite replay.
+                "looping": False,
+                "restart_on_activate": False,
                 "close_when_inactive": False,
             }, True)
             created = True
@@ -115,7 +118,26 @@ def verify_gpt_sovits_to_obs(
                 # Only delete our newly created temporary source.
                 try:
                     client.remove_input(input_name)
-                except Exception:
-                    # Do not report an apparently clean success when source
-                    # cleanup fails. File stays isolated in TempDirectory.
-                    raise RuntimeError("OBS 임시 음성 소스 정리에 실패했습니다.")
+                except Exception as exc:
+                    # Never report success when our temporary input may remain.
+                    raise RuntimeError("OBS 임시 음성 소스 정리에 실패했습니다.") from exc
+            elif creation_attempted:
+                # OBS can CREATE the source and then lose the RPC response.
+                # Do not leave a live audio input behind merely because the
+                # create_input call raised before setting created=True.
+                try:
+                    inputs = client.get_input_list().inputs
+                    if not isinstance(inputs, list):
+                        raise ValueError("OBS 입력 목록 형식 오류")
+                    matches = [item for item in inputs if isinstance(item, dict)
+                               and item.get("inputName") == input_name]
+                    if len(matches) > 1:
+                        raise ValueError("OBS 임시 소스 이름 중복")
+                    if matches:
+                        if matches[0].get("inputKind") != "ffmpeg_source":
+                            raise ValueError("OBS 임시 음성 소스 유형 불일치")
+                        client.remove_input(input_name)
+                except Exception as exc:
+                    raise RuntimeError(
+                        "OBS 임시 음성 소스 생성 오류 후 정리 상태를 확인하지 못했습니다."
+                    ) from exc
