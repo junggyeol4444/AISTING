@@ -881,6 +881,67 @@ class OriginalPlanStudio:
                                    synthesis_busy, message)))
             threading.Thread(target=synth_worker, daemon=True).start()
 
+        # One-shot actual GPT-SoVITS -> actual OBS mixer verification.
+        # All paths and OBS password are entered in the existing native UI.
+        ttk.Label(form, text="OBS WebSocket 비밀번호 (이 검사에만 사용)").pack(anchor="w")
+        obs_password_var = tk.StringVar(master=window)
+        ttk.Entry(form, textvariable=obs_password_var, show="*").pack(fill="x")
+        def test_gpt_voice_to_obs():
+            if synthesis_busy["running"]:
+                return
+            try:
+                selected_audio = Path(path_var.get()).expanduser()
+                if not selected_audio.is_file():
+                    raise VoiceConfigurationError("권리가 확보된 기존 참조 음성 파일을 선택하세요.")
+                inspect_reference_audio_container(selected_audio)
+                if not prompt_var.get().strip():
+                    raise VoiceConfigurationError("참조 음성의 녹음 문장을 입력하세요.")
+                endpoint = validate_local_gpt_sovits_url(endpoint_var.get())
+                sentence = synthesis_text.get().strip()
+                if not 1 <= len(sentence) <= 200:
+                    raise VoiceConfigurationError("시험 문장은 1~200자로 입력하세요.")
+                if not obs_password_var.get():
+                    raise VoiceConfigurationError("실제 OBS WebSocket 비밀번호가 필요합니다.")
+            except (ValueError, OSError) as exc:
+                note.set("실제 OBS 음성 검사 준비 실패: " + str(exc))
+                return
+            if not messagebox.askyesno(
+                "실제 GPT-SoVITS → OBS 오디오 검사 승인",
+                "이번 1회만 로컬 GPT-SoVITS 합성 음성을 실제 OBS 믹서에 "
+                "임시 입력합니다. 참조 음성의 권리를 확인했습니까? "
+                "실제 방송·녹화 시작 또는 외부 송신은 하지 않습니다. "
+                "현재 OBS가 방송 중이면 검사를 거부합니다.",
+                parent=window):
+                return
+            synthesis_busy["running"] = True
+            synthesis_btn.configure(state="disabled")
+            speaker_btn.configure(state="disabled")
+            obs_btn.configure(state="disabled")
+            note.set("공식 GPT-SoVITS 실제 합성 → OBS 입력 미터 검사 중…")
+            def worker():
+                try:
+                    from .original_plan_voice_obs_bridge import verify_gpt_sovits_to_obs
+                    result = verify_gpt_sovits_to_obs(
+                        selected_audio, prompt_var.get(), sentence,
+                        obs_password=obs_password_var.get(), api_url=endpoint,
+                        operator_approved=True, rights_confirmed=True,
+                    )
+                except Exception as exc:
+                    text = "실제 GPT-SoVITS → OBS 검사 실패: " + str(exc)
+                else:
+                    text = (
+                        "GPT-SoVITS 실제 음성 → OBS 믹서 신호 확인: " +
+                        str(result.audio_input_events) + "건 · " +
+                        str(result.sample_rate) + "Hz · " +
+                        str(result.frames) + "프레임. "
+                        "Live2D 립싱크·외부 방송은 별도 검증"
+                    )
+                self._events.put(("gpt_synth_result",
+                                  (window, note,
+                                   (synthesis_btn, speaker_btn, obs_btn),
+                                   synthesis_busy, text)))
+            threading.Thread(target=worker, daemon=True).start()
+
         footer = ttk.Frame(form)
         footer.pack(fill="x", pady=(6, 0))
         synthesis_btn = ttk.Button(
@@ -892,6 +953,10 @@ class OriginalPlanStudio:
             command=lambda: test_real_synthesis(speaker_preview=True),
         )
         speaker_btn.pack(side="left", padx=(0, 8))
+        obs_btn = ttk.Button(
+            footer, text="실제 GPT-SoVITS → OBS 오디오 검사",
+            command=test_gpt_voice_to_obs)
+        obs_btn.pack(side="left", padx=(0, 8))
         ttk.Button(footer, text="취소 / 닫기", command=window.destroy).pack(side="right")
         ttk.Button(footer, text="공식 설정 백업 후 적용",
                    command=apply).pack(side="right", padx=(0, 10))
