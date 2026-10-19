@@ -40,7 +40,7 @@ class MultiplePlatformChatTests(unittest.TestCase):
         self.assertEqual(parse_soop_frame(message.replace("0005","0001",1),"id/123"), [])
 
     def test_soop_batched_protocol_frames_preserve_every_message(self):
-        one = ("\x1b\\t000500002000\x0c첫째\x0ctester"
+        one = ("\x1b\t000500002000\x0c첫째\x0ctester"
                "\x0c닉네임\x0c0\x0c0\x0c시청자\x0c")
         second = one.replace("첫째", "둘째")
         self.assertEqual(
