@@ -337,3 +337,44 @@ jobs:
             if (-not $runner.HasExited) { Stop-Process -Id $runner.Id -Force -ErrorAction SilentlyContinue }
             Remove-Item Env:AISTING_CI_OBS_PASSWORD -ErrorAction SilentlyContinue
           }
+
+
+  # Public third-party Twitch IRC ingress, not a mock, not a login, not a chat post.
+  # One explicit short read of the public 'twitch' channel on a throwaway Windows VM.
+  twitch-public-readonly:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    env:
+      PYTHONPATH: src
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          architecture: x64
+      - name: Install existing WebSocket transport on disposable Windows runner
+        shell: pwsh
+        run: |
+          python -m pip install "websocket-client==1.9.2"
+          if ($LASTEXITCODE -ne 0) { throw 'Real websocket-client unavailable' }
+      - name: Read public Twitch IRC JOIN and any actual live chat without sending
+        shell: pwsh
+        timeout-minutes: 2
+        run: |
+          $probe = Join-Path $env:RUNNER_TEMP 'aisting_twitch_public_read.py'
+          @'
+          from ai_broadcaster.twitch_readonly import TwitchReadOnlySession
+          events = []
+          session = TwitchReadOnlySession("twitch", lambda kind, item: events.append((kind, item)))
+          session.run(max_seconds=15)
+          ready = [item for kind, item in events if kind == "ready"]
+          chat = [item for kind, item in events if kind == "chat"]
+          print("REAL_TWITCH_PUBLIC_JOIN:", bool(ready))
+          print("REAL_TWITCH_PUBLIC_CHAT_COUNT:", len(chat))
+          assert ready, "Public Twitch IRC channel was not actually joined"
+          # No viewer is obliged to type during our short probe. If count is
+          # zero, this is ONLY a connection test, NOT chat-delivery proof.
+          '@ | Set-Content -Path $probe -Encoding utf8
+          python $probe
+          if ($LASTEXITCODE -ne 0) { throw 'Real public Twitch IRC read failed' }
