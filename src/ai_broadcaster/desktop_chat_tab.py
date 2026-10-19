@@ -310,7 +310,10 @@ class LocalChatTab(ttk.Frame):
                 # the FIFO. A large live-chat surge cannot freeze the GUI.
                 if processed >= 128:
                     if not self._closed:
-                        self.after(1, self._poll)
+                        # An exact multiple of the slice size does not need
+                        # an extra 1ms wake-up when the queue is already empty.
+                        delay = 1 if not self._results.empty() else 150
+                        self.after(delay, self._poll)
                     return
                 kind, payload = self._results.get_nowait()
                 processed += 1
