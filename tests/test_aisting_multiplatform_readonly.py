@@ -108,6 +108,70 @@ class MultiplePlatformChatTests(unittest.TestCase):
             [value.text for k, value in events if k == "chat"],
             ["안녕😀", "안녕😀"])
 
+    def test_soop_ping_only_after_enter_while_receiving_long_term(self):
+        """No early keepalive and no dropped chat, even across idle periods."""
+        from io import BytesIO
+        from types import SimpleNamespace
+        clock = [0.0]
+        events, sent = [], []
+        session = SoopReadOnlySession(
+            "streamer/123", lambda kind, value: events.append((kind, value)))
+
+        class SocketTimeout(Exception):
+            pass
+
+        class Socket:
+            def __init__(self):
+                self.reads = 0
+
+            def settimeout(self, timeout):
+                pass
+
+            def send(self, packet):
+                sent.append(packet)
+
+            def close(self):
+                pass
+
+            def recv(self):
+                self.reads += 1
+                if self.reads == 1:
+                    # Before CONNECT acknowledgement: no JOIN, no PING.
+                    clock[0] = 80.0
+                    return "\x1b\t000100000600\x0c\x0c\x0c16\x0c"
+                if self.reads == 2:
+                    self_test.assertEqual(len(sent), 2)
+                    clock[0] = 100.0
+                    return "\x1b\t000200000600\x0c\x0c\x0cjoined\x0c"
+                if self.reads == 3:
+                    clock[0] = 161.0
+                    raise SocketTimeout()
+                if self.reads == 4:
+                    return ("\x1b\t000500002000\x0c첫째\x0ctester"
+                            "\x0c닉네임\x0c0\x0c0\x0c시청자\x0c") * 2
+                session.stop()
+                return "\x1b\t000000000100\x0c"
+
+        self_test = self
+        metadata = BytesIO(json.dumps({
+            "CHANNEL": {"CHDOMAIN": "chat.example.test",
+                        "CHATNO": "123456", "CHPT": "12345"}
+        }).encode())
+        fake_socket = Socket()
+        fake_websocket = SimpleNamespace(
+            create_connection=lambda *args, **kwargs: fake_socket,
+            WebSocketTimeoutException=SocketTimeout)
+        with patch.dict(sys.modules, {"websocket": fake_websocket}), \
+                patch("urllib.request.urlopen", return_value=metadata), \
+                patch("ai_broadcaster.multiplatform_readonly.time.monotonic",
+                      side_effect=lambda: clock[0]):
+            session.run(max_seconds=240)
+        self.assertEqual([packet[2:6] for packet in sent],
+                         ["0001", "0002", "0000"])
+        self.assertEqual(sum(kind == "ready" for kind, _ in events), 1)
+        self.assertEqual([item.text for kind, item in events if kind == "chat"],
+                         ["첫째", "첫째"])
+
     def test_youtube_page_chat_and_superchat(self):
         items = [
             {"snippet":{"type":"textMessageEvent","displayMessage":"안녕"},

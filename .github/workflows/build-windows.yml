@@ -585,7 +585,6 @@ jobs:
   korean-public-chat-readonly:
     runs-on: windows-latest
     timeout-minutes: 15
-    continue-on-error: true
     env:
       PYTHONPATH: src
       PYTHONUTF8: '1'
@@ -662,14 +661,16 @@ jobs:
                       except Exception as ex:
                           print("REAL_SOOP_FALLBACK_META_ERROR_TYPE:",type(ex).__name__)
               print("SOOP_LIVE_CANDIDATES:",len(rows))
-              for row in rows[:8]:
+              for row in rows[:12]:
                   channel=str(row.get("user_id") or "")+"/"+str(row.get("broad_no") or "")
                   events=[]
                   try:
                       SoopReadOnlySession(channel,
-                          lambda k,v: events.append((k,v))).run(max_seconds=8)
+                          lambda k,v: events.append((k,v))).run(max_seconds=10)
                       print("REAL_SOOP_SOCKET_CONNECTED:", any(k=="connected" for k,_ in events))
+                      print("REAL_SOOP_ROOM_ENTERED:", any(k=="ready" for k,_ in events))
                       print("REAL_SOOP_WEBSOCKET_FRAMES:", sum(v for k,v in events if k=="packet_count"))
+                      print("REAL_SOOP_CHAT_EVENTS:", sum(k=="chat" for k,_ in events))
                   except Exception as error:
                       print("REAL_SOOP_ERROR_TYPE:",type(error).__name__)
                       continue

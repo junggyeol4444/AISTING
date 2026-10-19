@@ -132,12 +132,14 @@ class ReadOnlySession:
             except OSError:
                 pass
 
-    def _receive_socket(self, sock, parser, *, max_seconds=None):
+    def _receive_socket(self, sock, parser, *, max_seconds=None, on_tick=None):
         import websocket
         deadline = time.monotonic() + max_seconds if max_seconds else None
         while not self._stop.is_set():
             if deadline and time.monotonic() >= deadline:
                 return
+            if on_tick is not None:
+                on_tick()
             try:
                 sock.settimeout(1)
                 data = sock.recv()
@@ -255,8 +257,9 @@ class SoopReadOnlySession(ReadOnlySession):
             frames_seen = 0
             join_sent = False
             entered = False
+            next_ping = None
             def parse_observed(raw, channel):
-                nonlocal frames_seen, join_sent, entered
+                nonlocal frames_seen, join_sent, entered, next_ping
                 frames_seen += 1
                 decoded = raw.decode("utf-8", "replace") if isinstance(raw, bytes) else raw
                 if isinstance(decoded, str) and decoded.startswith("\x1b\t"):
@@ -267,12 +270,20 @@ class SoopReadOnlySession(ReadOnlySession):
                             join_sent = True
                         elif code == "0002" and join_sent and not entered:
                             entered = True
+                            next_ping = time.monotonic() + 60
                             self.emit("ready", self.channel)
                         elif code == "0007":
                             raise RuntimeError("SOOP 채팅 서버에서 연결 종료 응답을 받았습니다.")
                 return parse_soop_frame(raw, channel)
+            def keepalive():
+                nonlocal next_ping
+                if entered and next_ping is not None and time.monotonic() >= next_ping:
+                    # SOOP 0000 keepalive is local protocol traffic, not a chat post.
+                    sock.send("\x1b\t000000000100\x0c")
+                    next_ping = time.monotonic() + 60
             try:
-                self._receive_socket(sock, parse_observed, max_seconds=max_seconds)
+                self._receive_socket(sock, parse_observed, max_seconds=max_seconds,
+                                     on_tick=keepalive)
             finally:
                 # Counts only: never publish chat text or viewer identity.
                 self.emit("packet_count", frames_seen)
