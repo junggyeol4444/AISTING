@@ -45,10 +45,12 @@ def _verify_frozen_bundle() -> bool:
         from ai_broadcaster.original_plan_frontend import run_native_live2d_window
         from ai_broadcaster.original_plan_obs import OfficialObsWebsocket
         import obsws_python
+        import websocket
         import winsound
         if (not callable(main) or not callable(run_native_live2d_window)
                 or not callable(OfficialObsWebsocket)
                 or not callable(obsws_python.ReqClient)
+                or not callable(websocket.create_connection)
                 or not callable(winsound.PlaySound)):
             return False
         return importlib.util.find_spec("webview") is not None
