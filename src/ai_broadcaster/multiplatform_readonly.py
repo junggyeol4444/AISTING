@@ -61,7 +61,8 @@ def parse_chzzk_frame(raw: str, channel: str) -> list[PlatformChat]:
                 profile = {}
         nick = profile.get("nickname") if isinstance(profile, dict) else None
         nick = nick or item.get("uid") or "anonymous"
-        if item["msg"].strip():
+        if item["msg"]:
+            # Preserve nonempty whitespace-only chat exactly.
             out.append(PlatformChat(channel, str(nick), item["msg"], "chzzk"))
     return out
 
@@ -106,7 +107,7 @@ def parse_youtube_page(page: dict, channel: str) -> list[PlatformChat]:
                                        "superStickerEvent"):
             continue
         text = snippet.get("displayMessage")
-        if not isinstance(text, str) or not text.strip():
+        if not isinstance(text, str) or not text:
             continue
         result.append(PlatformChat(channel,
                     str(author.get("displayName") or "YouTube 시청자"), text, "youtube"))

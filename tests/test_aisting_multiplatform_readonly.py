@@ -353,6 +353,20 @@ class MultiplePlatformChatTests(unittest.TestCase):
         self.assertEqual([kind for kind,_ in events],["chat","ready","stopped"])
         self.assertEqual(events[0][1].text,"마지막 채팅")
 
+    def test_whitespace_only_real_chat_is_preserved(self):
+        data={"cmd":93101,"bdy":[
+            {"profile":{"nickname":"시청자"},"msg":"  "},
+            {"profile":{"nickname":"시청자"},"msg":""}]}
+        self.assertEqual(
+            [x.text for x in parse_chzzk_frame(json.dumps(data),"room")],["  "])
+        page={"items":[
+            {"snippet":{"type":"textMessageEvent","displayMessage":"  "},
+             "authorDetails":{"displayName":"시청자"}},
+            {"snippet":{"type":"textMessageEvent","displayMessage":""},
+             "authorDetails":{"displayName":"시청자"}}]}
+        self.assertEqual(
+            [x.text for x in parse_youtube_page(page,"chat")],["  "])
+
     def test_no_auth_or_platform_send_on_initialization(self):
         cb=lambda *x: None
         self.assertEqual(ChzzkReadOnlySession("a"*32,cb).channel,"a"*32)

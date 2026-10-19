@@ -117,6 +117,85 @@ class LiveChatReplyOrderTests(unittest.TestCase):
         self.assertEqual(event,"twitch_ai_ok")
         self.assertEqual(value[0],chat)
 
+    def test_stopped_connection_does_not_process_queued_ai(self):
+        import threading
+        from ai_broadcaster.multiplatform_readonly import PlatformChat
+        for official in (False,True):
+            with self.subTest(official=official):
+                stop=threading.Event()
+                stop.set()
+                inbox,outbox=queue.SimpleQueue(),queue.SimpleQueue()
+                for text in ("첫째","첫째","둘째"):
+                    inbox.put(PlatformChat("room","viewer",text,"soop"))
+                inbox.put(None)
+                with patch("ai_broadcaster.desktop_chat_tab.run_local_chat",
+                           side_effect=AssertionError("AI called after Stop")), patch(
+                    "ai_broadcaster.original_plan_frontend.send_to_native_live2d_session_with_observation",
+                    side_effect=AssertionError("Live2D called after Stop")):
+                    LocalChatTab._work_twitch_ai(
+                        SimpleNamespace(_results=outbox),"model",inbox,official,
+                        SimpleNamespace(_stop=stop))
+                self.assertTrue(outbox.empty())
+
+    def test_stop_during_first_reply_prevents_further_queued_ai(self):
+        import threading
+        from ai_broadcaster.multiplatform_readonly import PlatformChat
+        stop=threading.Event()
+        inbox,outbox=queue.SimpleQueue(),queue.SimpleQueue()
+        for txt in ("첫째","둘째","둘째"):
+            inbox.put(PlatformChat("room","viewer",txt,"chzzk"))
+        inbox.put(None)
+        calls=[]
+        def response(model,text,**kwargs):
+            calls.append(text)
+            stop.set()
+            return SimpleNamespace(reply="결과",remembered_count=1)
+        with patch("ai_broadcaster.desktop_chat_tab.run_local_chat",
+                   side_effect=response):
+            LocalChatTab._work_twitch_ai(
+                SimpleNamespace(_results=outbox),"model",inbox,False,
+                SimpleNamespace(_stop=stop))
+        self.assertEqual(calls,["첫째"])
+        self.assertTrue(outbox.empty())
+
+    def test_stop_button_wakes_ai_queue(self):
+        import threading
+        stop=threading.Event()
+        inbox=queue.SimpleQueue()
+        receiver=SimpleNamespace(
+            _twitch_session=SimpleNamespace(stop=stop.set),
+            _twitch_ai_inbox=inbox)
+        LocalChatTab._stop_twitch(receiver)
+        self.assertTrue(stop.is_set())
+        self.assertIsNone(inbox.get_nowait())
+
+    def test_stop_discards_buffered_scoped_events_except_finish(self):
+        import threading
+        from ai_broadcaster.multiplatform_readonly import PlatformChat
+        stop=threading.Event()
+        stop.set()
+        session=SimpleNamespace(_stop=stop)
+        msg=PlatformChat("room","viewer","늦은 채팅","soop")
+        result=queue.SimpleQueue()
+        for kind,payload in [
+            ("twitch_chat",msg),
+            ("twitch_ai_ok",(msg,SimpleNamespace(reply="늦은 응답"))),
+            ("twitch_finished",session),
+        ]:
+            result.put(("twitch_scoped",(session,kind,payload)))
+        fake=SimpleNamespace(
+            _closed=False,_results=result,_twitch_session=session,
+            _twitch_ai_inbox=None,_twitch_received=0,_twitch_replied=0,
+            _twitch_ai_failures=0,
+            _append=lambda *args:self.fail("stale text displayed"),
+            _twitch_start=SimpleNamespace(configure=lambda **kwargs:None),
+            _twitch_end=SimpleNamespace(configure=lambda **kwargs:None),
+            _poll=lambda:None,after=lambda *args:None)
+        LocalChatTab._poll(fake)
+        self.assertEqual(fake._twitch_received,0)
+        self.assertEqual(fake._twitch_replied,0)
+        self.assertIsNone(fake._twitch_session)
+
     def test_stopping_before_thread_start_never_reopens_websocket(self):
         events = []
         receiver = TwitchReadOnlySession("streamer", lambda k, v: events.append((k, v)))

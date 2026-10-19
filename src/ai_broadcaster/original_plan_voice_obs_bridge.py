@@ -50,6 +50,20 @@ def verify_gpt_sovits_to_obs(
     if state.streaming:
         raise RuntimeError("OBS가 실제 방송 중일 때 임시 음성 입력 검사를 실행하지 않습니다.")
     client = obs._client
+
+    def ensure_not_recording():
+        # Recording would capture our temporary voice source even when the
+        # public stream is off. Fail closed if OBS cannot confirm this status.
+        try:
+            active = client.get_record_status().output_active
+        except Exception as exc:
+            raise RuntimeError("OBS 녹화 상태를 확인하지 못했습니다.") from exc
+        if type(active) is not bool:
+            raise RuntimeError("OBS 녹화 상태 응답이 올바르지 않습니다.")
+        if active:
+            raise RuntimeError("OBS가 녹화 중일 때 임시 음성 입력 검사를 실행하지 않습니다.")
+
+    ensure_not_recording()
     kind_list = client.get_input_kind_list(False).input_kinds
     if "ffmpeg_source" not in kind_list:
         raise RuntimeError("실제 OBS 미디어 입력이 지원되지 않습니다.")
@@ -78,6 +92,7 @@ def verify_gpt_sovits_to_obs(
                 raise RuntimeError("음성 합성 중 OBS 방송이 시작되어 입력 검사를 중단했습니다.")
             if before_input.scene != state.scene:
                 raise RuntimeError("음성 합성 중 OBS 프로그램 장면이 변경되어 검사를 중단했습니다.")
+            ensure_not_recording()
             # OBS media source plays the WAV into the OBS mixer only.
             # It does not start recording or stream output.
             creation_attempted = True
@@ -95,6 +110,7 @@ def verify_gpt_sovits_to_obs(
             after_input = obs.status()
             if after_input.streaming or after_input.scene != state.scene:
                 raise RuntimeError("OBS 음성 입력 생성 도중 송출 또는 장면 상태가 변경되었습니다.")
+            ensure_not_recording()
             import time
             time.sleep(.4)
             meters = obs.read_actual_audio_meters(
@@ -112,6 +128,7 @@ def verify_gpt_sovits_to_obs(
             after_meter = obs.status()
             if after_meter.streaming or after_meter.scene != state.scene:
                 raise RuntimeError("OBS 미터 검사 중 송출 또는 장면 상태가 변경되었습니다.")
+            ensure_not_recording()
             return result
         finally:
             if created:

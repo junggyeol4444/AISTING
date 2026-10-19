@@ -248,13 +248,16 @@ class LocalChatTab(ttk.Frame):
         # Old direct-call regression contracts still use unscoped result
         # events; real UI connections always provide their unique session.
         def report(kind, value):
+            if session is not None and session._stop.is_set():
+                # Do not expose stale replies or start voice after Stop.
+                return
             if session is None:
                 self._results.put((kind, value))
             else:
                 self._results.put(("twitch_scoped", (session, kind, value)))
         while True:
             chat = inbox.get()
-            if chat is None:
+            if chat is None or (session is not None and session._stop.is_set()):
                 break
             if official:
                 # Official WebView2 owns the AI, GPT-SoVITS audio and Cubism
@@ -283,6 +286,9 @@ class LocalChatTab(ttk.Frame):
     def _stop_twitch(self) -> None:
         if self._twitch_session is not None:
             self._twitch_session.stop()
+            if self._twitch_ai_inbox is not None:
+                # Wake the idle AI worker. Queued messages will not be sent.
+                self._twitch_ai_inbox.put(None)
 
     def destroy(self) -> None:
         self._closed = True
@@ -304,6 +310,10 @@ class LocalChatTab(ttk.Frame):
                     if source_session is not self._twitch_session:
                         # Stale connection/worker output is never counted,
                         # displayed, or passed to another session's AI.
+                        continue
+                    stopped = getattr(source_session, "_stop", None)
+                    if (stopped is not None and stopped.is_set()
+                            and kind != "twitch_finished"):
                         continue
                 if kind.startswith("twitch_"):
                     if kind == "twitch_connected":

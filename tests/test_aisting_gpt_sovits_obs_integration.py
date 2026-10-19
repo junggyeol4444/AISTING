@@ -37,6 +37,8 @@ class VerifyRealVoiceObsTests(unittest.TestCase):
         created=[]
         deleted=[]
         class FakeClient:
+            def get_record_status(self):
+                return SimpleNamespace(output_active=False)
             def get_input_kind_list(self, ignored):
                 return SimpleNamespace(input_kinds=["ffmpeg_source"])
             def create_input(self, scene, name, kind, settings, enabled):
@@ -80,6 +82,8 @@ class VerifyRealVoiceObsTests(unittest.TestCase):
 
     def test_stream_started_during_real_synthesis_does_not_create_obs_input(self):
         class Client:
+            def get_record_status(self):
+                return SimpleNamespace(output_active=False)
             def get_input_kind_list(self, ignored):
                 return SimpleNamespace(input_kinds=["ffmpeg_source"])
 
@@ -104,6 +108,8 @@ class VerifyRealVoiceObsTests(unittest.TestCase):
 
     def test_scene_change_during_real_synthesis_does_not_touch_obs(self):
         class Client:
+            def get_record_status(self):
+                return SimpleNamespace(output_active=False)
             def get_input_kind_list(self, ignored):
                 return SimpleNamespace(input_kinds=["ffmpeg_source"])
 
@@ -130,6 +136,8 @@ class VerifyRealVoiceObsTests(unittest.TestCase):
             SimpleNamespace(scene="Scene",streaming=True),
         ])
         class Client:
+            def get_record_status(self):
+                return SimpleNamespace(output_active=False)
             def get_input_kind_list(self, ignored):
                 return SimpleNamespace(input_kinds=["ffmpeg_source"])
 
@@ -167,6 +175,8 @@ class VerifyRealVoiceObsTests(unittest.TestCase):
             SimpleNamespace(scene="New scene",streaming=False),
         ])
         class Client:
+            def get_record_status(self):
+                return SimpleNamespace(output_active=False)
             def get_input_kind_list(self, ignored):
                 return SimpleNamespace(input_kinds=["ffmpeg_source"])
 
@@ -216,6 +226,8 @@ class VerifyRealVoiceObsTests(unittest.TestCase):
         """A lost CreateInput reply cannot leave the temporary audio looping."""
         recorded,removed=[],[]
         class Client:
+            def get_record_status(self):
+                return SimpleNamespace(output_active=False)
             def get_input_kind_list(self, ignored):
                 return SimpleNamespace(input_kinds=["ffmpeg_source"])
             def create_input(self, scene, name, kind, settings, enabled):
@@ -249,6 +261,8 @@ class VerifyRealVoiceObsTests(unittest.TestCase):
     def test_rpc_error_without_created_source_does_not_remove_any_input(self):
         removed=[]
         class Client:
+            def get_record_status(self):
+                return SimpleNamespace(output_active=False)
             def get_input_kind_list(self, ignored):
                 return SimpleNamespace(input_kinds=["ffmpeg_source"])
             def create_input(self, *args):
@@ -274,6 +288,8 @@ class VerifyRealVoiceObsTests(unittest.TestCase):
 
     def test_cleanup_verification_failure_never_claims_success(self):
         class Client:
+            def get_record_status(self):
+                return SimpleNamespace(output_active=False)
             def get_input_kind_list(self, ignored):
                 return SimpleNamespace(input_kinds=["ffmpeg_source"])
             def create_input(self, *args):
@@ -293,6 +309,62 @@ class VerifyRealVoiceObsTests(unittest.TestCase):
                 verify_gpt_sovits_to_obs(Path("owned.wav"),"참조 발화","안녕하세요",
                     obs_password="secret",operator_approved=True,rights_confirmed=True)
 
+
+    def test_active_obs_recording_rejected_before_synthesizing(self):
+        class Client:
+            def get_record_status(self):
+                return SimpleNamespace(output_active=True)
+            def get_input_kind_list(self, ignored):
+                return SimpleNamespace(input_kinds=["ffmpeg_source"])
+        obs=SimpleNamespace(
+            _client=Client(),
+            connect=lambda:SimpleNamespace(version="32",scene="Scene",streaming=False))
+        with patch("ai_broadcaster.original_plan_voice_obs_bridge.OfficialObsWebsocket",
+                   return_value=obs), patch(
+                "ai_broadcaster.original_plan_voice_obs_bridge.synthesize_local_gpt_sovits",
+                side_effect=AssertionError("Synthesized during recording")):
+            with self.assertRaisesRegex(RuntimeError,"녹화 중"):
+                verify_gpt_sovits_to_obs(Path("owned.wav"),"참조","합성",
+                    obs_password="secret",operator_approved=True,rights_confirmed=True)
+
+    def test_recording_started_during_synthesis_never_creates_audio_source(self):
+        observed=[]
+        class Client:
+            def get_record_status(self):
+                observed.append("check")
+                return SimpleNamespace(output_active=len(observed)>1)
+            def get_input_kind_list(self, ignored):
+                return SimpleNamespace(input_kinds=["ffmpeg_source"])
+            def create_input(self,*args):
+                raise AssertionError("Source created during existing recording")
+        obs=SimpleNamespace(
+            _client=Client(),
+            connect=lambda:SimpleNamespace(version="32",scene="Scene",streaming=False),
+            status=lambda:SimpleNamespace(scene="Scene",streaming=False))
+        voice=SimpleNamespace(wav_data=b"RIFF"+b"x"*60)
+        with patch("ai_broadcaster.original_plan_voice_obs_bridge.OfficialObsWebsocket",
+                   return_value=obs), patch(
+                "ai_broadcaster.original_plan_voice_obs_bridge.synthesize_local_gpt_sovits",
+                return_value=voice):
+            with self.assertRaisesRegex(RuntimeError,"녹화 중"):
+                verify_gpt_sovits_to_obs(Path("owned.wav"),"참조","합성",
+                    obs_password="secret",operator_approved=True,rights_confirmed=True)
+        self.assertEqual(len(observed),2)
+
+    def test_missing_recording_status_fails_closed(self):
+        class Client:
+            def get_record_status(self):
+                raise OSError("OBS record endpoint unavailable")
+        obs=SimpleNamespace(
+            _client=Client(),
+            connect=lambda:SimpleNamespace(version="32",scene="Scene",streaming=False))
+        with patch("ai_broadcaster.original_plan_voice_obs_bridge.OfficialObsWebsocket",
+                   return_value=obs), patch(
+                "ai_broadcaster.original_plan_voice_obs_bridge.synthesize_local_gpt_sovits",
+                side_effect=AssertionError("Unexpected audio")):
+            with self.assertRaisesRegex(RuntimeError,"녹화 상태를 확인하지 못"):
+                verify_gpt_sovits_to_obs(Path("owned.wav"),"참조","합성",
+                    obs_password="secret",operator_approved=True,rights_confirmed=True)
 
 if __name__=="__main__":
     unittest.main()

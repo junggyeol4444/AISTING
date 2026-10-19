@@ -257,7 +257,7 @@ def send_to_native_live2d_session(text: str, *, operator_approved: bool = False)
     """
     if operator_approved is not True:
         raise PermissionError('공식 Live2D 실제 AI 세션 질문은 매번 승인이 필요합니다.')
-    if not isinstance(text, str) or not 1 <= len(text.strip()) <= 4000:
+    if not isinstance(text, str) or not text.strip() or len(text) > 4000:
         raise FrontendUnavailable('공식 Live2D 질문은 1~4000글자여야 합니다.')
     child = _native_viewer
     if child is None or child.poll() is not None:
@@ -267,7 +267,7 @@ def send_to_native_live2d_session(text: str, *, operator_approved: bool = False)
         raise FrontendUnavailable('공식 Live2D 창의 입력 통신이 아직 연결되지 않았습니다.')
     with _native_send_lock:
         try:
-            conn.send_bytes(json.dumps({'type': 'user-text', 'text': text.strip()},
+            conn.send_bytes(json.dumps({'type': 'user-text', 'text': text},
                                        ensure_ascii=False).encode('utf-8'))
             if not conn.poll(9):
                 _invalidate_untrusted_native_bridge(conn)
@@ -307,7 +307,7 @@ def send_to_native_live2d_session_with_observation(
     """
     if operator_approved is not True:
         raise PermissionError('공식 Live2D 실제 질문·입 움직임 확인 승인이 필요합니다.')
-    if not isinstance(text, str) or not 1 <= len(text.strip()) <= 4000:
+    if not isinstance(text, str) or not text.strip() or len(text) > 4000:
         raise FrontendUnavailable('공식 AI 질문은 1~4000글자여야 합니다.')
     if type(duration) not in (int, float) or not 1 <= duration <= 12:
         raise ValueError('립싱크 관찰 기간은 1~12초여야 합니다.')
@@ -316,7 +316,7 @@ def send_to_native_live2d_session_with_observation(
         raise FrontendUnavailable('공식 Live2D Windows 창과 연결되어 있지 않습니다.')
     with _native_send_lock:
         try:
-            request = {'type': 'user-text-with-lipsync', 'text': text.strip(),
+            request = {'type': 'user-text-with-lipsync', 'text': text,
                        'seconds': float(duration)}
             conn.send_bytes(json.dumps(request, ensure_ascii=False).encode('utf-8'))
             if not conn.poll(float(duration) + 9):
@@ -524,7 +524,7 @@ def _official_frontend_input_script(value: str, nonce: str) -> tuple[str, str, s
     genuine send proves the browser submitted text through its own established
     connection; it does not prove server receipt, LLM result, TTS or lip sync.
     """
-    if not isinstance(value, str) or not 1 <= len(value.strip()) <= 4000:
+    if not isinstance(value, str) or not value.strip() or len(value) > 4000:
         raise ValueError('공식 AI 질문 길이가 올바르지 않습니다.')
     if not isinstance(nonce, str) or len(nonce) != 32 or any(
             ch not in '0123456789abcdef' for ch in nonce):
@@ -601,7 +601,7 @@ def _submit_original_live2d_text(window, value: str) -> bool:
     """Run official React input handler and observe its real WS text-input send."""
     accepted = False
     request_nonce = secrets.token_hex(16)
-    scripts = _official_frontend_input_script(value.strip(), request_nonce)
+    scripts = _official_frontend_input_script(value, request_nonce)
     input_script, submit_script, observed_script, cleanup_script = scripts
     try:
         input_seen = window.evaluate_js(input_script) is True

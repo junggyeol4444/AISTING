@@ -163,6 +163,49 @@ class NativeLive2DTests(unittest.TestCase):
         with self.assertRaises(viewer.FrontendUnavailable):
             viewer.send_to_native_live2d_session('다시 질문', operator_approved=True)
 
+    def test_official_ipc_preserves_exact_chat_whitespace(self):
+        import json
+        from unittest.mock import MagicMock
+        viewer._native_viewer=types.SimpleNamespace(poll=lambda:None)
+        viewer._native_bridge=MagicMock()
+        viewer._native_bridge.poll.return_value=True
+        viewer._native_bridge.recv_bytes.return_value=b'{"type":"input-result","accepted":true}'
+        message="  안녕하세요  "
+        self.assertTrue(viewer.send_to_native_live2d_session(
+            message,operator_approved=True))
+        packet=json.loads(viewer._native_bridge.send_bytes.call_args.args[0])
+        self.assertEqual(packet["text"],message)
+        evidence={"type":"lip-sync-result","samples":5,"model_seen":True,
+                  "canvas_seen":True,"lip_sync_ids":1,"peak_rms":0.2,
+                  "active_rms_samples":2,"mouth_range":0.3,
+                  "changing_mouth_samples":2,"renderer_active_samples":2,
+                  "overlapping_audio_mouth_samples":2}
+        viewer._native_bridge.recv_bytes.return_value=json.dumps({
+            "type":"input-with-lipsync-result","accepted":True,
+            "evidence":evidence}).encode()
+        result=viewer.send_to_native_live2d_session_with_observation(
+            message,operator_approved=True,duration=2)
+        self.assertTrue(result.verified_signal)
+        packet=json.loads(viewer._native_bridge.send_bytes.call_args.args[0])
+        self.assertEqual(packet["text"],message)
+        js=viewer._official_frontend_input_script(message,"a"*32)[0]
+        self.assertIn(json.dumps(message,ensure_ascii=False),js)
+
+    def test_official_ipc_checks_full_untrimmed_input_length(self):
+        from unittest.mock import MagicMock
+        viewer._native_viewer=types.SimpleNamespace(poll=lambda:None)
+        viewer._native_bridge=MagicMock()
+        long_text=" "*4100+"안녕"
+        with self.assertRaises(viewer.FrontendUnavailable):
+            viewer.send_to_native_live2d_session(
+                long_text,operator_approved=True)
+        with self.assertRaises(viewer.FrontendUnavailable):
+            viewer.send_to_native_live2d_session_with_observation(
+                long_text,operator_approved=True)
+        with self.assertRaises(ValueError):
+            viewer._official_frontend_input_script(long_text,"a"*32)
+        viewer._native_bridge.send_bytes.assert_not_called()
+
     def test_frontend_script_confirms_actual_official_ws_send(self):
         injection, submit, observed, cleanup = viewer._official_frontend_input_script(
             '한국어 "대화"', 'a' * 32
