@@ -754,8 +754,8 @@ class OriginalPlanStudio:
                                          validate_local_gpt_sovits_url)
         window = tk.Toplevel(self.parent)
         window.title("원본 기획안 2단계 · GPT-SoVITS 실제 목소리 연결")
-        window.geometry("790x545")
-        window.minsize(660, 500)
+        window.geometry("850x690")
+        window.minsize(735, 630)
         form = ttk.Frame(window, padding=17)
         form.pack(fill="both", expand=True)
         ttk.Label(form, text="이미 확보한 목소리의 GPT-SoVITS 연결 설정",
