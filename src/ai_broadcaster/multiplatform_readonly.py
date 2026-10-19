@@ -222,7 +222,7 @@ class SoopReadOnlySession(ReadOnlySession):
                           "confirm_adult":"false","player_type":"html5",
                           "mode":"landing","from_api":"0","pwd":"",
                           "stream_type":"common","quality":"HD"}).encode()
-        request = Request("https://live.afreecatv.com/afreeca/player_live_api.php?"
+        request = Request("https://live.sooplive.com/afreeca/player_live_api.php?"
                           + urlencode({"bjid":bjid}), data=data,
                           headers={"Content-Type":"application/x-www-form-urlencoded"})
         with urlopen(request, timeout=10) as response:
