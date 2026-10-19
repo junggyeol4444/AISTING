@@ -45,8 +45,8 @@ class VerifyRealVoiceObsTests(unittest.TestCase):
                 self.assertEqual(kind,"ffmpeg_source")
                 self.assertEqual(scene,"Scene")
                 self.assertEqual(self_len,64)
-                self.assertIs(settings["looping"],False)
-                self.assertIs(settings["restart_on_activate"],False)
+                self.assertEqual(settings["looping"],False)
+                self.assertEqual(settings["restart_on_activate"],False)
                 created.append((name,settings["local_file"]))
             def remove_input(self,name):
                 deleted.append(name)
