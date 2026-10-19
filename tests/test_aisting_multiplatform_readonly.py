@@ -316,6 +316,43 @@ class MultiplePlatformChatTests(unittest.TestCase):
                 session.run(max_seconds=2)
         self.assertNotIn(secret,str(cm.exception))
 
+    def test_stop_in_middle_of_batched_socket_data_stops_delivery(self):
+        from types import SimpleNamespace
+        observed=[]
+        session=SoopReadOnlySession("streamer/1",lambda kind, item:(
+            observed.append(item), session.stop()))
+        messages=[
+            PlatformChat("streamer/1","viewer","첫째","soop"),
+            PlatformChat("streamer/1","viewer","둘째","soop"),
+            PlatformChat("streamer/1","viewer","셋째","soop")]
+        class Sock:
+            def settimeout(self, timeout):
+                pass
+            def recv(self):
+                return "one-frame"
+            def close(self):
+                pass
+        with patch.dict(sys.modules,{"websocket":SimpleNamespace(
+            WebSocketTimeoutException=TimeoutError)}):
+            session._receive_socket(Sock(),lambda data, channel:messages)
+        self.assertEqual(observed,[messages[0]])
+
+    def test_youtube_final_page_without_cursor_is_not_failure(self):
+        from urllib.parse import urlsplit
+        events=[]
+        session=YouTubeReadOnlySession("existingChatID",
+             lambda kind, payload: events.append((kind,payload)), "k"*39)
+        page={"offlineAt":"2026-10-19T08:00:00Z",
+              "items":[{"id":"one","snippet":{"type":"textMessageEvent",
+                          "displayMessage":"마지막 채팅"},
+                        "authorDetails":{"displayName":"시청자"}}]}
+        with patch("ai_broadcaster.multiplatform_readonly._json_get",
+                   return_value=page) as api:
+            session.run(max_seconds=3)
+        self.assertEqual(api.call_count,1)
+        self.assertEqual([kind for kind,_ in events],["chat","ready","stopped"])
+        self.assertEqual(events[0][1].text,"마지막 채팅")
+
     def test_no_auth_or_platform_send_on_initialization(self):
         cb=lambda *x: None
         self.assertEqual(ChzzkReadOnlySession("a"*32,cb).channel,"a"*32)

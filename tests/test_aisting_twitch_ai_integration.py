@@ -72,6 +72,50 @@ class LiveChatReplyOrderTests(unittest.TestCase):
         self.assertEqual(done[0], "twitch_ai_ok")
         self.assertEqual(done[1][0], second)
 
+    def test_old_connection_results_cannot_enter_new_session(self):
+        from ai_broadcaster.multiplatform_readonly import PlatformChat
+        old_session, new_session = object(), object()
+        out = queue.SimpleQueue()
+        shown, appended = [], []
+        old_chat = PlatformChat("old", "old-viewer", "늦은 메시지", "soop")
+        out.put(("twitch_scoped", (old_session, "twitch_chat", old_chat)))
+        out.put(("twitch_scoped", (old_session, "twitch_ai_ok",
+                                  (old_chat, SimpleNamespace(reply="늦은 답변")))))
+        out.put(("twitch_scoped", (old_session, "twitch_ai_error",
+                                  (old_chat, "예전 오류"))))
+        out.put(("twitch_scoped", (old_session, "twitch_finished", old_session)))
+        out.put(("twitch_scoped", (new_session, "twitch_connected", "new-room")))
+        fake = SimpleNamespace(
+            _results=out, _closed=False, _twitch_session=new_session,
+            _twitch_received=0, _twitch_replied=0, _twitch_ai_failures=0,
+            _chat_platform=SimpleNamespace(get=lambda:"SOOP"),
+            _twitch_status=SimpleNamespace(set=shown.append),
+            _append=appended.append,
+            after=lambda *args:None)
+        LocalChatTab._poll(fake)
+        self.assertEqual(fake._twitch_received, 0)
+        self.assertEqual(fake._twitch_replied, 0)
+        self.assertEqual(fake._twitch_ai_failures, 0)
+        self.assertEqual(appended, [])
+        self.assertEqual(len(shown),1)
+        self.assertIn("new-room",shown[0])
+
+    def test_real_ui_ai_worker_attaches_originating_session(self):
+        inbox, outbox = queue.SimpleQueue(), queue.SimpleQueue()
+        current = object()
+        chat = TwitchChatLine("room", "viewer", "안녕")
+        inbox.put(chat)
+        inbox.put(None)
+        fake = SimpleNamespace(_results=outbox)
+        with patch("ai_broadcaster.desktop_chat_tab.run_local_chat",
+                   return_value=SimpleNamespace(reply="답변",remembered_count=1)):
+            LocalChatTab._work_twitch_ai(fake,"model",inbox,False,current)
+        label, (session, event, value) = outbox.get_nowait()
+        self.assertEqual(label,"twitch_scoped")
+        self.assertIs(session,current)
+        self.assertEqual(event,"twitch_ai_ok")
+        self.assertEqual(value[0],chat)
+
     def test_stopping_before_thread_start_never_reopens_websocket(self):
         events = []
         receiver = TwitchReadOnlySession("streamer", lambda k, v: events.append((k, v)))

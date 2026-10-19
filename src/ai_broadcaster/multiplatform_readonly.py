@@ -154,6 +154,8 @@ class ReadOnlySession:
             if not data:
                 raise RuntimeError("채팅 서버 연결이 종료됐습니다.")
             for item in parser(data, self.channel):
+                if self._stop.is_set():
+                    return
                 self.emit("chat", item)
 
 
@@ -393,7 +395,8 @@ class YouTubeReadOnlySession(ReadOnlySession):
             if self._stop.is_set():
                 break
             next_cursor = payload.get("nextPageToken")
-            if not isinstance(next_cursor, str):
+            ended = isinstance(payload.get("offlineAt"), str) and bool(payload["offlineAt"])
+            if not isinstance(next_cursor, str) and not ended:
                 raise RuntimeError("유튜브 채팅 페이지 응답 토큰이 없습니다.")
             for item in parse_youtube_page(payload, self.channel):
                 # An initial page can contain real history; do not filter by
@@ -407,8 +410,9 @@ class YouTubeReadOnlySession(ReadOnlySession):
                 self.emit("ready", self.channel)
             first = False
             cursor = next_cursor
-            if payload.get("offlineAt"):
-                # YouTube has explicitly ended this live chat.
+            if ended:
+                # YouTube has explicitly ended this live chat. A final page
+                # may omit nextPageToken; still deliver its actual messages.
                 break
             # Respect Google's server-designated polling interval.
             millis = payload.get("pollingIntervalMillis", 1000)

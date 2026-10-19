@@ -199,7 +199,12 @@ class LocalChatTab(ttk.Frame):
             return
         try:
             channel = self._twitch_channel.get().strip()
-            emit = lambda kind, item: self._results.put(("twitch_" + kind, item))
+            # Every event is bound to the session that produced it. A previous
+            # connection can finish after a new one starts; never let that
+            # previous listener's late messages enter the new AI queue.
+            session = None
+            emit = lambda kind, item: self._results.put((
+                "twitch_scoped", (session, "twitch_" + kind, item)))
             if code == "twitch":
                 session = TwitchReadOnlySession(channel, emit)
             elif code == "chzzk":
@@ -222,7 +227,7 @@ class LocalChatTab(ttk.Frame):
         # One worker calls the EXISTING local Ollama conversation in order.
         # No extra model service, intentional delay or platform chat posting.
         threading.Thread(
-            target=self._work_twitch_ai, args=(model, inbox, official),
+            target=self._work_twitch_ai, args=(model, inbox, official, session),
             daemon=True,
         ).start()
         self._twitch_start.configure(state="disabled")
@@ -234,11 +239,19 @@ class LocalChatTab(ttk.Frame):
         try:
             session.run()
         except Exception as exc:
-            self._results.put(("twitch_error", str(exc)))
+            self._results.put(("twitch_scoped", (session, "twitch_error", str(exc))))
         finally:
-            self._results.put(("twitch_finished", session))
+            self._results.put(("twitch_scoped", (session, "twitch_finished", session)))
 
-    def _work_twitch_ai(self, model: str, inbox: queue.SimpleQueue, official: bool = False) -> None:
+    def _work_twitch_ai(self, model: str, inbox: queue.SimpleQueue,
+                        official: bool = False, session=None) -> None:
+        # Old direct-call regression contracts still use unscoped result
+        # events; real UI connections always provide their unique session.
+        def report(kind, value):
+            if session is None:
+                self._results.put((kind, value))
+            else:
+                self._results.put(("twitch_scoped", (session, kind, value)))
         while True:
             chat = inbox.get()
             if chat is None:
@@ -252,9 +265,9 @@ class LocalChatTab(ttk.Frame):
                     evidence = send_to_native_live2d_session_with_observation(
                         chat.text, operator_approved=True, duration=8)
                 except Exception as exc:
-                    self._results.put(("twitch_ai_error", (chat, str(exc))))
+                    report("twitch_ai_error", (chat, str(exc)))
                 else:
-                    self._results.put(("twitch_live2d_ok", (chat, evidence)))
+                    report("twitch_live2d_ok", (chat, evidence))
                 continue
             try:
                 result = run_local_chat(
@@ -263,9 +276,9 @@ class LocalChatTab(ttk.Frame):
                             getattr(chat, "platform", "twitch"), "트위치") + "] " + chat.sender,
                     use_committed_gui_character=True)
             except Exception as exc:
-                self._results.put(("twitch_ai_error", (chat, str(exc))))
+                report("twitch_ai_error", (chat, str(exc)))
             else:
-                self._results.put(("twitch_ai_ok", (chat, result)))
+                report("twitch_ai_ok", (chat, result))
 
     def _stop_twitch(self) -> None:
         if self._twitch_session is not None:
@@ -286,6 +299,12 @@ class LocalChatTab(ttk.Frame):
         try:
             while True:
                 kind, payload = self._results.get_nowait()
+                if kind == "twitch_scoped":
+                    source_session, kind, payload = payload
+                    if source_session is not self._twitch_session:
+                        # Stale connection/worker output is never counted,
+                        # displayed, or passed to another session's AI.
+                        continue
                 if kind.startswith("twitch_"):
                     if kind == "twitch_connected":
                         self._twitch_status.set(
