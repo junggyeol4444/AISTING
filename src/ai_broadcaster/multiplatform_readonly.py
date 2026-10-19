@@ -12,7 +12,7 @@ import ssl
 import threading
 import time
 from dataclasses import dataclass
-from urllib.parse import urlencode
+from urllib.parse import parse_qs, urlencode, urlsplit
 from urllib.request import Request, urlopen
 
 
@@ -303,43 +303,114 @@ class SoopReadOnlySession(ReadOnlySession):
             self.emit("stopped", self.channel)
 
 
+
+_YOUTUBE_VIDEO_ID = re.compile(r"[A-Za-z0-9_-]{11}\Z")
+
+
+def _youtube_video_id_or_none(value: str) -> str | None:
+    """Resolve only well-formed public video references; raw liveChatIds still work.
+
+    Never fetch arbitrary URLs. Actual ID-to-chat resolution uses Google's
+    read-only videos.list with the operator-entered API key, not scraping.
+    """
+    if _YOUTUBE_VIDEO_ID.fullmatch(value):
+        return value
+    if "://" not in value:
+        if any(ch in value for ch in ("/", "?", "#", "&", " ")):
+            raise ValueError("유튜브 영상 ID 또는 주소 형식이 올바르지 않습니다.")
+        return None  # Existing direct liveChatId; retain compatibility.
+    parsed = urlsplit(value)
+    if (parsed.scheme != "https" or parsed.username is not None
+            or parsed.password is not None or parsed.port is not None
+            or parsed.fragment):
+        raise ValueError("유튜브 주소는 HTTPS 공식 영상 주소여야 합니다.")
+    host = (parsed.hostname or "").lower()
+    if host in ("youtube.com", "www.youtube.com", "m.youtube.com"):
+        if parsed.path == "/watch":
+            ids = parse_qs(parsed.query).get("v", [])
+            if len(ids) != 1 or not _YOUTUBE_VIDEO_ID.fullmatch(ids[0]):
+                raise ValueError("유튜브 영상 주소에 올바른 v 값이 없습니다.")
+            return ids[0]
+        if parsed.path.startswith("/live/") and not parsed.query:
+            video_id = parsed.path[len("/live/"):]
+            if _YOUTUBE_VIDEO_ID.fullmatch(video_id):
+                return video_id
+    if host == "youtu.be" and not parsed.query:
+        video_id = parsed.path.lstrip("/")
+        if _YOUTUBE_VIDEO_ID.fullmatch(video_id):
+            return video_id
+    raise ValueError("유튜브 영상 주소 형식이 올바르지 않습니다.")
+
+
 class YouTubeReadOnlySession(ReadOnlySession):
     def __init__(self, channel: str, emit, api_key: str):
         super().__init__(channel, emit)
         if not isinstance(api_key, str) or not 20 <= len(api_key) <= 240:
             raise ValueError("유튜브 Data API 키를 프로그램에서 입력하세요.")
+        self._video_id = _youtube_video_id_or_none(self.channel)
         self._key = api_key
 
     def run(self, *, max_seconds=None):
+        if self._stop.is_set():
+            return
         start = time.monotonic()
+        live_chat_id = self.channel
+        if self._video_id is not None:
+            # Public videos.list only. Do not access an account, perform OAuth,
+            # or attempt to infer a chat ID from a video ID string.
+            lookup = {"part":"liveStreamingDetails",
+                      "id":self._video_id, "key":self._key}
+            try:
+                details = _json_get("https://www.googleapis.com/youtube/v3/"
+                                    "videos?" + urlencode(lookup))
+            except Exception:
+                # An HTTP exception may contain the API key-bearing URL.
+                raise RuntimeError("유튜브 영상의 실시간 채팅 조회 또는 권한 오류") from None
+            if self._stop.is_set():
+                return
+            items = details.get("items")
+            if not isinstance(items, list) or len(items) != 1 or not isinstance(items[0], dict):
+                raise RuntimeError("유튜브 생방송 영상 정보를 확인하지 못했습니다.")
+            live = items[0].get("liveStreamingDetails") or {}
+            live_chat_id = live.get("activeLiveChatId") if isinstance(live, dict) else None
+            if not isinstance(live_chat_id, str) or not live_chat_id.strip():
+                raise RuntimeError("현재 생방송 중이거나 활성화된 유튜브 채팅방이 없습니다.")
         cursor = ""
         first = True
         while not self._stop.is_set():
             if max_seconds and time.monotonic() - start >= max_seconds:
                 break
             params = {"part":"id,snippet,authorDetails",
-                      "liveChatId":self.channel, "key":self._key}
+                      "liveChatId":live_chat_id, "key":self._key}
             if cursor:
                 params["pageToken"] = cursor
             try:
                 payload = _json_get("https://www.googleapis.com/youtube/v3/"
                                     "liveChat/messages?" + urlencode(params))
-            except Exception as exc:
+            except Exception:
                 # Never leak operator-entered API credentials into GUI or logs.
                 raise RuntimeError("유튜브 채팅 API 연결 또는 권한 오류") from None
+            if self._stop.is_set():
+                break
             next_cursor = payload.get("nextPageToken")
             if not isinstance(next_cursor, str):
                 raise RuntimeError("유튜브 채팅 페이지 응답 토큰이 없습니다.")
             for item in parse_youtube_page(payload, self.channel):
-                # An initial page can contain recent history. Display it as
-                # actual history; never silently discard duplicate text.
+                # An initial page can contain real history; do not filter by
+                # content or sender, and preserve repeated text.
+                if self._stop.is_set():
+                    break
                 self.emit("chat", item)
+            if self._stop.is_set():
+                break
             if first:
                 self.emit("ready", self.channel)
             first = False
             cursor = next_cursor
-            # Respect Google's server-designated polling interval. No arbitrary
-            # delays or silent filtering added by the application.
+            if payload.get("offlineAt"):
+                # YouTube has explicitly ended this live chat.
+                break
+            # Respect Google's server-designated polling interval.
             millis = payload.get("pollingIntervalMillis", 1000)
             if type(millis) is not int or not 0 <= millis <= 120000:
                 raise ValueError("유튜브 채팅 폴링 간격 형식 오류")

@@ -106,7 +106,7 @@ class LocalChatTab(ttk.Frame):
         ttk.Combobox(public_chat, textvariable=self._chat_platform,
                      values=("트위치", "치지직", "SOOP", "유튜브"),
                      width=8, state="readonly").pack(side="left", padx=4)
-        ttk.Label(public_chat, text="채널 ID / SOOP ID/방송번호 / YouTube liveChatId").pack(side="left")
+        ttk.Label(public_chat, text="채널 ID / SOOP ID/번호 / YouTube 영상 ID·URL·liveChatId").pack(side="left")
         ttk.Entry(public_chat, textvariable=self._twitch_channel, width=20).pack(
             side="left", padx=5)
         self._twitch_start = ttk.Button(

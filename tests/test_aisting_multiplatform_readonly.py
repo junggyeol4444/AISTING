@@ -232,6 +232,90 @@ class MultiplePlatformChatTests(unittest.TestCase):
                          [("첫사람","안녕"),("둘째","응원합니다")])
         self.assertTrue(all(x.platform=="youtube" for x in parsed))
 
+    def test_youtube_video_address_resolves_actual_chat_id_and_preserves_messages(self):
+        from urllib.parse import parse_qs, urlsplit
+        calls, observed = [], []
+        video = "AbCdEfGhI12"
+        url = "https://www.youtube.com/watch?v=" + video
+        def api(address, *, timeout=10):
+            params = parse_qs(urlsplit(address).query)
+            calls.append((urlsplit(address).path, params))
+            if address.startswith("https://www.googleapis.com/youtube/v3/videos?"):
+                self.assertEqual(params["part"], ["liveStreamingDetails"])
+                self.assertEqual(params["id"], [video])
+                return {"items":[{"liveStreamingDetails":{
+                    "activeLiveChatId":"ACTUAL_LIVE_CHAT"}}]}
+            self.assertEqual(params["liveChatId"], ["ACTUAL_LIVE_CHAT"])
+            return {"nextPageToken":"cursor_2", "pollingIntervalMillis":1000,
+                    "offlineAt":"2026-10-19T12:00:00Z",
+                    "items":[
+                        {"id":"A","snippet":{"type":"textMessageEvent",
+                                            "displayMessage":"안녕"},
+                         "authorDetails":{"displayName":"시청자"}},
+                        {"id":"B","snippet":{"type":"textMessageEvent",
+                                            "displayMessage":"안녕"},
+                         "authorDetails":{"displayName":"시청자"}},
+                    ]}
+        session=YouTubeReadOnlySession(url,lambda k,v:observed.append((k,v)),"x"*39)
+        with patch("ai_broadcaster.multiplatform_readonly._json_get",side_effect=api):
+            session.run(max_seconds=3)
+        self.assertEqual(len(calls),2)
+        self.assertEqual([kind for kind,_ in observed], ["chat","chat","ready","stopped"])
+        self.assertEqual([m.text for k,m in observed if k=="chat"],["안녕","안녕"])
+
+    def test_youtube_live_url_short_url_and_raw_livechat_id(self):
+        from ai_broadcaster.multiplatform_readonly import _youtube_video_id_or_none
+        video = "AbCdEfGhI12"
+        for url in (video, "https://youtu.be/"+video,
+                    "https://youtube.com/live/"+video,
+                    "https://m.youtube.com/watch?v="+video+"&t=1"):
+            self.assertEqual(_youtube_video_id_or_none(url),video)
+        self.assertIsNone(_youtube_video_id_or_none("Cg0KCLongChatID"))
+
+    def test_youtube_rejects_non_youtube_urls_before_any_network(self):
+        for bad in ("http://youtube.com/watch?v=AbCdEfGhI12",
+                    "https://youtube.com.evil.com/watch?v=AbCdEfGhI12",
+                    "https://youtube.com/watch?v=bad",
+                    "https://www.youtube.com/live/AbCdEfGhI12#fragment"):
+            with self.subTest(bad=bad),self.assertRaises(ValueError),patch(
+                "ai_broadcaster.multiplatform_readonly._json_get",
+                side_effect=AssertionError("Network must not be used")):
+                YouTubeReadOnlySession(bad,lambda *args:None,"x"*39)
+
+    def test_youtube_live_video_without_active_chat_reports_not_available(self):
+        events=[]
+        session=YouTubeReadOnlySession("AbCdEfGhI12",
+                                      lambda *args:events.append(args),"x"*39)
+        with patch("ai_broadcaster.multiplatform_readonly._json_get",
+                   return_value={"items":[{"liveStreamingDetails":{}}]}) as api:
+            with self.assertRaisesRegex(RuntimeError,"활성화된 유튜브 채팅방"):
+                session.run(max_seconds=2)
+        self.assertEqual(api.call_count,1)
+        self.assertEqual(events,[])
+
+    def test_youtube_stop_while_resolving_video_never_polls_or_emits(self):
+        events=[]
+        session=YouTubeReadOnlySession("AbCdEfGhI12",
+                                      lambda *args:events.append(args),"x"*39)
+        def stopped_api(url, *, timeout=10):
+            session.stop()
+            return {"items":[{"liveStreamingDetails":{
+                "activeLiveChatId":"ACTUAL_LIVE_CHAT"}}]}
+        with patch("ai_broadcaster.multiplatform_readonly._json_get",
+                   side_effect=stopped_api) as api:
+            session.run(max_seconds=3)
+        self.assertEqual(api.call_count,1)
+        self.assertEqual(events,[])
+
+    def test_youtube_api_errors_never_show_key_to_operator(self):
+        secret="private_api_key_"+"x"*34
+        session=YouTubeReadOnlySession("AbCdEfGhI12",lambda *args:None,secret)
+        with patch("ai_broadcaster.multiplatform_readonly._json_get",
+                   side_effect=RuntimeError("HTTP 403 URL key="+secret)):
+            with self.assertRaises(RuntimeError) as cm:
+                session.run(max_seconds=2)
+        self.assertNotIn(secret,str(cm.exception))
+
     def test_no_auth_or_platform_send_on_initialization(self):
         cb=lambda *x: None
         self.assertEqual(ChzzkReadOnlySession("a"*32,cb).channel,"a"*32)
