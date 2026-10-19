@@ -105,7 +105,7 @@ def parse_youtube_page(page: dict, channel: str) -> list[PlatformChat]:
             continue
         # Ignore non-chat control events, do not invent a message body.
         if snippet.get("type") not in ("textMessageEvent", "superChatEvent",
-                                       "superStickerEvent"):
+                                       "superStickerEvent", "memberMilestoneChatEvent"):
             continue
         text = snippet.get("displayMessage")
         if not isinstance(text, str) or not text:
