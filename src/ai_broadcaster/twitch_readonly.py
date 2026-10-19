@@ -81,13 +81,24 @@ class TwitchReadOnlySession:
         import time
         if max_seconds is not None and not 1 <= max_seconds <= 120:
             raise ValueError("검증 제한 시간이 올바르지 않습니다.")
-        self._stop.clear()
+        # stop() may be requested before the background thread starts. Never
+        # erase that request or open an unwanted connection afterwards.
+        if self._stop.is_set():
+            self.emit("stopped", 0)
+            return
         sock = websocket.create_connection(
             "wss://irc-ws.chat.twitch.tv:443", timeout=8,
             enable_multithread=True, origin="https://www.twitch.tv",
         )
         with self._mutex:
             self._socket = sock
+            stopped = self._stop.is_set()
+        if stopped:
+            sock.close()
+            with self._mutex:
+                self._socket = None
+            self.emit("stopped", 0)
+            return
         nick = "justinfan" + str(secrets.randbelow(90000000) + 10000000)
         ready = False
         received = 0
