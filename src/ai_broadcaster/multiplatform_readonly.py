@@ -397,7 +397,9 @@ class YouTubeReadOnlySession(ReadOnlySession):
                 break
             next_cursor = payload.get("nextPageToken")
             ended = isinstance(payload.get("offlineAt"), str) and bool(payload["offlineAt"])
-            if not isinstance(next_cursor, str) and not ended:
+            if (not isinstance(next_cursor, str) or not next_cursor) and not ended:
+                # An empty cursor would silently restart at page one and
+                # repeatedly respond to the same historical chat messages.
                 raise RuntimeError("유튜브 채팅 페이지 응답 토큰이 없습니다.")
             for item in parse_youtube_page(payload, self.channel):
                 # An initial page can contain real history; do not filter by

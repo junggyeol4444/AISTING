@@ -303,8 +303,17 @@ class LocalChatTab(ttk.Frame):
         if self._closed:
             return
         try:
+            processed = 0
             while True:
+                # Yield Tk's main thread after a bounded slice; do not drop,
+                # filter, reorder or delay individual viewer messages in
+                # the FIFO. A large live-chat surge cannot freeze the GUI.
+                if processed >= 128:
+                    if not self._closed:
+                        self.after(1, self._poll)
+                    return
                 kind, payload = self._results.get_nowait()
+                processed += 1
                 if kind == "twitch_scoped":
                     source_session, kind, payload = payload
                     if source_session is not self._twitch_session:

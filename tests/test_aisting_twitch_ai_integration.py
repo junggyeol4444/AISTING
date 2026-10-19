@@ -197,6 +197,52 @@ class LiveChatReplyOrderTests(unittest.TestCase):
         self.assertEqual(fake._twitch_replied,0)
         self.assertIsNone(fake._twitch_session)
 
+    def test_tk_poll_drains_512_events_in_bounded_fifo_slices(self):
+        """A high-volume public chat cannot monopolize Tk's GUI thread."""
+        records, scheduled=[],[]
+        session=object()
+        outbox=queue.SimpleQueue()
+        for index in range(512):
+            outbox.put(("twitch_scoped",(
+                session,"twitch_connected","room-"+str(index))))
+        stub=SimpleNamespace(
+            _closed=False, _results=outbox, _twitch_session=session,
+            _chat_platform=SimpleNamespace(get=lambda:"SOOP"),
+            _twitch_status=SimpleNamespace(set=records.append),
+            _poll=lambda:None,
+            after=lambda delay, callback:scheduled.append((delay,callback)))
+        LocalChatTab._poll(stub)
+        self.assertEqual(len(records),128)
+        self.assertEqual(scheduled.pop(0)[0],1)
+        self.assertEqual(len(records),128)
+        # The queue retains the exact next FIFO event until Tk runs again.
+        for _ in range(3):
+            LocalChatTab._poll(stub)
+        self.assertEqual(len(records),512)
+        self.assertEqual(
+            [row.split(" ")[1] for row in records],
+            ["room-"+str(i) for i in range(512)])
+        self.assertTrue(outbox.empty())
+        self.assertEqual(scheduled[-1][0],150)
+
+    def test_gui_yields_when_129th_event_is_pending_not_discarded(self):
+        updates,scheduling=[],[]
+        out=queue.SimpleQueue()
+        for i in range(129):
+            out.put(("twitch_scoped",(object(),"twitch_ready","unused")))
+        # All objects above are stale; they still count toward Tk work and
+        # must not get lost from the FIFO solely because they are stale.
+        receiver=SimpleNamespace(
+            _closed=False,_results=out,_twitch_session=object(),
+            _poll=lambda:None,
+            after=lambda ms, cb:scheduling.append(ms))
+        LocalChatTab._poll(receiver)
+        self.assertEqual(scheduling,[1])
+        self.assertFalse(out.empty())
+        LocalChatTab._poll(receiver)
+        self.assertTrue(out.empty())
+        self.assertEqual(scheduling,[1,150])
+
     def test_stopping_before_thread_start_never_reopens_websocket(self):
         events = []
         receiver = TwitchReadOnlySession("streamer", lambda k, v: events.append((k, v)))

@@ -337,6 +337,20 @@ class MultiplePlatformChatTests(unittest.TestCase):
             session._receive_socket(Sock(),lambda data, channel:messages)
         self.assertEqual(observed,[messages[0]])
 
+    def test_youtube_live_empty_cursor_does_not_repeat_first_page(self):
+        events=[]
+        chat=YouTubeReadOnlySession(
+            "existingChatId",lambda kind,obj:events.append((kind,obj)),"k"*39)
+        page={"nextPageToken":"","items":[
+            {"snippet":{"type":"textMessageEvent","displayMessage":"안녕"},
+             "authorDetails":{"displayName":"시청자"}}]}
+        with patch("ai_broadcaster.multiplatform_readonly._json_get",
+                   return_value=page) as api:
+            with self.assertRaisesRegex(RuntimeError,"페이지 응답 토큰"):
+                chat.run(max_seconds=2)
+        self.assertEqual(api.call_count,1)
+        self.assertEqual(events,[])
+
     def test_youtube_final_page_without_cursor_is_not_failure(self):
         from urllib.parse import urlsplit
         events=[]
