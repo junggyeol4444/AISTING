@@ -81,6 +81,27 @@ class LiveChatReplyOrderTests(unittest.TestCase):
             receiver.run(max_seconds=1)
         self.assertEqual(events, [("stopped", 0)])
 
+    def test_soop_gui_distinguishes_socket_from_room_entry(self):
+        inbox = queue.SimpleQueue()
+        shown = []
+        fake_tab = SimpleNamespace(
+            _closed=False, _results=inbox,
+            _twitch_status=SimpleNamespace(set=shown.append),
+            _chat_platform=SimpleNamespace(get=lambda: "SOOP"),
+            after=lambda *args: None,
+        )
+        inbox.put(("twitch_connected", "streamer/123"))
+        LocalChatTab._poll(fake_tab)
+        self.assertIn("서버 소켓 연결", shown[-1])
+        self.assertIn("채팅방 입장 미확인", shown[-1])
+        inbox.put(("twitch_ready", "streamer/123"))
+        LocalChatTab._poll(fake_tab)
+        self.assertIn("채팅방 입장 확인", shown[-1])
+        inbox.put(("twitch_error", "연결 종료"))
+        LocalChatTab._poll(fake_tab)
+        self.assertIn("SOOP 읽기 오류", shown[-1])
+        self.assertNotIn("트위치 읽기 오류", shown[-1])
+
     def test_sender_identity_validation(self):
         with self.assertRaises(ValueError):
             run_local_chat("any", "question", sender="")

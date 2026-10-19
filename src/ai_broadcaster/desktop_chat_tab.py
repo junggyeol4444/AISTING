@@ -287,9 +287,14 @@ class LocalChatTab(ttk.Frame):
             while True:
                 kind, payload = self._results.get_nowait()
                 if kind.startswith("twitch_"):
-                    if kind in ("twitch_ready", "twitch_connected"):
+                    if kind == "twitch_connected":
                         self._twitch_status.set(
-                            self._chat_platform.get() + " " + str(payload) + " 연결 확인 · 채팅 대기")
+                            self._chat_platform.get() + " " + str(payload) +
+                            " 서버 소켓 연결 · 채팅방 입장 미확인")
+                    elif kind == "twitch_ready":
+                        self._twitch_status.set(
+                            self._chat_platform.get() + " " + str(payload) +
+                            " 채팅방 입장 확인 · 실제 채팅 대기")
                     elif kind == "twitch_chat":
                         self._twitch_received += 1
                         name = {"twitch":"트위치","chzzk":"치지직",
@@ -344,7 +349,9 @@ class LocalChatTab(ttk.Frame):
                             "AI 처리 실패 " + str(self._twitch_ai_failures)
                             + "건 · 성공 응답으로 계산하지 않음")
                     elif kind == "twitch_error":
-                        self._twitch_status.set("실제 트위치 읽기 오류: " + str(payload))
+                        self._twitch_status.set(
+                            "실제 " + self._chat_platform.get() +
+                            " 읽기 오류: " + str(payload))
                     elif kind == "twitch_finished":
                         if payload is self._twitch_session:
                             if self._twitch_ai_inbox is not None:
