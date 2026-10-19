@@ -7,6 +7,7 @@ Unofficial CHZZK/SOOP protocols may change; connection errors are surfaced.
 from __future__ import annotations
 
 import json
+import math
 import re
 import ssl
 import threading
@@ -375,6 +376,14 @@ class YouTubeReadOnlySession(ReadOnlySession):
     def run(self, *, max_seconds=None):
         if self._stop.is_set():
             return
+        # Validate a bounded read before any YouTube API request or quota use.
+        if max_seconds is not None:
+            if (type(max_seconds) not in (int, float) or max_seconds < 0
+                    or (type(max_seconds) is float and not math.isfinite(max_seconds))):
+                raise ValueError("유튜브 검사 제한 시간이 올바르지 않습니다.")
+            if max_seconds == 0:
+                self.emit("stopped", self.channel)
+                return
         start = time.monotonic()
         live_chat_id = self.channel
         if self._video_id is not None:
