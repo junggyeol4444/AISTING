@@ -4,6 +4,7 @@ These regression tests exercise production message-queue code. They are not a
 claim that an Ollama model, Live2D, or real viewers were available in the test.
 """
 import queue
+import threading
 import sys
 import unittest
 from pathlib import Path
@@ -103,7 +104,7 @@ class LiveChatReplyOrderTests(unittest.TestCase):
 
     def test_real_ui_ai_worker_attaches_originating_session(self):
         inbox, outbox = queue.SimpleQueue(), queue.SimpleQueue()
-        current = object()
+        current = SimpleNamespace(_stop=threading.Event())
         chat = TwitchChatLine("room", "viewer", "안녕")
         inbox.put(chat)
         inbox.put(None)
