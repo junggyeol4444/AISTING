@@ -571,3 +571,84 @@ jobs:
               Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
             }
           }
+
+
+  korean-public-chat-readonly:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    continue-on-error: true
+    env:
+      PYTHONPATH: src
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          architecture: x64
+      - name: Install transport for actual Korean read-only chat
+        shell: pwsh
+        run: |
+          python -m pip install "websocket-client==1.9.0"
+      - name: Probe real public CHZZK and SOOP live rooms (no chat posting)
+        shell: pwsh
+        timeout-minutes: 5
+        run: |
+          $probe = Join-Path $env:RUNNER_TEMP 'aisting_public_kr_platforms.py'
+          @'
+          import json
+          from urllib.parse import urlencode
+          from urllib.request import Request, urlopen
+          from ai_broadcaster.multiplatform_readonly import (
+              ChzzkReadOnlySession, SoopReadOnlySession, _json_get)
+          received = {"chzzk": 0, "soop": 0}
+          try:
+              result = _json_get("https://api.chzzk.naver.com/service/v1/lives?size=24")
+              rows = (result.get("content") or {}).get("data") or []
+              for row in rows[:3]:
+                  cid = str((row.get("channel") or {}).get("channelId") or "")
+                  if len(cid) != 32:
+                      continue
+                  events = []
+                  try:
+                      ChzzkReadOnlySession(
+                          cid, lambda k, v: events.append((k, v))
+                      ).run(max_seconds=10)
+                  except Exception as error:
+                      print("REAL_CHZZK_ERROR_TYPE:", type(error).__name__)
+                      continue
+                  print("REAL_CHZZK_CONNECTED:", any(k=="ready" for k,_ in events))
+                  received["chzzk"] += sum(k=="chat" for k,_ in events)
+                  if received["chzzk"]:
+                      break
+          except Exception as error:
+              print("REAL_CHZZK_DISCOVERY_ERROR:", type(error).__name__)
+          try:
+              req = Request("https://api.m.sooplive.co.kr/broad/a/items2",
+                  data=urlencode({"theme_id":"all","group_id":"",
+                     "category_no":"","current_page":"1"}).encode(),
+                  headers={"Content-Type":"application/x-www-form-urlencoded"})
+              with urlopen(req,timeout=12) as response:
+                  listing=json.loads(response.read(1000000))
+              groups=(listing.get("data") or {}).get("groups") or []
+              rows=groups[0].get("contents",[]) if groups else []
+              for row in rows[:3]:
+                  channel=str(row.get("user_id") or "")+"/"+str(row.get("broad_no") or "")
+                  events=[]
+                  try:
+                      SoopReadOnlySession(channel,
+                          lambda k,v: events.append((k,v))).run(max_seconds=10)
+                  except Exception as error:
+                      print("REAL_SOOP_ERROR_TYPE:",type(error).__name__)
+                      continue
+                  received["soop"] += sum(k=="chat" for k,_ in events)
+                  if received["soop"]:
+                      break
+          except Exception as error:
+              print("REAL_SOOP_DISCOVERY_ERROR:",type(error).__name__)
+          print("REAL_KOREAN_CHAT_COUNTS:",json.dumps(received,sort_keys=True))
+          assert received["chzzk"]>0 and received["soop"]>0, (
+              "Actual CHZZK and SOOP live chat events not both received")
+          '@ | Set-Content -Path $probe -Encoding utf8
+          python $probe
+          if ($LASTEXITCODE -ne 0) { throw 'Public Korean live chat was not fully verified' }
