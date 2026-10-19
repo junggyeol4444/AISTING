@@ -94,3 +94,43 @@
 - **한계/반드시 미완료 유지**: YouTube 실제 채팅 키/실방송, 사용자 권리 확보된 GPT-SoVITS 한국어 WAV·음색, 공식 Live2D 실제 Cubism mouth-RMS 동기화, OBS 오디오·영상 전 구간 및 방송 직전 사용자 흐름, 장시간 및 100~500명 구간 동작과 1~3초 지연 실측은 검증하지 않았다. 로컬 사용자의 PC 전원이 꺼져 있을 때 이 기기에서 실제 음성·화면이 실행됐다고 주장하지 않는다. 원본 100단계 승인/보류 및 캐릭터/SQLite/사용자 데이터 유지.
 - **다음 회차 구체적 우선 묶음**: (1) 채팅 서버 비정상 종료·중지·재연결 경계에서 AI 큐/GUI 상태 실사용 E2E 보강, (2) 원본 공식 Live2D IPC와 GPT-SoVITS 실제 WAV·OBS 상태/임시 소스 정리/검사 과정을 추가 감사 및 코드 결함 수정, (3) YouTube API 실제 실방송 소유키가 없으면 사실대로 불가로 남기되 관련 예외·페이징·Stop 및 비밀값 보호 회귀 보강, (4) main 최신 SHA 기준 Windows EXE/전 GUI 회귀 및 실제 공개 읽기 검사를 한꺼번에 수행하고 본 문서 갱신. 새 브랜치/앱을 만들지 않는다.
 - **대화 유지 규칙**: 이 예약이 생성된 원래 AISTING 대화를 최우선으로 진행한다. 다른 대화가 불가피할 때는 본 문서를 첫 단계로 정독하고 최신 `main`을 읽어 누락 없이 인수받는다. 다른 대화에 게시됐다는 사실이나 원래 맥락을 이용할 수 없다는 한계를 숨기지 않는다.
+
+
+## 10. 2026-10-20 08시 이후 실제 main 개발 재개 — Twitch 코드·회귀 테스트 반영
+
+**원래 예약 생성 대화 유지가 최우선**. 본 인수인계는 같은 AISTING 대화에서의 연속 작업 기록이며 다른 대화로 옮기는 요청이 아니다. 플랫폼이 다른 대화를 선택할 때만 본 문서에서 복원한다. 기존 매시간 예약 시간과 다른 프로젝트 예약은 변경하지 않았다.
+
+### 실제 원격 코드 변경 (기존 네이티브 Windows 소스 유지)
+
+- 원격 저장소: `junggyeol4444/AISTING`, 브랜치: `main`만 사용. 새 브랜치 생성·삭제, 강제 푸시, 초기화·재개발 없음.
+- 직전 실제 코드 SHA: `e6653ad82fef906abdee5001153544964940b00a`.
+- **수정 코드 커밋**: `c6f110219ce8a4d0158694f54a686083667b1f0f` — `src/ai_broadcaster/twitch_readonly.py`. 이전 로컬 준비 패치의 주요 오류를 원본 소스에 적용: 중복 run 차단, Stop/네트워크 핸드셰이크·IRC 명령 송신 경합, 대량 메시지 프레임의 반복 스캔 개선, 다른 채널 JOIN 366 응답 거부, viewer 텍스트에 포함된 NOTICE/366 오인 방지, PING 응답 및 소켓 닫기 오류 처리. 
+- **회귀검사 추가 커밋**: `9f3ac2352ad374be1a727cb70986537186982393` — `tests/test_aisting_twitch_regression_20261020.py`. 10,000건 중복 포함 FIFO, JOIN 오인, 일반 채팅의 로그인 거부 문구 오인, 동시 실행, 무효 제한시간, 종료 소켓 예외 검증 6개. 사용자 PC나 계정에 접속하지 않는 메모리 소켓 테스트.
+- 위 코드는 2026-10-20 08시 현재 실제 GitHub main에서 반영된 커밋이다. 과거 08:10 로컬 후보 패치는 전체 코드와 동일한지 반드시 파일/해시 비교 후 처리하고 **중복 적용 금지**. 반영하지 않은 과거 후보 테스트는 완료로 주장하지 않는다.
+
+### Actions·실제 검증 범위
+
+- 첫 소스 수정 기준 GitHub 회귀검사 https://github.com/junggyeol4444/AISTING/actions/runs/39343342935 : `completed/success` 확인.
+- **최신 회귀검사** https://github.com/junggyeol4444/AISTING/actions/runs/39343436381 : `completed/success` 확인. 실제 실행 테스트 수는 작업 로그를 보고 확정할 것.
+- **최신 Windows EXE·공개 읽기 전용 통합검사** https://github.com/junggyeol4444/AISTING/actions/runs/39343436352 : 문서 작성 시 `in_progress`. `windows-exe`, `obs-real-readonly`, `ollama-real-local-e2e` 작업 진행 중; Twitch/치지직/SOOP 공개 읽기 전용 잡은 `success` 확인. **전체 PASS 또는 새 EXE Artifact/해시를 결과가 나올 때까지 확정하지 말 것.**
+- 이전 최종 성공 산출물 (구 코드 e6653ad 기준): Windows https://github.com/junggyeol4444/AISTING/actions/runs/39325998387; artifact `AISTING-Windows-EXE-integrated`, ID `12222486498`, GitHub artifact ZIP SHA-256 `e5255fae9b28693bedbd1d58af990720ee81ee5dfee529ad6ee6f5975f19b4d3`. **새 코드의 산출물이 아님**.
+
+### 사용자 원래 기획·자료와 금지사항 재확인
+
+- 위 문서 1~9절의 **사용자 원문 기획** `docs/ORIGINAL_PLAN.txt`, `docs/ROADMAP_100.md`, `config/roadmap.json` 우선. 기존 AISTING.exe/Tk·캐릭터 1회 저장·SQLite·설정·사용자 파일 변경/파괴 금지. 중복 메시지 포함 모든 채팅 FIFO. 공식 Open-LLM-VTuber·Live2D, 권리 확보된 GPT-SoVITS 실제 한국어 음성, OBS 출력 목표. 원본 승인 단계 임의 completed 변경 금지.
+- 사용자 요청 없는 계정 로그인·유료 API·실제 방송/녹화 시작·채팅 게시·외부 송신·사용자 PC 제어·모델/음성 무단 다운로드·권리 없는 학습·새 웹 앱/프로젝트 금지.
+
+### 반드시 계속 미검증으로 남길 항목
+
+1. 소유/동의 확인된 YouTube API 키와 실제 라이브 채팅 수신·페이지 커서 실증은 아직 안 됨.
+2. 승인된 한국어 음성 참조 파일과 GPT-SoVITS 실제 모델 추론, 한국어 실제 WAV·음성 품질 실증은 아직 안 됨.
+3. 공식 Live2D 모델에서 실제 WAV RMS와 Cubism 입 움직임을 같은 세션에서 확인하고 OBS 출력까지 엮는 사용자 버튼 흐름은 아직 안 됨.
+4. 전체 EXE→저장 캐릭터→공개 채팅→AI→한국어 합성→공식 입 동기→OBS 음성+영상 실제 출력, 24시간 연속/수백명 부하·지연 실측은 아직 안 됨. Windows CI 빌드/OBS 읽기 검사와 혼동 금지.
+5. 08:10 로컬 Twitch 42개 검사 후보 ZIP은 이전 대화의 별도 자료이며, 이번 main에 전부 업로드한 것으로 주장 금지.
+
+### 다음 실행에서 묶어 처리할 작업 (복수 작업)
+
+1. `main` 최신 HEAD/Docs SHA/CI 최신 결과를 다시 확인하고 위 Windows run이 최종 success인지, 실제 EXE artifact ID·해시를 교체 기록.
+2. 남아 있는 Twitch 오프라인 후보와 이번 main 코드를 비교하여 누락된 수신/재접속·Stop 관련 필수 회귀만 선별 반영. 이전 파일을 무조건 중복 덮어쓰기 금지.
+3. `original_plan_tts.py`, `original_plan_frontend.py`, `original_plan_voice_obs_bridge.py`, `desktop_chat_tab.py` 실사용 사용자 흐름의 연결 결함을 실제 소스 수정·테스트하는 묶음 작업. 인증·승인·실제 파일·모델이 없는 기능은 미실증으로 분류.
+4. 기존 설정/SQLite/캐릭터 보존과 Stop/GUI 확인을 포함해 실제 Windows Actions 재검증 후 본 문서에 **최종 docs 커밋 SHA**, 소스 SHA, CI 링크, 새로운 EXE artifact 및 남은 일을 갱신.
