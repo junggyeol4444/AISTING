@@ -218,6 +218,51 @@ jobs:
           print("REAL_OBS_LIVE_VIDEO_CHANGE:",
                 hashlib.sha256(before.png_data).hexdigest()[:16],
                 hashlib.sha256(after.png_data).hexdigest()[:16])
+          # Drive the REAL official OBS audio engine with a generated local
+          # WAV calibration tone in this disposable CI VM. This does NOT use
+          # a person's voice, microphone, API or synthetic fake OBS client.
+          # It is evidence of OBS playback/meter/routing, not GPT-SoVITS speech.
+          import math
+          import struct
+          import wave
+          from pathlib import Path
+          wav_path = Path(os.environ["RUNNER_TEMP"]) / "aisting_ci_obs_audio_440hz.wav"
+          with wave.open(str(wav_path), "wb") as writer:
+              writer.setnchannels(1)
+              writer.setsampwidth(2)
+              writer.setframerate(48000)
+              for segment in range(7):
+                  frames = [int(12000 * math.sin(2 * math.pi * 440 * (segment*48000 + j) / 48000))
+                            for j in range(48000)]
+                  writer.writeframesraw(struct.pack("<48000h", *frames))
+          wav_name = "AISTING CI WAV audio input"
+          kinds = active.get_input_kind_list(False).input_kinds
+          assert "ffmpeg_source" in kinds, "Official OBS FFmpeg media input missing"
+          active.create_input(state.scene, wav_name, "ffmpeg_source", {
+              "is_local_file": True, "local_file": str(wav_path),
+              "looping": True, "restart_on_activate": True,
+              "close_when_inactive": False,
+          }, True)
+          time.sleep(1)
+          assert wav_name in client.read_scene_inventory().input_names
+          meters = client.read_actual_audio_meters(
+              operator_approved=True, input_name=wav_name, duration=3)
+          print("REAL_OBS_AUDIO_METER:",
+                meters.selected_meter_events, meters.input_peaks,
+                "selected_signal:", meters.selected_signal,
+                "muted:", meters.selected_muted)
+          assert meters.selected_signal and not meters.selected_muted, (
+              "Official OBS media source did not produce live decoded PCM meter levels"
+          )
+          observation = client.inspect_program_media(
+              operator_approved=True, input_name=wav_name, duration=3)
+          print("REAL_OBS_AV_ROUTE:",
+                observation.before_audio_route.origin,
+                observation.before_audio_route.enabled_tracks,
+                "coherent:", observation.coherent_media_candidate)
+          assert observation.coherent_media_candidate, (
+              "Official OBS real program-scene video + audio route not confirmed"
+          )
           assert not client.status().streaming
           '@ | Set-Content -Path $probe -Encoding utf8
             python $probe
