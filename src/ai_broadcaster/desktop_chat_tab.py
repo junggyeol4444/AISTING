@@ -40,6 +40,9 @@ class LocalChatTab(ttk.Frame):
         self._twitch_channel = tk.StringVar()
         self._twitch_status = tk.StringVar(value="읽기 전용 미연결 · 로그인·채팅 송신 없음")
         self._twitch_received = 0
+        self._twitch_replied = 0
+        self._twitch_ai_failures = 0
+        self._twitch_ai_inbox: queue.SimpleQueue | None = None
         self._tts_status = tk.StringVar(value="음성 읽기는 기본 꺼짐. 먼저 한국어 음성을 확인하세요.")
 
         intro = (
@@ -150,6 +153,13 @@ class LocalChatTab(ttk.Frame):
     def _start_twitch(self) -> None:
         if self._twitch_session is not None:
             return
+        # Do not silently receive chats that cannot reach the selected AI.
+        model = self._model_name.get().strip()
+        if not model:
+            messagebox.showinfo(
+                "로컬 AI 모델", "먼저 설치한 Ollama 모델 이름을 입력해 주세요.",
+                parent=self)
+            return
         if "twitch" not in load_settings()["platforms"]:
             messagebox.showinfo(
                 "플랫폼 선택", "방송 설정에서 트위치를 선택하고 저장해 주세요.",
@@ -164,6 +174,16 @@ class LocalChatTab(ttk.Frame):
             return
         self._twitch_session = session
         self._twitch_received = 0
+        self._twitch_replied = 0
+        self._twitch_ai_failures = 0
+        inbox = queue.SimpleQueue()
+        self._twitch_ai_inbox = inbox
+        # One worker calls the EXISTING local Ollama conversation in order.
+        # No extra model service, intentional delay or platform chat posting.
+        threading.Thread(
+            target=self._work_twitch_ai, args=(model, inbox),
+            daemon=True,
+        ).start()
         self._twitch_start.configure(state="disabled")
         self._twitch_end.configure(state="normal")
         self._twitch_status.set("공개 트위치 채팅 연결 요청 중 · 실제 플랫폼 응답 대기")
@@ -177,12 +197,28 @@ class LocalChatTab(ttk.Frame):
         finally:
             self._results.put(("twitch_finished", session))
 
+    def _work_twitch_ai(self, model: str, inbox: queue.SimpleQueue) -> None:
+        while True:
+            chat = inbox.get()
+            if chat is None:
+                break
+            try:
+                result = run_local_chat(
+                    model, chat.text, sender="[트위치] " + chat.sender)
+            except Exception as exc:
+                self._results.put(("twitch_ai_error", (chat, str(exc))))
+            else:
+                self._results.put(("twitch_ai_ok", (chat, result)))
+
     def _stop_twitch(self) -> None:
         if self._twitch_session is not None:
             self._twitch_session.stop()
 
     def destroy(self) -> None:
         self._stop_twitch()
+        if self._twitch_ai_inbox is not None:
+            self._twitch_ai_inbox.put(None)
+            self._twitch_ai_inbox = None
         super().destroy()
 
     def _poll(self) -> None:
@@ -198,13 +234,49 @@ class LocalChatTab(ttk.Frame):
                         self._append(
                             "[트위치 #" + payload.channel + "] "
                             + payload.sender + ": " + payload.text)
+                        # Every incoming message, including duplicates, is
+                        # queued regardless of the status of previous replies.
+                        if self._twitch_ai_inbox is not None:
+                            self._twitch_ai_inbox.put(payload)
                         self._twitch_status.set(
-                            "실제 공개 채팅 수신 " + str(self._twitch_received)
-                            + "건 · 자동 AI 답변/송출은 아직 미연결")
+                            "실제 채팅 " + str(self._twitch_received)
+                            + "건 · AI 응답 " + str(self._twitch_replied)
+                            + "건 · AI 오류 " + str(self._twitch_ai_failures) + "건")
+                    elif kind == "twitch_ai_ok":
+                        chat, result = payload
+                        self._twitch_replied += 1
+                        self._append(
+                            "AI → [트위치] " + chat.sender + ": " + result.reply)
+                        self._last_reply = result.reply
+                        self._memory_count.set(
+                            f"저장된 대화: {result.remembered_count}개")
+                        self._refresh_voice_buttons()
+                        selected = self._tts_voices.get(self._voice_name.get())
+                        if should_auto_read(self._auto_voice.get(), selected, result.reply):
+                            if not self._tts_busy:
+                                self._begin_read(result.reply, selected)
+                            else:
+                                self._tts_status.set(
+                                    "AI 답변은 표시됐지만 음성 재생이 진행 중입니다.")
+                        self._twitch_status.set(
+                            "실제 채팅 " + str(self._twitch_received)
+                            + "건 · AI 응답 " + str(self._twitch_replied)
+                            + "건 · AI 오류 " + str(self._twitch_ai_failures) + "건")
+                    elif kind == "twitch_ai_error":
+                        chat, detail = payload
+                        self._twitch_ai_failures += 1
+                        self._append(
+                            "[트위치 AI 처리 실패] " + chat.sender + ": " + detail)
+                        self._twitch_status.set(
+                            "AI 처리 실패 " + str(self._twitch_ai_failures)
+                            + "건 · 성공 응답으로 계산하지 않음")
                     elif kind == "twitch_error":
                         self._twitch_status.set("실제 트위치 읽기 오류: " + str(payload))
                     elif kind == "twitch_finished":
                         if payload is self._twitch_session:
+                            if self._twitch_ai_inbox is not None:
+                                self._twitch_ai_inbox.put(None)
+                                self._twitch_ai_inbox = None
                             self._twitch_session = None
                             self._twitch_start.configure(state="normal")
                             self._twitch_end.configure(state="disabled")
