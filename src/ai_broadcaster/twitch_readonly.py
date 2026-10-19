@@ -6,6 +6,7 @@ This is NOT a CHZZK/YouTube connector or evidence of audience delivery.
 """
 from __future__ import annotations
 
+import math
 import re
 import secrets
 import threading
@@ -13,6 +14,11 @@ from dataclasses import dataclass
 from typing import Callable
 
 _CHANNEL = re.compile(r"[a-zA-Z0-9_]{3,25}\Z")
+# Match IRC protocol replies at their command field, never in viewer text.
+_IRC_PREFIX = r"^(?:@\S+\s+)?(?::\S+\s+)?"
+_JOIN_ACK = re.compile(_IRC_PREFIX + r"366\s+\S+\s+#([A-Za-z0-9_]+)(?=\s|$)", re.I)
+_AUTH_NOTICE = re.compile(_IRC_PREFIX + r"NOTICE(?:\s|$)", re.I)
+_WELCOME = re.compile(_IRC_PREFIX + r"001(?:\s|$)", re.I)
 
 
 class TwitchReadError(RuntimeError):
@@ -57,6 +63,7 @@ class TwitchReadOnlySession:
         self._stop = threading.Event()
         self._socket = None
         self._mutex = threading.Lock()
+        self._running = False
 
     def stop(self) -> None:
         self._stop.set()
@@ -65,36 +72,65 @@ class TwitchReadOnlySession:
         if sock is not None:
             try:
                 sock.close()
-            except OSError:
+            except Exception:
+                # Stop remains idempotent if a concurrent thread closed it.
                 pass
 
     def run(self, *, max_seconds: float | None = None) -> None:
+        """Prevent two receivers from using the same session simultaneously."""
+        with self._mutex:
+            if self._running:
+                raise TwitchReadError("트위치 채팅 수신이 이미 실행 중입니다.")
+            self._running = True
+        try:
+            self._run_once(max_seconds=max_seconds)
+        finally:
+            with self._mutex:
+                self._running = False
+
+    def _run_once(self, *, max_seconds: float | None = None) -> None:
         """Block on public Twitch IRC, passing ALL chat messages to emit.
 
         Never automatically reconnects or starts on application startup.
         max_seconds is for bounded disposable Windows CI only.
         """
+        if max_seconds is not None and (
+            type(max_seconds) not in (int, float)
+            or not math.isfinite(max_seconds)
+            or not 1 <= max_seconds <= 120
+        ):
+            raise ValueError("검증 제한 시간이 올바르지 않습니다.")
+        if self._stop.is_set():
+            self.emit("stopped", 0)
+            return
         try:
             import websocket
         except ImportError as exc:
             raise TwitchReadError("읽기 전용 WebSocket 지원 패키지가 없습니다.") from exc
         import time
-        if max_seconds is not None and not 1 <= max_seconds <= 120:
-            raise ValueError("검증 제한 시간이 올바르지 않습니다.")
         # stop() may be requested before the background thread starts. Never
         # erase that request or open an unwanted connection afterwards.
         if self._stop.is_set():
             self.emit("stopped", 0)
             return
-        sock = websocket.create_connection(
-            "wss://irc-ws.chat.twitch.tv:443", timeout=8,
-            enable_multithread=True, origin="https://www.twitch.tv",
-        )
+        try:
+            sock = websocket.create_connection(
+                "wss://irc-ws.chat.twitch.tv:443", timeout=8,
+                enable_multithread=True, origin="https://www.twitch.tv",
+            )
+        except Exception:
+            if self._stop.is_set():
+                self.emit("stopped", 0)
+                return
+            raise
         with self._mutex:
             self._socket = sock
             stopped = self._stop.is_set()
         if stopped:
-            sock.close()
+            try:
+                sock.close()
+            except Exception:
+                pass
             with self._mutex:
                 self._socket = None
             self.emit("stopped", 0)
@@ -104,9 +140,21 @@ class TwitchReadOnlySession:
         received = 0
         deadline = time.monotonic() + max_seconds if max_seconds else None
         try:
-            sock.send("CAP REQ :twitch.tv/tags twitch.tv/commands\r\n")
-            sock.send("NICK " + nick + "\r\n")
-            sock.send("JOIN #" + self.channel + "\r\n")
+            for command in (
+                "CAP REQ :twitch.tv/tags twitch.tv/commands\r\n",
+                "NICK " + nick + "\r\n",
+                "JOIN #" + self.channel + "\r\n",
+            ):
+                if self._stop.is_set():
+                    return
+                try:
+                    sock.send(command)
+                except Exception:
+                    if self._stop.is_set():
+                        return
+                    raise
+            if self._stop.is_set():
+                return
             self.emit("connecting", self.channel)
             buffer = ""
             while not self._stop.is_set():
@@ -128,22 +176,32 @@ class TwitchReadOnlySession:
                 if not data:
                     raise TwitchReadError("트위치 서버가 연결을 종료했습니다.")
                 buffer += data
-                # A frame may hold thousands of complete IRC lines.
-                # Only an incomplete line is subject to the size limit.
-                while "\r\n" in buffer and not self._stop.is_set():
-                    line, buffer = buffer.split("\r\n", 1)
+                # One split per frame avoids quadratic rescanning under load.
+                if "\r\n" in buffer:
+                    *complete_lines, buffer = buffer.split("\r\n")
+                else:
+                    complete_lines = ()
+                for line in complete_lines:
+                    if self._stop.is_set():
+                        break
                     if len(line) > 65536:
                         raise TwitchReadError("트위치 채팅 한 줄 크기 한도 초과")
                     if line.startswith("PING "):
-                        sock.send("PONG " + line[5:] + "\r\n")
-                    elif " NOTICE " in line and ("Login authentication failed" in line or "Improperly formatted auth" in line):
+                        try:
+                            sock.send("PONG " + line[5:] + "\r\n")
+                        except Exception:
+                            if self._stop.is_set():
+                                break
+                            raise
+                    elif _AUTH_NOTICE.match(line) and (
+                        "Login authentication failed" in line or "Improperly formatted auth" in line
+                    ):
                         raise TwitchReadError("트위치 익명 읽기 연결 거부")
-                    elif " 366 " in line and "#" + self.channel in line.lower():
-                        if not ready:
+                    elif (ack := _JOIN_ACK.match(line)) is not None:
+                        if ack.group(1).lower() == self.channel and not ready:
                             ready = True
                             self.emit("ready", self.channel)
-                    elif " 001 " in line and not ready:
-                        # Connection welcome alone is NOT proof of JOIN.
+                    elif _WELCOME.match(line) and not ready:
                         self.emit("welcome", self.channel)
                     else:
                         chat = parse_irc_chat_line(line, self.channel)
@@ -157,5 +215,8 @@ class TwitchReadOnlySession:
         finally:
             with self._mutex:
                 self._socket = None
-            sock.close()
+            try:
+                sock.close()
+            except Exception:
+                pass
             self.emit("stopped", received)
