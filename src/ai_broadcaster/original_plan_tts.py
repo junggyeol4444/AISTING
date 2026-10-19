@@ -321,6 +321,7 @@ class ActualGptSovitsSynthesis:
     channels: int
     frame_count: int
     wav_bytes: int
+    wav_data: bytes | None = None  # Only opt-in caller; never persisted in settings.
 
 
 def synthesize_local_gpt_sovits(
@@ -332,6 +333,7 @@ def synthesize_local_gpt_sovits(
     operator_approved: bool = False,
     rights_confirmed: bool = False,
     play_to_speaker: bool = False,
+    return_audio_bytes: bool = False,
     timeout: float = 120.0,
 ) -> ActualGptSovitsSynthesis:
     """Call the ACTUAL GPT-SoVITS inference engine with upstream-compatible args.
@@ -346,8 +348,8 @@ def synthesize_local_gpt_sovits(
         raise PermissionError("사용 권리 확인과 이번 실제 음성 합성 승인이 모두 필요합니다.")
     # The separate speaker opt-in must be an actual boolean. An accidental
     # truthy value must never silently turn into a synth-only request.
-    if type(play_to_speaker) is not bool:
-        raise VoiceConfigurationError("스피커 미리듣기 승인 값이 올바르지 않습니다.")
+    if type(play_to_speaker) is not bool or type(return_audio_bytes) is not bool:
+        raise VoiceConfigurationError("음성 반환·미리듣기 승인 값이 올바르지 않습니다.")
     if not isinstance(utterance, str) or not 1 <= len(utterance.strip()) <= 200:
         raise VoiceConfigurationError("시험 발화는 1~200글자여야 합니다.")
     if any(ord(ch) < 32 for ch in utterance):
@@ -515,6 +517,7 @@ def synthesize_local_gpt_sovits(
                 channels=wav.getnchannels(),
                 frame_count=wav.getnframes(),
                 wav_bytes=len(content),
+                wav_data=content if return_audio_bytes else None,
             )
         if play_to_speaker is True:
             # Only an explicitly approved, one-shot Windows speaker preview.
