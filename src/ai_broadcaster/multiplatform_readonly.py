@@ -247,14 +247,29 @@ class SoopReadOnlySession(ReadOnlySession):
                 return
             sock.send("\x1b\t000100000600\x0c\x0c\x0c16\x0c")
             no = str(chatno)
-            sock.send("\x1b\t0002%06d00\x0c%s\x0c\x0c\x0c\x0c\x0c" %
-                      (len(no.encode("utf-8"))+6, no))
-            # Joining a socket is not proof of actual messages.
+            join_packet = ("\x1b\t0002%06d00\x0c%s\x0c\x0c\x0c\x0c\x0c" %
+                           (len(no.encode("utf-8"))+6, no))
+            # The server must acknowledge CONNECT (0001) before JOIN (0002).
+            # A WebSocket connection alone does not mean the chat room was entered.
             self.emit("connected", self.channel)
             frames_seen = 0
+            join_sent = False
+            entered = False
             def parse_observed(raw, channel):
-                nonlocal frames_seen
+                nonlocal frames_seen, join_sent, entered
                 frames_seen += 1
+                decoded = raw.decode("utf-8", "replace") if isinstance(raw, bytes) else raw
+                if isinstance(decoded, str) and decoded.startswith("\x1b\t"):
+                    for frame in decoded.split("\x1b\t")[1:]:
+                        code = frame[:4]
+                        if code == "0001" and not join_sent:
+                            sock.send(join_packet)
+                            join_sent = True
+                        elif code == "0002" and join_sent and not entered:
+                            entered = True
+                            self.emit("ready", self.channel)
+                        elif code == "0007":
+                            raise RuntimeError("SOOP 채팅 서버에서 연결 종료 응답을 받았습니다.")
                 return parse_soop_frame(raw, channel)
             try:
                 self._receive_socket(sock, parse_observed, max_seconds=max_seconds)
