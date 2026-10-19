@@ -640,6 +640,27 @@ jobs:
                   listing=json.loads(response.read(1000000))
               groups=(listing.get("data") or {}).get("groups") or []
               rows=groups[0].get("contents",[]) if groups else []
+              print("SOOP_PUBLIC_LIST_GROUPS:",len(groups))
+              print("SOOP_PUBLIC_LIST_ROWS:",len(rows))
+              if not rows:
+                  # Query live-status for established channel IDs and accept
+                  # only a real SOOP server result RESULT=1 with a live BNO.
+                  # This is a discovery fallback, never an availability claim.
+                  for bjid in ("sccha21","bestchobo","dlghfjs"):
+                      try:
+                          live_req=Request(
+                              "https://live.sooplive.com/afreeca/player_live_api.php?bjid="+bjid,
+                              data=urlencode({"bid":bjid,"type":"live","pwd":"",
+                                              "player_type":"html5","stream_type":"common",
+                                              "from_api":"0","mode":"landing"}).encode(),
+                              headers={"Content-Type":"application/x-www-form-urlencoded"})
+                          with urlopen(live_req,timeout=7) as resp:
+                              info=json.loads(resp.read(1000000)).get("CHANNEL") or {}
+                          if int(info.get("RESULT",0))==1 and str(info.get("BNO","")).isdigit():
+                              rows.append({"user_id":bjid,"broad_no":str(info["BNO"])})
+                      except Exception as ex:
+                          print("REAL_SOOP_FALLBACK_META_ERROR_TYPE:",type(ex).__name__)
+              print("SOOP_LIVE_CANDIDATES:",len(rows))
               for row in rows[:3]:
                   channel=str(row.get("user_id") or "")+"/"+str(row.get("broad_no") or "")
                   events=[]
