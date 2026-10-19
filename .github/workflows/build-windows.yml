@@ -263,6 +263,56 @@ jobs:
           assert observation.coherent_media_candidate, (
               "Official OBS real program-scene video + audio route not confirmed"
           )
+          # Exercise the EXISTING operator-facing AISTING Tk controls against
+          # the same real running OBS server. No fake UI, fake OBS or login.
+          from tkinter import ttk
+          from ai_broadcaster.desktop import AistingApp
+          os.environ["LOCALAPPDATA"] = str(
+              Path(os.environ["RUNNER_TEMP"]) / "AISTING-real-OBS-GUI-only")
+          app = None
+          def controls(parent, klass, predicate):
+              found = []
+              def visit(item):
+                  if isinstance(item, klass) and predicate(item):
+                      found.append(item)
+                  for child in item.winfo_children():
+                      visit(child)
+              visit(parent)
+              return found
+          try:
+              app = AistingApp()
+              app.withdraw()
+              app.update_idletasks()
+              openers = controls(app, ttk.Button, lambda button:
+                  button.cget("text") == "3단계 · 실제 OBS 연결 확인 (송출 안 함)")
+              assert len(openers) == 1, "Real AISTING OBS UI opener missing"
+              openers[0].invoke()
+              studio = app._original_studio
+              panel = studio._obs_window
+              assert panel is not None and panel.winfo_exists()
+              password_fields = controls(panel, ttk.Entry, lambda field:
+                  field.cget("show") == "*")
+              assert len(password_fields) == 1, "OBS password input missing"
+              password_fields[0].insert(0, password)
+              reads = controls(panel, ttk.Button, lambda button:
+                  button.cget("text") == "실제 OBS 상태 읽기")
+              assert len(reads) == 1, "Real AISTING OBS read button missing"
+              reads[0].invoke()
+              deadline = time.monotonic() + 25
+              while time.monotonic() < deadline:
+                  app.update()
+                  label = studio.obs_status.get()
+                  if label.startswith("OBS ") or label.startswith("실제 OBS 연결 실패:"):
+                      break
+                  time.sleep(.12)
+              assert label.startswith("OBS "), "AISTING GUI did not read real OBS: " + label
+              assert "송출 중지" in label and state.scene in label
+              print("REAL_AISTING_TK_OBS_BUTTON:", label.splitlines()[0])
+              assert studio._obs_panel_status is not None
+              assert studio._obs_panel_status.get() == label
+          finally:
+              if app is not None:
+                  app.destroy()
           assert not client.status().streaming
           '@ | Set-Content -Path $probe -Encoding utf8
             python $probe
