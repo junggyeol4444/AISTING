@@ -80,3 +80,17 @@
 ## 8. 주의: 이 문서와 예약의 한계
 
 예약은 ChatGPT 플랫폼의 반복 요청 기능이다. 프롬프트에 '원래 대화에만 표시'를 명시했더라도 플랫폼의 대상 대화 선택·컨텍스트 제한·실행 시간·외부 권한을 기술적으로 보장할 수 없다. 그래서 **실제 GitHub main 인수인계 문서**를 영구 단일 복원 지점으로 유지한다. 문서에 적힌 과거 SHA가 후속 docs 수정으로 이동했으면 **실제 원격 main HEAD를 권위 있는 최신 소스로** 취급하고, 날짜/코드/CI 기록을 대조한다. 기록을 읽지 못하면 모른다고 밝힌다.
+
+## 9. 2026-10-19 추가 묶음 개발 및 실 Windows 검증 — 515f952d
+
+- **코드 변경 기준 `main` 커밋**: `515f952dd4061ba9f1b0691337ae524134113948` (이 인수인계 문서를 갱신하는 추가 docs 커밋은 별도; 후속 회차는 반드시 새 `main` HEAD를 재조회).
+- **실제 변경된 실행 소스**: `src/ai_broadcaster/desktop_chat_tab.py` 및 `src/ai_broadcaster/multiplatform_readonly.py`. **검증 파일**: `tests/test_aisting_twitch_ai_integration.py`, `tests/test_aisting_multiplatform_readonly.py`. 이전 파일을 지우거나 기존 전체 앱을 바꾸지 않았다.
+- **채팅 수신 종료 후 AI 결과 유실 수정**: 사용자가 Stop을 누른 것이 아니라 서버 EOF/연결 오류/유튜브 방송 종료로 수신만 종료한 때에는 이미 GUI에 접수한 채팅이 AI 큐에 남아 있는 한 기존 세션을 유지한다. 원래 FIFO 수신 순서와 중복 텍스트를 보존하고, 단일 AI worker가 처리 완료 마커 `twitch_ai_finished`를 보내야만 GUI 연결 버튼을 복구한다. `twitch_finished`와 `twitch_ai_finished`는 서로 다른 이벤트다. 실제 사용자 Stop은 즉시 `_stop`을 세워 나머지 요청을 처리하지 않고, 이미 reader EOF 후 AI drain 중에 Stop을 눌러도 버튼과 상태를 복구한다. 세션 교체 후 오래된 AI 결과는 표시·카운트·발화 금지.
+- **치지직 초반 채팅 보존**: `ChzzkReadOnlySession.run()`이 실제 인증 ACK `10100`을 기다리는 동안 도착한 정상 채팅 `93101/15101` 전체를 임시 FIFO에 보관하고, 채팅방 승인 후 `ready` 이벤트 다음에 정확히 1회씩 전달한다. 승인 전 임의로 사용자에게 실연결 완료를 표시하지 않으며, 운영자 Stop 중 소켓 예외는 자연스러운 종료로 처리한다. 타인 채팅 송신 없음.
+- **유튜브 API 개선**: 무효한 `pollingIntervalMillis`는 채팅 이벤트를 전달하기 전에 차단해 같은 과거 페이지가 재연결 시 반복 처리되지 않도록 함. 0초로 지정한 검사에서는 외부 API 요청을 호출하지 않는다. API 키는 기존처럼 RAM에서만 사용하고 오류에서 노출하지 않음. 실제 사용 키의 YouTube 채팅 수신은 여전히 미실증.
+- **GitHub 전체 회귀검사**: https://github.com/junggyeol4444/AISTING/actions/runs/39217707352 → `completed/success`, 2,337개 실행, 2개 skip, 실패 0. 새 테스트: 수신 종료 전후 미처리 AI 결과 3건 및 중복 FIFO 카운트/상태, EOF 후 Stop, worker 완료 마커, 인증 전 CHZZK 메시지, 잘못된 YouTube polling 및 0초 요청 방지. 단위검사는 실제 모델·립싱크 시청각 전 구간의 증거가 아님.
+- **같은 코드 SHA의 실제 GitHub Windows 통합 검사**: https://github.com/junggyeol4444/AISTING/actions/runs/39217707329 → `completed/success`, `windows-exe`, `ollama-real-local-e2e`, `obs-real-readonly`, `twitch-public-readonly`, `korean-public-chat-readonly` **5개 job 모두 success**. 실행 로그의 공개 읽기 전용 실제 치지직 `203`건, SOOP `37`건(실제 SOOP 채팅방 JOIN ACK 확인·WebSocket 프레임 2,254건). OBS 검사/EXE 실행·자가검사/Tk GUI 생성·종료 확인은 실사용 방송 출력과 다름.
+- **Windows Actions 산출물**: `AISTING-Windows-EXE-integrated`, artifact ID `12170052488`, 19,613,938 bytes, GitHub artifact digest `sha256:fb093189543b980a974a730f6536704342e0c1651061379ecc0090984a37a3a1`, 만료 `2026-11-18T07:44:06Z`. 접근은 위 Windows Actions 링크의 Artifacts에서 한다. 로컬 임시 sandbox 경로를 검증 없이 제시하지 않는다.
+- **한계/반드시 미완료 유지**: YouTube 실제 채팅 키/실방송, 사용자 권리 확보된 GPT-SoVITS 한국어 WAV·음색, 공식 Live2D 실제 Cubism mouth-RMS 동기화, OBS 오디오·영상 전 구간 및 방송 직전 사용자 흐름, 장시간 및 100~500명 구간 동작과 1~3초 지연 실측은 검증하지 않았다. 로컬 사용자의 PC 전원이 꺼져 있을 때 이 기기에서 실제 음성·화면이 실행됐다고 주장하지 않는다. 원본 100단계 승인/보류 및 캐릭터/SQLite/사용자 데이터 유지.
+- **다음 회차 구체적 우선 묶음**: (1) 채팅 서버 비정상 종료·중지·재연결 경계에서 AI 큐/GUI 상태 실사용 E2E 보강, (2) 원본 공식 Live2D IPC와 GPT-SoVITS 실제 WAV·OBS 상태/임시 소스 정리/검사 과정을 추가 감사 및 코드 결함 수정, (3) YouTube API 실제 실방송 소유키가 없으면 사실대로 불가로 남기되 관련 예외·페이징·Stop 및 비밀값 보호 회귀 보강, (4) main 최신 SHA 기준 Windows EXE/전 GUI 회귀 및 실제 공개 읽기 검사를 한꺼번에 수행하고 본 문서 갱신. 새 브랜치/앱을 만들지 않는다.
+- **대화 유지 규칙**: 이 예약이 생성된 원래 AISTING 대화를 최우선으로 진행한다. 다른 대화가 불가피할 때는 본 문서를 첫 단계로 정독하고 최신 `main`을 읽어 누락 없이 인수받는다. 다른 대화에 게시됐다는 사실이나 원래 맥락을 이용할 수 없다는 한계를 숨기지 않는다.
