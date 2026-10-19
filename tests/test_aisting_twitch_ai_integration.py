@@ -88,6 +88,7 @@ class LiveChatReplyOrderTests(unittest.TestCase):
             _closed=False, _results=inbox,
             _twitch_status=SimpleNamespace(set=shown.append),
             _chat_platform=SimpleNamespace(get=lambda: "SOOP"),
+            _poll=lambda: None,
             after=lambda *args: None,
         )
         inbox.put(("twitch_connected", "streamer/123"))
