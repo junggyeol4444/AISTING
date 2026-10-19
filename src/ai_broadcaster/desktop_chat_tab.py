@@ -52,6 +52,7 @@ class LocalChatTab(ttk.Frame):
         self._twitch_ai_inbox: queue.SimpleQueue | None = None
         # Reader EOF is distinct from operator Stop; keep accepted AI work alive.
         self._twitch_reader_finished = False
+        self._twitch_reader_error = None
         self._tts_status = tk.StringVar(value="음성 읽기는 기본 꺼짐. 먼저 한국어 음성을 확인하세요.")
 
         intro = (
@@ -225,6 +226,7 @@ class LocalChatTab(ttk.Frame):
         self._twitch_replied = 0
         self._twitch_ai_failures = 0
         self._twitch_reader_finished = False
+        self._twitch_reader_error = None
         inbox = queue.SimpleQueue()
         self._twitch_ai_inbox = inbox
         # One worker calls the EXISTING local Ollama conversation in order.
@@ -406,6 +408,7 @@ class LocalChatTab(ttk.Frame):
                             "AI 처리 실패 " + str(self._twitch_ai_failures)
                             + "건 · 성공 응답으로 계산하지 않음")
                     elif kind == "twitch_error":
+                        self._twitch_reader_error = str(payload)
                         self._twitch_status.set(
                             "실제 " + self._chat_platform.get() +
                             " 읽기 오류: " + str(payload))
@@ -423,8 +426,11 @@ class LocalChatTab(ttk.Frame):
                                 self._twitch_start.configure(state="normal")
                                 self._twitch_end.configure(state="disabled")
                             else:
+                                error = getattr(self, "_twitch_reader_error", None)
                                 self._twitch_status.set(
-                                    "채팅 수신 종료 · 수신 완료한 AI 메시지 응답 처리 중")
+                                    ("채팅 수신 오류: " + error + " · " if error
+                                     else "채팅 수신 종료 · ") +
+                                    "수신 완료한 AI 메시지 응답 처리 중")
                     elif kind == "twitch_ai_finished":
                         if payload is self._twitch_session and getattr(
                                 self, "_twitch_reader_finished", False):
@@ -433,9 +439,12 @@ class LocalChatTab(ttk.Frame):
                             self._twitch_reader_finished = False
                             self._twitch_start.configure(state="normal")
                             self._twitch_end.configure(state="disabled")
+                            error = getattr(self, "_twitch_reader_error", None)
                             self._twitch_status.set(
-                                "채팅 수신 종료 · 대기 AI 응답 처리 완료 "
-                                + str(self._twitch_replied) + "건 · 오류 "
+                                ("채팅 수신 오류: " + error + " · " if error
+                                 else "채팅 수신 종료 · ") +
+                                "대기 AI 응답 처리 완료 "
+                                + str(self._twitch_replied) + "건 · AI 오류 "
                                 + str(self._twitch_ai_failures) + "건")
                     continue
                 if kind in ("ok", "error"):

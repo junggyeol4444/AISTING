@@ -128,17 +128,20 @@ class TwitchReadOnlySession:
                 if not data:
                     raise TwitchReadError("트위치 서버가 연결을 종료했습니다.")
                 buffer += data
-                if len(buffer) > 65536:
-                    raise TwitchReadError("트위치 채팅 버퍼 한도 초과")
-                while "\r\n" in buffer:
+                # A frame may hold thousands of complete IRC lines.
+                # Only an incomplete line is subject to the size limit.
+                while "\r\n" in buffer and not self._stop.is_set():
                     line, buffer = buffer.split("\r\n", 1)
+                    if len(line) > 65536:
+                        raise TwitchReadError("트위치 채팅 한 줄 크기 한도 초과")
                     if line.startswith("PING "):
                         sock.send("PONG " + line[5:] + "\r\n")
                     elif " NOTICE " in line and ("Login authentication failed" in line or "Improperly formatted auth" in line):
                         raise TwitchReadError("트위치 익명 읽기 연결 거부")
                     elif " 366 " in line and "#" + self.channel in line.lower():
-                        ready = True
-                        self.emit("ready", self.channel)
+                        if not ready:
+                            ready = True
+                            self.emit("ready", self.channel)
                     elif " 001 " in line and not ready:
                         # Connection welcome alone is NOT proof of JOIN.
                         self.emit("welcome", self.channel)
@@ -147,6 +150,8 @@ class TwitchReadOnlySession:
                         if chat is not None:
                             received += 1
                             self.emit("chat", chat)
+                if not self._stop.is_set() and len(buffer) > 65536:
+                    raise TwitchReadError("트위치 미완성 채팅 줄 크기 한도 초과")
             if not ready and not self._stop.is_set():
                 raise TwitchReadError("트위치 채팅방 JOIN 완료를 확인하지 못했습니다.")
         finally:

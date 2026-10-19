@@ -316,6 +316,32 @@ class LiveChatReplyOrderTests(unittest.TestCase):
         self.assertEqual(events, ["twitch_ai_ok"]*3 + ["twitch_ai_finished"])
         self.assertTrue(outbox.empty())
 
+
+    def test_transport_error_remains_visible_after_ai_queue_finishes(self):
+        session = SimpleNamespace(_stop=threading.Event())
+        events = queue.SimpleQueue()
+        statuses = []
+        fake = SimpleNamespace(
+            _results=events, _closed=False, _twitch_session=session,
+            _twitch_ai_inbox=queue.SimpleQueue(), _twitch_reader_finished=False,
+            _twitch_reader_error=None, _twitch_received=2, _twitch_replied=0,
+            _twitch_ai_failures=0,
+            _chat_platform=SimpleNamespace(get=lambda: "트위치"),
+            _twitch_status=SimpleNamespace(set=statuses.append),
+            _twitch_start=SimpleNamespace(configure=lambda **kw: None),
+            _twitch_end=SimpleNamespace(configure=lambda **kw: None),
+            _poll=lambda:None, after=lambda *args:None)
+        events.put(("twitch_scoped", (session, "twitch_error", "서버 연결 끊김")))
+        events.put(("twitch_scoped", (session, "twitch_finished", session)))
+        LocalChatTab._poll(fake)
+        self.assertIn("서버 연결 끊김", statuses[-1])
+        self.assertIs(fake._twitch_session, session)
+        events.put(("twitch_scoped", (session, "twitch_ai_finished", session)))
+        LocalChatTab._poll(fake)
+        self.assertIsNone(fake._twitch_session)
+        self.assertIn("서버 연결 끊김", statuses[-1])
+        self.assertIn("대기 AI 응답 처리 완료", statuses[-1])
+
     def test_stopping_before_thread_start_never_reopens_websocket(self):
         events = []
         receiver = TwitchReadOnlySession("streamer", lambda k, v: events.append((k, v)))

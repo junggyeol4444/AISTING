@@ -66,6 +66,83 @@ class TwitchParserTests(unittest.TestCase):
                     ["connecting", "stopped"])
                 self.assertEqual(observed[-1], ("stopped", 0))
 
+
+    def test_large_complete_irc_frame_preserves_all_messages(self):
+        from types import SimpleNamespace
+        n = 1600
+        frame = ":tmi 366 guest #streamer :End of /NAMES list\r\n"
+        frame += "".join(":viewer!v@host PRIVMSG #streamer :%04d 안녕😀\r\n" % i for i in range(n))
+        self.assertGreater(len(frame), 65536)
+        observed = []
+        session = TwitchReadOnlySession("streamer", lambda kind, value: observed.append((kind, value)))
+        class Sock:
+            frames = [frame]
+            def send(self, value):
+                pass
+            def settimeout(self, seconds):
+                pass
+            def recv(self):
+                if self.frames:
+                    return self.frames.pop(0)
+                session.stop()
+                return ""
+            def close(self):
+                pass
+        with patch.dict(sys.modules, {"websocket": SimpleNamespace(
+             create_connection=lambda *args, **kwargs: Sock(),
+             WebSocketTimeoutException=TimeoutError)}):
+            session.run(max_seconds=5)
+        self.assertEqual(
+            [value.text for kind, value in observed if kind == "chat"],
+            ["%04d 안녕😀" % i for i in range(n)])
+        self.assertEqual(sum(kind == "ready" for kind, _ in observed), 1)
+
+    def test_stop_during_multiline_frame_discards_unread_messages(self):
+        from types import SimpleNamespace
+        observed = []
+        def emit(kind, value):
+            observed.append((kind, value))
+            if kind == "chat":
+                session.stop()
+        session = TwitchReadOnlySession("streamer", emit)
+        class Sock:
+            def send(self, value):
+                pass
+            def settimeout(self, seconds):
+                pass
+            def recv(self):
+                return (":tmi 366 guest #streamer :End of /NAMES list\r\n"
+                        ":a!a@h PRIVMSG #streamer :첫째\r\n"
+                        ":b!b@h PRIVMSG #streamer :둘째\r\n")
+            def close(self):
+                pass
+        with patch.dict(sys.modules, {"websocket": SimpleNamespace(
+             create_connection=lambda *args, **kwargs: Sock(),
+             WebSocketTimeoutException=TimeoutError)}):
+            session.run(max_seconds=3)
+        self.assertEqual([v.text for k, v in observed if k == "chat"], ["첫째"])
+        self.assertEqual(observed[-1], ("stopped", 1))
+
+    def test_oversized_incomplete_irc_line_is_still_rejected(self):
+        from types import SimpleNamespace
+        observed = []
+        session = TwitchReadOnlySession("streamer", lambda *args: observed.append(args))
+        class Sock:
+            def send(self, value):
+                pass
+            def settimeout(self, seconds):
+                pass
+            def recv(self):
+                return "x" * 65537
+            def close(self):
+                pass
+        with patch.dict(sys.modules, {"websocket": SimpleNamespace(
+             create_connection=lambda *args, **kwargs: Sock(),
+             WebSocketTimeoutException=TimeoutError)}):
+            with self.assertRaisesRegex(Exception, "미완성"):
+                session.run(max_seconds=3)
+        self.assertEqual(observed[-1], ("stopped", 0))
+
     def test_reject_invalid_operator_channel(self):
         for bad in ("", "a", "www.twitch.tv", "#streamer", "한글채널", "a" * 26, "../secret"):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
