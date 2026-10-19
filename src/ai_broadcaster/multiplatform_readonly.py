@@ -72,20 +72,24 @@ def parse_soop_frame(raw: bytes | str, channel: str) -> list[PlatformChat]:
         raw = raw.decode("utf-8", "replace")
     if not isinstance(raw, str) or not raw.startswith("\x1b\t"):
         return []
-    # SOOP 4-digit packet code: 0005 is normal chat; others are protocol events.
-    if len(raw) < 6 or raw[2:6] != "0005":
-        return []
-    fields = raw[14:].split("\x0c")
-    if len(fields) < 3:
-        return []
-    content, uid = fields[1], fields[2]
-    if not content.strip() or content in ("1", "-1") or "fw=" in content:
-        return []
-    if not uid or "fw=" in uid:
-        return []
-    nick = (fields[6] if len(fields) > 6 and fields[6] not in ("0", "-1", "")
-            else fields[3] if len(fields) > 3 and fields[3] else uid)
-    return [PlatformChat(channel, nick, content, "soop")]
+    # A single WebSocket message may contain more than one 0x1b-09 packet.
+    # Only chat command 0005 is forwarded. Preserve duplicates and order.
+    result = []
+    for frame in raw.split("\x1b\t")[1:]:
+        if len(frame) < 12 or frame[:4] != "0005":
+            continue
+        fields = frame[12:].split("\x0c")
+        if len(fields) < 3:
+            continue
+        content, uid = fields[1], fields[2]
+        if not content.strip() or content in ("1", "-1") or "fw=" in content:
+            continue
+        if not uid or "fw=" in uid:
+            continue
+        nick = (fields[6] if len(fields) > 6 and fields[6] not in ("0", "-1", "")
+                else fields[3] if len(fields) > 3 and fields[3] else uid)
+        result.append(PlatformChat(channel, nick, content, "soop"))
+    return result
 
 
 def parse_youtube_page(page: dict, channel: str) -> list[PlatformChat]:
@@ -247,7 +251,16 @@ class SoopReadOnlySession(ReadOnlySession):
                       (len(no.encode("utf-8"))+6, no))
             # Joining a socket is not proof of actual messages.
             self.emit("connected", self.channel)
-            self._receive_socket(sock, parse_soop_frame, max_seconds=max_seconds)
+            frames_seen = 0
+            def parse_observed(raw, channel):
+                nonlocal frames_seen
+                frames_seen += 1
+                return parse_soop_frame(raw, channel)
+            try:
+                self._receive_socket(sock, parse_observed, max_seconds=max_seconds)
+            finally:
+                # Counts only: never publish chat text or viewer identity.
+                self.emit("packet_count", frames_seen)
         finally:
             self._socket = None
             sock.close()
