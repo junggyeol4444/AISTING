@@ -109,7 +109,7 @@ class MultiplePlatformChatTests(unittest.TestCase):
             ["안녕😀", "안녕😀"])
         self.assertEqual(
             next(value for kind, value in events if kind == "packet_commands"),
-            {"0000": 1, "0001": 1, "0002": 1, "0005": 2})
+            {"0001": 1, "0002": 1, "0005": 2})
 
     def test_soop_ping_only_after_enter_while_receiving_long_term(self):
         """No early keepalive and no dropped chat, even across idle periods."""
