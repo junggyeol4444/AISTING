@@ -144,7 +144,7 @@ class LocalChatTab(ttk.Frame):
 
     def _work(self, model: str, text: str) -> None:
         try:
-            result = run_local_chat(model,text)
+            result = run_local_chat(model, text, use_committed_gui_character=True)
         except Exception as exc:
             self._results.put(("error", str(exc)))
         else:
@@ -204,7 +204,8 @@ class LocalChatTab(ttk.Frame):
                 break
             try:
                 result = run_local_chat(
-                    model, chat.text, sender="[트위치] " + chat.sender)
+                    model, chat.text, sender="[트위치] " + chat.sender,
+                    use_committed_gui_character=True)
             except Exception as exc:
                 self._results.put(("twitch_ai_error", (chat, str(exc))))
             else:
