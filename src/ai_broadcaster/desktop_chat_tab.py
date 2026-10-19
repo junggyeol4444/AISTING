@@ -43,6 +43,7 @@ class LocalChatTab(ttk.Frame):
         self._twitch_session: TwitchReadOnlySession | None = None
         self._twitch_channel = tk.StringVar()
         self._chat_platform = tk.StringVar(value='트위치')
+        self._official_live2d = tk.BooleanVar(value=False)
         self._youtube_api_key = tk.StringVar()
         self._twitch_status = tk.StringVar(value="읽기 전용 미연결 · 로그인·채팅 송신 없음")
         self._twitch_received = 0
@@ -120,6 +121,8 @@ class LocalChatTab(ttk.Frame):
         ttk.Label(keyline, text="YouTube API 키 (실행 중 메모리만 사용)").pack(side="left")
         ttk.Entry(keyline, textvariable=self._youtube_api_key, width=46,
                   show="*").pack(side="left", padx=5)
+        ttk.Checkbutton(self, text="공식 Open-LLM-VTuber/Live2D 창으로 채팅 전달 (한 세션 · Ollama 중복 호출 없음)",
+                        variable=self._official_live2d).pack(anchor="w", pady=(4, 0))
         ttk.Label(self, textvariable=self._twitch_status, wraplength=600).pack(
             anchor="w", pady=(2, 5))
         self._refresh_memory_count()
@@ -172,10 +175,19 @@ class LocalChatTab(ttk.Frame):
             return
         # Do not silently receive chats that cannot reach the selected AI.
         model = self._model_name.get().strip()
-        if not model:
+        official = bool(self._official_live2d.get())
+        if not official and not model:
             messagebox.showinfo(
                 "로컬 AI 모델", "먼저 설치한 Ollama 모델 이름을 입력해 주세요.",
                 parent=self)
+            return
+        if official and not messagebox.askyesno(
+                "공식 AI·Live2D 채팅 연결 승인",
+                "연결 후 들어오는 모든 플랫폼 채팅을 기존 공식 Live2D 창의 "
+                "Open-LLM-VTuber 서버에 1회씩 전달합니다. 공식 서버 설정에 따라 "
+                "AI·음성·기억/외부 접속이 발생할 수 있습니다. "
+                "Live2D 창을 먼저 열고 공식 서버의 무료·로컬 모델 설정을 확인했습니까?",
+                parent=self):
             return
         choice = self._chat_platform.get()
         types = {"트위치": "twitch", "치지직": "chzzk",
@@ -210,7 +222,7 @@ class LocalChatTab(ttk.Frame):
         # One worker calls the EXISTING local Ollama conversation in order.
         # No extra model service, intentional delay or platform chat posting.
         threading.Thread(
-            target=self._work_twitch_ai, args=(model, inbox),
+            target=self._work_twitch_ai, args=(model, inbox, official),
             daemon=True,
         ).start()
         self._twitch_start.configure(state="disabled")
@@ -226,11 +238,24 @@ class LocalChatTab(ttk.Frame):
         finally:
             self._results.put(("twitch_finished", session))
 
-    def _work_twitch_ai(self, model: str, inbox: queue.SimpleQueue) -> None:
+    def _work_twitch_ai(self, model: str, inbox: queue.SimpleQueue, official: bool = False) -> None:
         while True:
             chat = inbox.get()
             if chat is None:
                 break
+            if official:
+                # Official WebView2 owns the AI, GPT-SoVITS audio and Cubism
+                # model in ONE upstream conversation. Never duplicate this
+                # turn by also submitting to the separate Ollama model.
+                try:
+                    from .original_plan_frontend import send_to_native_live2d_session_with_observation
+                    evidence = send_to_native_live2d_session_with_observation(
+                        chat.text, operator_approved=True, duration=8)
+                except Exception as exc:
+                    self._results.put(("twitch_ai_error", (chat, str(exc))))
+                else:
+                    self._results.put(("twitch_live2d_ok", (chat, evidence)))
+                continue
             try:
                 result = run_local_chat(
                     model, chat.text, sender="[" + {"twitch":"트위치","chzzk":"치지직",
@@ -299,6 +324,17 @@ class LocalChatTab(ttk.Frame):
                             "실제 채팅 " + str(self._twitch_received)
                             + "건 · AI 응답 " + str(self._twitch_replied)
                             + "건 · AI 오류 " + str(self._twitch_ai_failures) + "건")
+                    elif kind == "twitch_live2d_ok":
+                        chat, evidence = payload
+                        if evidence.verified_signal:
+                            self._twitch_replied += 1
+                            self._append("공식 AI·Live2D 입력 및 입 움직임 확인: " + chat.sender)
+                        else:
+                            self._twitch_ai_failures += 1
+                            self._append("공식 AI 질문 전달됨 · 입 움직임 실증 미충족: " + chat.sender)
+                        self._twitch_status.set(
+                            "공식 Live2D 성공 " + str(self._twitch_replied) +
+                            "건 · 미검증/오류 " + str(self._twitch_ai_failures) + "건")
                     elif kind == "twitch_ai_error":
                         chat, detail = payload
                         self._twitch_ai_failures += 1
