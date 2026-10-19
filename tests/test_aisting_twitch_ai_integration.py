@@ -91,6 +91,7 @@ class LiveChatReplyOrderTests(unittest.TestCase):
             _chat_platform=SimpleNamespace(get=lambda:"SOOP"),
             _twitch_status=SimpleNamespace(set=shown.append),
             _append=appended.append,
+            _poll=lambda:None,
             after=lambda *args:None)
         LocalChatTab._poll(fake)
         self.assertEqual(fake._twitch_received, 0)
