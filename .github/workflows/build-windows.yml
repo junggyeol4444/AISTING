@@ -192,6 +192,32 @@ jobs:
           frame = client.read_current_scene_frame(operator_approved=True)
           print("REAL_OBS_RENDERED_PNG:", frame.width, frame.height, len(frame.png_data))
           assert frame.png_data.startswith(b'\x89PNG\r\n\x1a\n')
+          # Actual OBS rendered-video verification. Create a temporary
+          # source ONLY in the CI runner's fresh default scene. Read both
+          # frames through AISTING's existing real OBS PNG decoder.
+          import hashlib
+          import obsws_python
+          active = obsws_python.ReqClient(host="127.0.0.1", port=4455,
+                                          password=password, timeout=5)
+          available = active.get_input_kind_list(False).input_kinds
+          assert "color_source_v3" in available, "Official OBS color input unavailable"
+          ci_input = "AISTING CI color input"
+          active.create_input(state.scene, ci_input, "color_source_v3",
+                              {"color": 0xFF0000FF, "width": 640, "height": 360}, True)
+          assert ci_input in client.read_scene_inventory().input_names
+          time.sleep(1)
+          before = client.read_current_scene_frame(operator_approved=True)
+          active.set_input_settings(ci_input, {"color": 0xFF00FF00}, True)
+          time.sleep(1)
+          after = client.read_current_scene_frame(operator_approved=True)
+          assert before.width == after.width == 640
+          assert before.height == after.height == 360
+          assert before.png_data != after.png_data, (
+              "Real OBS source changed but OBS-rendered pixels did not"
+          )
+          print("REAL_OBS_LIVE_VIDEO_CHANGE:",
+                hashlib.sha256(before.png_data).hexdigest()[:16],
+                hashlib.sha256(after.png_data).hexdigest()[:16])
           assert not client.status().streaming
           '@ | Set-Content -Path $probe -Encoding utf8
             python $probe
