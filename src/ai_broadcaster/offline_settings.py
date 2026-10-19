@@ -29,7 +29,7 @@ DEFAULTS: dict[str, Any] = {
     "external_publish_enabled": False,
 }
 PERSONA_MODES = {"기본 캐릭터": "default", "직접 만들기": "custom"}
-PLATFORMS = {"치지직": "chzzk", "유튜브": "youtube", "트위치": "twitch"}
+PLATFORMS = {"치지직": "chzzk", "유튜브": "youtube", "트위치": "twitch", "SOOP": "soop"}
 CONTENTS = {"미정": "undecided", "수다": "chat", "게임": "game", "수다 + 게임": "both"}
 AVATARS = {"미정": "undecided", "2D": "2d", "3D": "3d"}
 # 7단계: 방식만 선택. 녹음·학습/복제는 반드시 별도 동의와 PC 설치 승인 후에만.

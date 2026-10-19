@@ -272,8 +272,12 @@ class YouTubeReadOnlySession(ReadOnlySession):
                       "liveChatId":self.channel, "key":self._key}
             if cursor:
                 params["pageToken"] = cursor
-            payload = _json_get("https://www.googleapis.com/youtube/v3/"
-                                "liveChat/messages?" + urlencode(params))
+            try:
+                payload = _json_get("https://www.googleapis.com/youtube/v3/"
+                                    "liveChat/messages?" + urlencode(params))
+            except Exception as exc:
+                # Never leak operator-entered API credentials into GUI or logs.
+                raise RuntimeError("유튜브 채팅 API 연결 또는 권한 오류") from None
             next_cursor = payload.get("nextPageToken")
             if not isinstance(next_cursor, str):
                 raise RuntimeError("유튜브 채팅 페이지 응답 토큰이 없습니다.")

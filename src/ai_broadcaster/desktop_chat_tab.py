@@ -18,6 +18,7 @@ from .reply_voice import ReplyVoicePlayer, should_auto_read
 from .windows_tts import Voice
 from .avatar_animation import SpeechActivity
 from .twitch_readonly import TwitchReadOnlySession, TwitchReadError
+from .multiplatform_readonly import ChzzkReadOnlySession, SoopReadOnlySession, YouTubeReadOnlySession
 from .offline_settings import load_settings
 
 
@@ -41,6 +42,8 @@ class LocalChatTab(ttk.Frame):
         self._closed = False
         self._twitch_session: TwitchReadOnlySession | None = None
         self._twitch_channel = tk.StringVar()
+        self._chat_platform = tk.StringVar(value='트위치')
+        self._youtube_api_key = tk.StringVar()
         self._twitch_status = tk.StringVar(value="읽기 전용 미연결 · 로그인·채팅 송신 없음")
         self._twitch_received = 0
         self._twitch_replied = 0
@@ -97,9 +100,12 @@ class LocalChatTab(ttk.Frame):
         self._tts_stop.configure(state="disabled")
         ttk.Label(audio, textvariable=self._tts_status, wraplength=580).pack(anchor="w", pady=(5, 0))
         public_chat = ttk.LabelFrame(
-            self, text="트위치 공개 실시간 채팅 읽기 (계정 로그인·송신 없음)", padding=8)
+            self, text="플랫폼 공개 채팅 수신 → 로컬 AI (송신·실방송 없음)", padding=8)
         public_chat.pack(fill="x", pady=(10, 0))
-        ttk.Label(public_chat, text="채널 ID").pack(side="left")
+        ttk.Combobox(public_chat, textvariable=self._chat_platform,
+                     values=("트위치", "치지직", "SOOP", "유튜브"),
+                     width=8, state="readonly").pack(side="left", padx=4)
+        ttk.Label(public_chat, text="채널 ID / SOOP ID/방송번호 / YouTube liveChatId").pack(side="left")
         ttk.Entry(public_chat, textvariable=self._twitch_channel, width=20).pack(
             side="left", padx=5)
         self._twitch_start = ttk.Button(
@@ -109,6 +115,11 @@ class LocalChatTab(ttk.Frame):
             public_chat, text="읽기 중지", command=self._stop_twitch,
             state="disabled")
         self._twitch_end.pack(side="left", padx=3)
+        keyline = ttk.Frame(self)
+        keyline.pack(fill="x")
+        ttk.Label(keyline, text="YouTube API 키 (실행 중 메모리만 사용)").pack(side="left")
+        ttk.Entry(keyline, textvariable=self._youtube_api_key, width=46,
+                  show="*").pack(side="left", padx=5)
         ttk.Label(self, textvariable=self._twitch_status, wraplength=600).pack(
             anchor="w", pady=(2, 5))
         self._refresh_memory_count()
@@ -166,15 +177,27 @@ class LocalChatTab(ttk.Frame):
                 "로컬 AI 모델", "먼저 설치한 Ollama 모델 이름을 입력해 주세요.",
                 parent=self)
             return
-        if "twitch" not in load_settings()["platforms"]:
-            messagebox.showinfo(
-                "플랫폼 선택", "방송 설정에서 트위치를 선택하고 저장해 주세요.",
-                parent=self)
+        choice = self._chat_platform.get()
+        types = {"트위치": "twitch", "치지직": "chzzk",
+                 "SOOP": "soop", "유튜브": "youtube"}
+        code = types.get(choice)
+        if code not in load_settings()["platforms"]:
+            messagebox.showinfo("플랫폼 선택",
+                                "방송 설정에서 선택한 플랫폼을 저장해 주세요.", parent=self)
             return
         try:
-            session = TwitchReadOnlySession(
-                self._twitch_channel.get().strip(),
-                lambda kind, item: self._results.put(("twitch_" + kind, item)))
+            channel = self._twitch_channel.get().strip()
+            emit = lambda kind, item: self._results.put(("twitch_" + kind, item))
+            if code == "twitch":
+                session = TwitchReadOnlySession(channel, emit)
+            elif code == "chzzk":
+                session = ChzzkReadOnlySession(channel, emit)
+            elif code == "soop":
+                session = SoopReadOnlySession(channel, emit)
+            else:
+                session = YouTubeReadOnlySession(
+                    channel, emit, self._youtube_api_key.get())
+        
         except (ValueError, TypeError) as exc:
             messagebox.showinfo("트위치 채널", str(exc), parent=self)
             return
@@ -192,7 +215,7 @@ class LocalChatTab(ttk.Frame):
         ).start()
         self._twitch_start.configure(state="disabled")
         self._twitch_end.configure(state="normal")
-        self._twitch_status.set("공개 트위치 채팅 연결 요청 중 · 실제 플랫폼 응답 대기")
+        self._twitch_status.set(choice + " 채팅 연결 요청 중 · 실제 수신 대기")
         threading.Thread(target=self._work_twitch, args=(session,), daemon=True).start()
 
     def _work_twitch(self, session: TwitchReadOnlySession) -> None:
@@ -210,7 +233,9 @@ class LocalChatTab(ttk.Frame):
                 break
             try:
                 result = run_local_chat(
-                    model, chat.text, sender="[트위치] " + chat.sender,
+                    model, chat.text, sender="[" + {"twitch":"트위치","chzzk":"치지직",
+                        "soop":"SOOP","youtube":"유튜브"}.get(
+                            getattr(chat, "platform", "twitch"), "트위치") + "] " + chat.sender,
                     use_committed_gui_character=True)
             except Exception as exc:
                 self._results.put(("twitch_ai_error", (chat, str(exc))))
@@ -237,14 +262,16 @@ class LocalChatTab(ttk.Frame):
             while True:
                 kind, payload = self._results.get_nowait()
                 if kind.startswith("twitch_"):
-                    if kind == "twitch_ready":
+                    if kind in ("twitch_ready", "twitch_connected"):
                         self._twitch_status.set(
-                            "트위치 #" + str(payload) + " 채팅방 연결 완료 · 공개 채팅 수신 대기")
+                            self._chat_platform.get() + " " + str(payload) + " 연결 확인 · 채팅 대기")
                     elif kind == "twitch_chat":
                         self._twitch_received += 1
-                        self._append(
-                            "[트위치 #" + payload.channel + "] "
-                            + payload.sender + ": " + payload.text)
+                        name = {"twitch":"트위치","chzzk":"치지직",
+                                "soop":"SOOP","youtube":"유튜브"}.get(
+                                    getattr(payload, "platform", "twitch"), "트위치")
+                        self._append("[" + name + " #" + payload.channel + "] "
+                                     + payload.sender + ": " + payload.text)
                         # Every incoming message, including duplicates, is
                         # queued regardless of the status of previous replies.
                         if self._twitch_ai_inbox is not None:
@@ -257,7 +284,10 @@ class LocalChatTab(ttk.Frame):
                         chat, result = payload
                         self._twitch_replied += 1
                         self._append(
-                            "AI → [트위치] " + chat.sender + ": " + result.reply)
+                            "AI → [" + {"twitch":"트위치","chzzk":"치지직",
+                             "soop":"SOOP","youtube":"유튜브"}.get(
+                                getattr(chat, "platform", "twitch"), "트위치") + "] "
+                             + chat.sender + ": " + result.reply)
                         self._last_reply = result.reply
                         self._memory_count.set(
                             f"저장된 대화: {result.remembered_count}개")
@@ -273,7 +303,7 @@ class LocalChatTab(ttk.Frame):
                         chat, detail = payload
                         self._twitch_ai_failures += 1
                         self._append(
-                            "[트위치 AI 처리 실패] " + chat.sender + ": " + detail)
+                            "[플랫폼 AI 처리 실패] " + chat.sender + ": " + detail)
                         self._twitch_status.set(
                             "AI 처리 실패 " + str(self._twitch_ai_failures)
                             + "건 · 성공 응답으로 계산하지 않음")
