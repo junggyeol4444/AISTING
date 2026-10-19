@@ -243,6 +243,79 @@ class LiveChatReplyOrderTests(unittest.TestCase):
         self.assertTrue(out.empty())
         self.assertEqual(scheduling,[1,150])
 
+
+    def test_reader_eof_preserves_pending_fifo_ai_replies_until_worker_finishes(self):
+        """A real reader EOF must not silently discard already accepted chats."""
+        from ai_broadcaster.multiplatform_readonly import PlatformChat
+        session = SimpleNamespace(_stop=threading.Event())
+        msgs = [PlatformChat("room", "viewer", txt, "soop")
+                for txt in ("첫 채팅", "첫 채팅", "다음 채팅")]
+        pending, events, display, buttons = queue.SimpleQueue(), queue.SimpleQueue(), [], []
+        fake = SimpleNamespace(
+            _results=events, _closed=False, _twitch_session=session,
+            _twitch_ai_inbox=pending, _twitch_reader_finished=False,
+            _twitch_received=0, _twitch_replied=0, _twitch_ai_failures=0,
+            _chat_platform=SimpleNamespace(get=lambda: "SOOP"),
+            _twitch_status=SimpleNamespace(set=display.append),
+            _twitch_start=SimpleNamespace(configure=lambda **kw: buttons.append(("start", kw))),
+            _twitch_end=SimpleNamespace(configure=lambda **kw: buttons.append(("end", kw))),
+            _append=display.append, _refresh_voice_buttons=lambda: None,
+            _tts_voices={}, _voice_name=SimpleNamespace(get=lambda: ""),
+            _auto_voice=SimpleNamespace(get=lambda: False),
+            _last_reply=None, _memory_count=SimpleNamespace(set=lambda *_: None),
+            _poll=lambda:None, after=lambda *args:None)
+        for msg in msgs:
+            events.put(("twitch_scoped", (session, "twitch_chat", msg)))
+        events.put(("twitch_scoped", (session, "twitch_finished", session)))
+        LocalChatTab._poll(fake)
+        self.assertIs(fake._twitch_session, session)
+        self.assertTrue(fake._twitch_reader_finished)
+        self.assertEqual([pending.get_nowait() for _ in range(4)], msgs + [None])
+        for index, msg in enumerate(msgs):
+            events.put(("twitch_scoped", (session, "twitch_ai_ok", (
+                msg, SimpleNamespace(reply="AI 응답 "+str(index), remembered_count=index+1)))))
+        events.put(("twitch_scoped", (session, "twitch_ai_finished", session)))
+        LocalChatTab._poll(fake)
+        self.assertEqual(fake._twitch_received, 3)
+        self.assertEqual(fake._twitch_replied, 3)
+        self.assertIsNone(fake._twitch_session)
+        self.assertFalse(fake._twitch_reader_finished)
+        self.assertEqual(fake._last_reply, "AI 응답 2")
+        self.assertEqual(buttons[-2:], [
+            ("start", {"state":"normal"}), ("end", {"state":"disabled"})])
+        self.assertEqual(sum("AI →" in line for line in display), 3)
+
+    def test_stop_during_reader_eof_drain_aborts_late_model_reply(self):
+        stop = threading.Event()
+        session = SimpleNamespace(_stop=stop, stop=stop.set)
+        updates = []
+        fake = SimpleNamespace(
+            _twitch_session=session, _twitch_reader_finished=True,
+            _twitch_ai_inbox=queue.SimpleQueue(),
+            _twitch_start=SimpleNamespace(configure=lambda **kw:updates.append(kw)),
+            _twitch_end=SimpleNamespace(configure=lambda **kw:updates.append(kw)),
+            _twitch_status=SimpleNamespace(set=updates.append))
+        LocalChatTab._stop_twitch(fake)
+        self.assertTrue(stop.is_set())
+        self.assertIsNone(fake._twitch_session)
+        self.assertIsNone(fake._twitch_ai_inbox)
+        self.assertEqual(updates[0], {"state":"normal"})
+
+    def test_worker_emits_drain_completion_after_all_scoped_replies(self):
+        inbox, outbox = queue.SimpleQueue(), queue.SimpleQueue()
+        session = SimpleNamespace(_stop=threading.Event())
+        for value in ("하나", "하나", "둘"):
+            inbox.put(TwitchChatLine("room","user",value))
+        inbox.put(None)
+        with patch("ai_broadcaster.desktop_chat_tab.run_local_chat",
+                   side_effect=lambda model,text,**kwargs:
+                       SimpleNamespace(reply=text,remembered_count=1)):
+            LocalChatTab._work_twitch_ai(
+                SimpleNamespace(_results=outbox), "model", inbox, False, session)
+        events = [outbox.get_nowait()[1][1] for _ in range(4)]
+        self.assertEqual(events, ["twitch_ai_ok"]*3 + ["twitch_ai_finished"])
+        self.assertTrue(outbox.empty())
+
     def test_stopping_before_thread_start_never_reopens_websocket(self):
         events = []
         receiver = TwitchReadOnlySession("streamer", lambda k, v: events.append((k, v)))

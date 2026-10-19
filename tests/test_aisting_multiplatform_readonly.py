@@ -189,6 +189,67 @@ class MultiplePlatformChatTests(unittest.TestCase):
         self.assertEqual([item.text for kind, item in events if kind == "chat"],
                          ["첫째", "첫째"])
 
+
+    def test_chzzk_auth_handshake_preserves_early_chat_and_duplicates(self):
+        """Early public frames are shown after ACK, before later live frames."""
+        from types import SimpleNamespace
+        events, sent = [], []
+        ch = "a"*32
+        session = ChzzkReadOnlySession(ch, lambda kind,obj:events.append((kind,obj)))
+        early = json.dumps({"cmd":93101,"bdy":[
+            {"profile":{"nickname":"사람"},"msg":"먼저"},
+            {"profile":{"nickname":"사람"},"msg":"먼저"}]})
+        ack = json.dumps({"cmd":10100,"bdy":{"sid":"confirmed"}})
+        later = json.dumps({"cmd":93101,"bdy":[
+            {"profile":{"nickname":"다른사람"},"msg":"이후"}]})
+        packets = [early, ack, later]
+        class Sock:
+            def send(self, value):
+                sent.append(value)
+            def settimeout(self, duration):
+                pass
+            def recv(self):
+                if packets:
+                    return packets.pop(0)
+                session.stop()
+                return ""
+            def close(self):
+                pass
+        with patch.dict(sys.modules,{"websocket":SimpleNamespace(
+                 create_connection=lambda *a,**kw:Sock(),
+                 WebSocketTimeoutException=TimeoutError)}),patch(
+                 "ai_broadcaster.multiplatform_readonly._json_get",
+                 side_effect=[{"content":{"chatChannelId":"validchat"}},
+                              {"content":{"accessToken":"readtoken"}}]):
+            session.run(max_seconds=4)
+        self.assertEqual([kind for kind,_ in events],
+                         ["ready","chat","chat","chat","stopped"])
+        self.assertEqual([obj.text for kind,obj in events if kind=="chat"],
+                         ["먼저","먼저","이후"])
+        self.assertEqual(len(sent),1)
+
+    def test_youtube_bad_poll_interval_never_forwards_unreplayable_page(self):
+        chat = YouTubeReadOnlySession("existingChatId",lambda *x:
+                                      self.fail("Chat leaked before validation"),"k"*39)
+        for invalid in (-1, 0, "1000", True):
+            with self.subTest(invalid=invalid), patch(
+                  "ai_broadcaster.multiplatform_readonly._json_get",
+                  return_value={"nextPageToken":"page_2",
+                                "pollingIntervalMillis":invalid,
+                                "items":[{"snippet":{"type":"textMessageEvent",
+                                     "displayMessage":"시청자 메시지"}}]}) as api:
+                with self.assertRaisesRegex(ValueError,"폴링 간격"):
+                    chat.run(max_seconds=2)
+                self.assertEqual(api.call_count,1)
+
+    def test_youtube_zero_seconds_never_consumes_api_quota(self):
+        observed=[]
+        chat=YouTubeReadOnlySession("existingChatId",lambda *x:observed.append(x),"k"*39)
+        with patch("ai_broadcaster.multiplatform_readonly._json_get",
+                   side_effect=AssertionError("should not poll")):
+            chat.run(max_seconds=0)
+        self.assertEqual(observed,[("stopped","existingChatId")])
+
     def test_readonly_socket_stop_during_blocking_receive_is_normal(self):
         """A stopped socket must not deliver stale chat or show an error."""
         from types import SimpleNamespace

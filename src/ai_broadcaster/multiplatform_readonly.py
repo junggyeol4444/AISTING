@@ -192,6 +192,10 @@ class ChzzkReadOnlySession(ReadOnlySession):
                                   "svcid":"game","bdy":{"uid":None,
                                     "devType":2001,"accTkn":access,"auth":"READ"}}))
             accepted = False
+            # Chat may arrive during the server authentication handshake.
+            # Preserve every original frame in order, then release it only
+            # after a valid room-entry acknowledgement has been received.
+            startup_chats = []
             deadline = time.monotonic() + 15
             while not self._stop.is_set() and time.monotonic() < deadline:
                 try:
@@ -199,15 +203,30 @@ class ChzzkReadOnlySession(ReadOnlySession):
                     raw = sock.recv()
                 except websocket.WebSocketTimeoutException:
                     continue
+                except Exception:
+                    if self._stop.is_set():
+                        return
+                    raise
+                if self._stop.is_set():
+                    return
                 data = json.loads(raw)
-                if data.get("cmd") == 10100 and (data.get("bdy") or {}).get("sid"):
+                if not isinstance(data, dict):
+                    raise ValueError("치지직 접속 응답 형식 오류")
+                startup_chats.extend(parse_chzzk_frame(raw, self.channel))
+                if data.get("cmd") == 10100 and isinstance(data.get("bdy"), dict) and data["bdy"].get("sid"):
                     accepted = True
                     break
                 if data.get("cmd") == 0:
                     sock.send('{"ver":"2","cmd":10000}')
+            if self._stop.is_set():
+                return
             if not accepted:
                 raise RuntimeError("치지직 실제 채팅 연결 승인 응답이 없습니다.")
             self.emit("ready", self.channel)
+            for item in startup_chats:
+                if self._stop.is_set():
+                    return
+                self.emit("chat", item)
             def parser(data, channel):
                 frame = json.loads(data)
                 if frame.get("cmd") == 0:
@@ -381,7 +400,7 @@ class YouTubeReadOnlySession(ReadOnlySession):
         cursor = ""
         first = True
         while not self._stop.is_set():
-            if max_seconds and time.monotonic() - start >= max_seconds:
+            if max_seconds is not None and time.monotonic() - start >= max_seconds:
                 break
             params = {"part":"id,snippet,authorDetails",
                       "liveChatId":live_chat_id, "key":self._key}
@@ -401,6 +420,11 @@ class YouTubeReadOnlySession(ReadOnlySession):
                 # An empty cursor would silently restart at page one and
                 # repeatedly respond to the same historical chat messages.
                 raise RuntimeError("유튜브 채팅 페이지 응답 토큰이 없습니다.")
+            # Reject a bad polling interval before forwarding chat. If it is
+            # rejected after delivery, reconnecting could replay that page.
+            millis = payload.get("pollingIntervalMillis", 1000)
+            if type(millis) is not int or not 0 < millis <= 120000:
+                raise ValueError("유튜브 채팅 폴링 간격 형식 오류")
             for item in parse_youtube_page(payload, self.channel):
                 # An initial page can contain real history; do not filter by
                 # content or sender, and preserve repeated text.
@@ -417,9 +441,6 @@ class YouTubeReadOnlySession(ReadOnlySession):
                 # YouTube has explicitly ended this live chat. A final page
                 # may omit nextPageToken; still deliver its actual messages.
                 break
-            # Respect Google's server-designated polling interval.
-            millis = payload.get("pollingIntervalMillis", 1000)
-            if type(millis) is not int or not 0 <= millis <= 120000:
-                raise ValueError("유튜브 채팅 폴링 간격 형식 오류")
+            # Respect Google's server-designated strictly positive interval.
             self._stop.wait(millis / 1000)
         self.emit("stopped", self.channel)

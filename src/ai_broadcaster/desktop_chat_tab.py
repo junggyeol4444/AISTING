@@ -50,6 +50,8 @@ class LocalChatTab(ttk.Frame):
         self._twitch_replied = 0
         self._twitch_ai_failures = 0
         self._twitch_ai_inbox: queue.SimpleQueue | None = None
+        # Reader EOF is distinct from operator Stop; keep accepted AI work alive.
+        self._twitch_reader_finished = False
         self._tts_status = tk.StringVar(value="음성 읽기는 기본 꺼짐. 먼저 한국어 음성을 확인하세요.")
 
         intro = (
@@ -222,6 +224,7 @@ class LocalChatTab(ttk.Frame):
         self._twitch_received = 0
         self._twitch_replied = 0
         self._twitch_ai_failures = 0
+        self._twitch_reader_finished = False
         inbox = queue.SimpleQueue()
         self._twitch_ai_inbox = inbox
         # One worker calls the EXISTING local Ollama conversation in order.
@@ -282,6 +285,10 @@ class LocalChatTab(ttk.Frame):
                 report("twitch_ai_error", (chat, str(exc)))
             else:
                 report("twitch_ai_ok", (chat, result))
+        # The reader can reach EOF while the serial model is still replying.
+        # This marker follows EVERY accepted AI result in the same results FIFO.
+        if session is not None and not session._stop.is_set():
+            report("twitch_ai_finished", session)
 
     def _stop_twitch(self) -> None:
         if self._twitch_session is not None:
@@ -289,6 +296,15 @@ class LocalChatTab(ttk.Frame):
             if self._twitch_ai_inbox is not None:
                 # Wake the idle AI worker. Queued messages will not be sent.
                 self._twitch_ai_inbox.put(None)
+            if getattr(self, "_twitch_reader_finished", False):
+                # The reader's finish event has already arrived. Stop during
+                # its remaining AI drain must restore the GUI immediately.
+                self._twitch_session = None
+                self._twitch_ai_inbox = None
+                self._twitch_reader_finished = False
+                self._twitch_start.configure(state="normal")
+                self._twitch_end.configure(state="disabled")
+                self._twitch_status.set("운영자가 남아 있는 AI 응답을 중지했습니다.")
 
     def destroy(self) -> None:
         self._closed = True
@@ -395,12 +411,32 @@ class LocalChatTab(ttk.Frame):
                             " 읽기 오류: " + str(payload))
                     elif kind == "twitch_finished":
                         if payload is self._twitch_session:
+                            self._twitch_reader_finished = True
                             if self._twitch_ai_inbox is not None:
                                 self._twitch_ai_inbox.put(None)
                                 self._twitch_ai_inbox = None
+                            stopped = getattr(payload, "_stop", None)
+                            if stopped is not None and stopped.is_set():
+                                # Explicit Stop discards queued work as requested.
+                                self._twitch_session = None
+                                self._twitch_reader_finished = False
+                                self._twitch_start.configure(state="normal")
+                                self._twitch_end.configure(state="disabled")
+                            else:
+                                self._twitch_status.set(
+                                    "채팅 수신 종료 · 수신 완료한 AI 메시지 응답 처리 중")
+                    elif kind == "twitch_ai_finished":
+                        if payload is self._twitch_session and getattr(
+                                self, "_twitch_reader_finished", False):
+                            # Only now have ALL accepted FIFO replies arrived.
                             self._twitch_session = None
+                            self._twitch_reader_finished = False
                             self._twitch_start.configure(state="normal")
                             self._twitch_end.configure(state="disabled")
+                            self._twitch_status.set(
+                                "채팅 수신 종료 · 대기 AI 응답 처리 완료 "
+                                + str(self._twitch_replied) + "건 · 오류 "
+                                + str(self._twitch_ai_failures) + "건")
                     continue
                 if kind in ("ok", "error"):
                     self._busy = False
