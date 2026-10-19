@@ -143,3 +143,16 @@
 - **최신 Windows artifact**: `AISTING-Windows-EXE-integrated`, ID `12229534865`, 19,619,595바이트, GitHub artifact **ZIP** SHA-256 `9c80f299705cd8b9eaedb0edf1567f4473bbbf07458d9a5660671ac44113ec19`, 만료 예정 2026-11-18. EXE 자체 SHA-256과 혼동 금지. 페이지 https://github.com/junggyeol4444/AISTING/actions/runs/39343746794
 - 기재된 코드 수정은 실제 `main` 반영 완료. **핵심 미실증 항목**: 사용자 YouTube 실제 인증 채팅, 승인된 모델/권리 확인 WAV 기반 GPT-SoVITS, 공식 Cubism 실제 오디오-입 동기, AI→한국어 음성→Live2D→OBS 전체 실출력, 장시간 실사용. 사용자가 제공하지 않은 계정/실물 모델/Windows PC를 이 회차에서 실행하지 않았다. 원본 기획 승인·SQLite/캐릭터 자료는 변경하지 않았다.
 - 최신 `main` HEAD는 문서 업데이트로 다시 이동하므로 다음 실행에서 GitHub `branches/main` 확인 필수. 원래 예약 대화 유지 희망, 불가피하면 본 문서와 누적 코드/CI를 먼저 읽고 이관 사유 명시. 매시간 예약은 변경하지 않음.
+
+## 11. 2026-10-20 08시 이후 실제 YouTube 채팅 누락 수정·전체 검증
+
+- 사용자 지시대로 기존 Windows x64 네이티브 AISTING.exe/Tk UI의 누적 src를 수정. 다른 브랜치/재개발/강제푸시/사용자 파일·SQLite·캐릭터 변경 없음. 원래 예약 대화 우선·매시간 예약 그대로.
+- **실제 YouTube 수신 코드 커밋** `ad665d5ff971cc264e41a9e5da8e23264f814654`: `src/ai_broadcaster/multiplatform_readonly.py`의 `parse_youtube_page`에 공식 YouTube `memberMilestoneChatEvent` 포함. 기존 채팅/슈퍼챗/슈퍼스티커 동작 보존. 공식 Google API 설명은 해당 항목을 '사용자가 전송한 멤버십 기념 채팅'으로 명시한다. 정상 메시지 순서·중복을 제거하지 않음. 계정 인증이나 YouTube API 요청은 실제 실행하지 않음.
+- **신규 검사 커밋** `e7bdff5ef33568c2597a74b5793351735c1b8900`: `tests/test_aisting_youtube_member_chat_20261020.py` 추가. 멤버십 기념 메시지 + 일반 채팅 + 중복의 FIFO, 채팅 종료 이벤트와 실제 시청자 채팅 구분 2개.
+- **최종 실행 코드 SHA** `e7bdff5ef33568c2597a74b5793351735c1b8900`. GitHub 전체 회귀검사 https://github.com/junggyeol4444/AISTING/actions/runs/39344244993 **completed/success**. 실제 로그 `Ran 2349 tests`, `OK (skipped=2)`, 실패 0. 테스트는 오프라인·단위 위주이며 실제 사용자 음성·모델 성공 근거가 아니다.
+- 같은 SHA의 Windows 통합검사 https://github.com/junggyeol4444/AISTING/actions/runs/39344244950 **completed/success**. `windows-exe`, `ollama-real-local-e2e`, `obs-real-readonly`, `twitch-public-readonly`, `korean-public-chat-readonly` 5개 작업 모두 success. 사용자의 로컬 실사용 전체 연결 테스트가 아니다.
+- 새 Windows Artifact `AISTING-Windows-EXE-integrated`, ID `12230730515`, 19,620,228바이트. GitHub Artifact ZIP SHA-256 `c3f9bbf77c549fa7e255e45fdb0720678ad8e3fead24488843f10949ae1dd198`. **이 해시는 EXE 자체가 아니라 Actions ZIP artifact의 해시**. Windows run 페이지의 Artifacts에서 다운로드.
+- 아직 미실증: 실제 사용자 YouTube API 키/채팅방 수신·키 보안 확인, 권리 확보 한국어 GPT-SoVITS 실제 음성, 공식 Live2D 실제 오디오↔입 파라미터 동기, GPT 한국어 음성→Live2D→OBS 영상/오디오 송출 전 전체 사용자 흐름, 사용자 실제 Windows PC UI 체험, 24시간/수백명 지연 실측. 모델·인증·권리 있는 자료가 없어 실제 성공으로 주장하지 않는다.
+- 기존 `docs/ORIGINAL_PLAN.txt`, `docs/ROADMAP_100.md`, `config/roadmap.json` 및 본 문서 1~10절의 사용자 필수·금지사항은 계속 유효. 공식 단계 임의 완료 처리 금지.
+- 다음 실행: **main HEAD/CI/진행 중 job 재조회** → 누락된 Twitch 누적 후보와 현재 main 세부 비교(중복 적용 금지) → 공식 GPT-SoVITS/Live2D/OBS 실제 연결 코드의 누락·오류 함께 개선 → 원래 Tk 실행흐름/저장자료 보존 Windows 실행 검증 → 새로운 artifact/해시 및 전체 인수인계 재갱신. 실제 자료·실행 환경 없는 검증은 명시적으로 미실증 유지.
+- 문서 업데이트 자체가 main SHA를 변경한다. 현재 실제 소스 기준 SHA와 문서 커밋 SHA를 구분하여 다음 회차에서 반드시 최신 HEAD 재확인.
