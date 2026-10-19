@@ -69,6 +69,14 @@ def verify_gpt_sovits_to_obs(
         wav_path = Path(root) / "one_shot.wav"
         wav_path.write_bytes(raw)
         try:
+            # Synthesis can take minutes. OBS may have started streaming or
+            # changed scenes since the original pre-synthesis permission check.
+            # Refuse any new source before sending audio to an unknown scene.
+            before_input = obs.status()
+            if before_input.streaming:
+                raise RuntimeError("음성 합성 중 OBS 방송이 시작되어 입력 검사를 중단했습니다.")
+            if before_input.scene != state.scene:
+                raise RuntimeError("음성 합성 중 OBS 프로그램 장면이 변경되어 검사를 중단했습니다.")
             # OBS media source plays the WAV into the OBS mixer only.
             # It does not start recording or stream output.
             client.create_input(state.scene, input_name, "ffmpeg_source", {
@@ -79,6 +87,11 @@ def verify_gpt_sovits_to_obs(
                 "close_when_inactive": False,
             }, True)
             created = True
+            # The OBS state can change while CreateInput is in flight.
+            # Never claim a safe offline proof if a stream just began.
+            after_input = obs.status()
+            if after_input.streaming or after_input.scene != state.scene:
+                raise RuntimeError("OBS 음성 입력 생성 도중 송출 또는 장면 상태가 변경되었습니다.")
             import time
             time.sleep(.4)
             meters = obs.read_actual_audio_meters(
@@ -93,8 +106,9 @@ def verify_gpt_sovits_to_obs(
             )
             if not result.actual_signal:
                 raise RuntimeError("OBS가 GPT-SoVITS 실제 WAV 입력 신호를 확인하지 못했습니다.")
-            if obs.status().streaming:
-                raise RuntimeError("OBS 송출 상태가 변경되어 검사를 중단했습니다.")
+            after_meter = obs.status()
+            if after_meter.streaming or after_meter.scene != state.scene:
+                raise RuntimeError("OBS 미터 검사 중 송출 또는 장면 상태가 변경되었습니다.")
             return result
         finally:
             if created:

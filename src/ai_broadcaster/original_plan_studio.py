@@ -894,13 +894,15 @@ class OriginalPlanStudio:
                 if not selected_audio.is_file():
                     raise VoiceConfigurationError("권리가 확보된 기존 참조 음성 파일을 선택하세요.")
                 inspect_reference_audio_container(selected_audio)
-                if not prompt_var.get().strip():
+                reference_text = prompt_var.get().strip()
+                if not reference_text:
                     raise VoiceConfigurationError("참조 음성의 녹음 문장을 입력하세요.")
                 endpoint = validate_local_gpt_sovits_url(endpoint_var.get())
                 sentence = synthesis_text.get().strip()
                 if not 1 <= len(sentence) <= 200:
                     raise VoiceConfigurationError("시험 문장은 1~200자로 입력하세요.")
-                if not obs_password_var.get():
+                obs_password = obs_password_var.get()
+                if not obs_password:
                     raise VoiceConfigurationError("실제 OBS WebSocket 비밀번호가 필요합니다.")
             except (ValueError, OSError) as exc:
                 note.set("실제 OBS 음성 검사 준비 실패: " + str(exc))
@@ -922,8 +924,8 @@ class OriginalPlanStudio:
                 try:
                     from .original_plan_voice_obs_bridge import verify_gpt_sovits_to_obs
                     result = verify_gpt_sovits_to_obs(
-                        selected_audio, prompt_var.get(), sentence,
-                        obs_password=obs_password_var.get(), api_url=endpoint,
+                        selected_audio, reference_text, sentence,
+                        obs_password=obs_password, api_url=endpoint,
                         operator_approved=True, rights_confirmed=True,
                     )
                 except Exception as exc:

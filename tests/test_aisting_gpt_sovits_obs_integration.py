@@ -55,7 +55,7 @@ class VerifyRealVoiceObsTests(unittest.TestCase):
         obs=SimpleNamespace(
             _client=client,
             connect=lambda:SimpleNamespace(version="32.2.2",scene="Scene",streaming=False),
-            status=lambda:SimpleNamespace(streaming=False),
+            status=lambda:SimpleNamespace(scene="Scene",streaming=False),
             read_actual_audio_meters=lambda **kwargs:
                 SimpleNamespace(selected_meter_events=12, selected_signal=True))
         voice=SimpleNamespace(sample_rate=24000,channels=1,frame_count=80,
@@ -74,6 +74,141 @@ class VerifyRealVoiceObsTests(unittest.TestCase):
         self.assertFalse(Path(created[0][1]).exists())
         self.assertEqual(synth.call_args.kwargs["play_to_speaker"],False)
         self.assertEqual(synth.call_args.kwargs["return_audio_bytes"],True)
+
+
+    def test_stream_started_during_real_synthesis_does_not_create_obs_input(self):
+        class Client:
+            def get_input_kind_list(self, ignored):
+                return SimpleNamespace(input_kinds=["ffmpeg_source"])
+
+            def create_input(self, *args):
+                self.fail("OBS source created while broadcasting")
+
+        client=Client()
+        client.fail=self.fail
+        obs=SimpleNamespace(
+            _client=client,
+            connect=lambda:SimpleNamespace(version="32.2.2",scene="Scene",streaming=False),
+            status=lambda:SimpleNamespace(scene="Scene",streaming=True))
+        voice=SimpleNamespace(wav_data=b"RIFF"+b"x"*60)
+        with patch("ai_broadcaster.original_plan_voice_obs_bridge.OfficialObsWebsocket",
+                   return_value=obs), patch(
+                "ai_broadcaster.original_plan_voice_obs_bridge.synthesize_local_gpt_sovits",
+                return_value=voice) as synth:
+            with self.assertRaisesRegex(RuntimeError,"방송이 시작"):
+                verify_gpt_sovits_to_obs(Path("owned.wav"),"기록된 문장","시험 음성",
+                    obs_password="test",operator_approved=True,rights_confirmed=True)
+        synth.assert_called_once()
+
+    def test_scene_change_during_real_synthesis_does_not_touch_obs(self):
+        class Client:
+            def get_input_kind_list(self, ignored):
+                return SimpleNamespace(input_kinds=["ffmpeg_source"])
+
+            def create_input(self, *args):
+                raise AssertionError("Created input in a different scene")
+
+        obs=SimpleNamespace(
+            _client=Client(),
+            connect=lambda:SimpleNamespace(version="32.2.2",scene="Scene A",streaming=False),
+            status=lambda:SimpleNamespace(scene="Scene B",streaming=False))
+        voice=SimpleNamespace(wav_data=b"RIFF"+b"x"*60)
+        with patch("ai_broadcaster.original_plan_voice_obs_bridge.OfficialObsWebsocket",
+                   return_value=obs), patch(
+                "ai_broadcaster.original_plan_voice_obs_bridge.synthesize_local_gpt_sovits",
+                return_value=voice):
+            with self.assertRaisesRegex(RuntimeError,"장면이 변경"):
+                verify_gpt_sovits_to_obs(Path("owned.wav"),"기록된 문장","시험 음성",
+                    obs_password="test",operator_approved=True,rights_confirmed=True)
+
+    def test_stream_started_after_input_creation_always_cleans_up(self):
+        created,removed,read_meter=[],[],[]
+        states=iter([
+            SimpleNamespace(scene="Scene",streaming=False),
+            SimpleNamespace(scene="Scene",streaming=True),
+        ])
+        class Client:
+            def get_input_kind_list(self, ignored):
+                return SimpleNamespace(input_kinds=["ffmpeg_source"])
+
+            def create_input(self, scene,name,kind,settings,enabled):
+                self.assertEqual(scene,"Scene")
+                created.append(name)
+
+            def remove_input(self,name):
+                removed.append(name)
+
+        client=Client()
+        client.assertEqual=self.assertEqual
+        obs=SimpleNamespace(
+            _client=client,
+            connect=lambda:SimpleNamespace(version="32.2.2",scene="Scene",streaming=False),
+            status=lambda:next(states),
+            read_actual_audio_meters=lambda **kwargs:read_meter.append(kwargs))
+        voice=SimpleNamespace(wav_data=b"RIFF"+b"x"*60)
+        with patch("ai_broadcaster.original_plan_voice_obs_bridge.OfficialObsWebsocket",
+                   return_value=obs), patch(
+                "ai_broadcaster.original_plan_voice_obs_bridge.synthesize_local_gpt_sovits",
+                return_value=voice):
+            with self.assertRaisesRegex(RuntimeError,"송출 또는 장면"):
+                verify_gpt_sovits_to_obs(Path("owned.wav"),"기록된 문장","시험 음성",
+                    obs_password="test",operator_approved=True,rights_confirmed=True)
+        self.assertEqual(removed,created)
+        self.assertEqual(len(created),1)
+        self.assertEqual(read_meter,[])
+
+    def test_scene_change_during_meter_observation_prevents_success(self):
+        created,removed=[],[]
+        states=iter([
+            SimpleNamespace(scene="Scene",streaming=False),
+            SimpleNamespace(scene="Scene",streaming=False),
+            SimpleNamespace(scene="New scene",streaming=False),
+        ])
+        class Client:
+            def get_input_kind_list(self, ignored):
+                return SimpleNamespace(input_kinds=["ffmpeg_source"])
+
+            def create_input(self,scene,name,kind,settings,enabled):
+                created.append(name)
+
+            def remove_input(self,name):
+                removed.append(name)
+
+        obs=SimpleNamespace(
+            _client=Client(),
+            connect=lambda:SimpleNamespace(version="32.2.2",scene="Scene",streaming=False),
+            status=lambda:next(states),
+            read_actual_audio_meters=lambda **kwargs:SimpleNamespace(
+                selected_meter_events=2,selected_signal=True))
+        voice=SimpleNamespace(sample_rate=24000,channels=1,frame_count=100,
+                              wav_data=b"RIFF"+b"x"*60)
+        with patch("ai_broadcaster.original_plan_voice_obs_bridge.OfficialObsWebsocket",
+                   return_value=obs), patch(
+                "ai_broadcaster.original_plan_voice_obs_bridge.synthesize_local_gpt_sovits",
+                return_value=voice), patch("time.sleep"):
+            with self.assertRaisesRegex(RuntimeError,"송출 또는 장면"):
+                verify_gpt_sovits_to_obs(Path("owned.wav"),"기록된 문장","시험 음성",
+                    obs_password="test",operator_approved=True,rights_confirmed=True)
+        self.assertEqual(removed,created)
+        self.assertEqual(len(created),1)
+
+    def test_gpt_obs_gui_worker_uses_captured_tk_inputs(self):
+        """Tk StringVar.get belongs on the GUI thread, not the synthesis worker."""
+        import ast
+        import inspect
+        import textwrap
+        from ai_broadcaster.original_plan_studio import OriginalPlanStudio
+        source=textwrap.dedent(inspect.getsource(
+            OriginalPlanStudio._open_gpt_sovits_panel))
+        body=ast.parse(source)
+        workers=[node for node in ast.walk(body)
+                 if isinstance(node,ast.FunctionDef) and node.name=="worker"]
+        self.assertEqual(len(workers),1)
+        worker=ast.unparse(workers[0])
+        self.assertNotIn("prompt_var.get()",worker)
+        self.assertNotIn("obs_password_var.get()",worker)
+        self.assertIn("obs_password=obs_password",worker)
+        self.assertIn("reference_text",worker)
 
 if __name__=="__main__":
     unittest.main()
