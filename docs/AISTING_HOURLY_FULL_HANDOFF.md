@@ -134,3 +134,12 @@
 2. 남아 있는 Twitch 오프라인 후보와 이번 main 코드를 비교하여 누락된 수신/재접속·Stop 관련 필수 회귀만 선별 반영. 이전 파일을 무조건 중복 덮어쓰기 금지.
 3. `original_plan_tts.py`, `original_plan_frontend.py`, `original_plan_voice_obs_bridge.py`, `desktop_chat_tab.py` 실사용 사용자 흐름의 연결 결함을 실제 소스 수정·테스트하는 묶음 작업. 인증·승인·실제 파일·모델이 없는 기능은 미실증으로 분류.
 4. 기존 설정/SQLite/캐릭터 보존과 Stop/GUI 확인을 포함해 실제 Windows Actions 재검증 후 본 문서에 **최종 docs 커밋 SHA**, 소스 SHA, CI 링크, 새로운 EXE artifact 및 남은 일을 갱신.
+
+### 최종 확인 업데이트 — 2026-10-20 08시 이후 검증 완료
+
+- 소스/6개 신규 검사 커밋 `9f3ac2352ad374be1a727cb70986537186982393`: 전체 회귀검사 https://github.com/junggyeol4444/AISTING/actions/runs/39343436381 `completed/success`; 실제 로그 `Ran 2347 tests`, `OK (skipped=2)`, 실패 0.
+- 동일 코드 Windows 통합검사 https://github.com/junggyeol4444/AISTING/actions/runs/39343436352 `completed/success`, 다섯 job 모두 success. 빌드/GUI, 실제 로컬 Ollama, OBS 읽기 전용, Twitch 공개 읽기, 치지직·SOOP 공개 읽기. **사용자 계정의 YouTube 채팅 또는 GPT-SoVITS·Live2D 실제 입·OBS 송출까지 검증한 결과가 아니다.**
+- 문서 갱신 커밋 `f52fc64e986c7d8f58955d434cdc6ecf8a53a5f9`를 기준으로 실행된 전체 회귀검사 https://github.com/junggyeol4444/AISTING/actions/runs/39343746818 `completed/success`, Windows https://github.com/junggyeol4444/AISTING/actions/runs/39343746794 `completed/success`. 동일 코드에 docs만 추가. Windows 5개 job 성공.
+- **최신 Windows artifact**: `AISTING-Windows-EXE-integrated`, ID `12229534865`, 19,619,595바이트, GitHub artifact **ZIP** SHA-256 `9c80f299705cd8b9eaedb0edf1567f4473bbbf07458d9a5660671ac44113ec19`, 만료 예정 2026-11-18. EXE 자체 SHA-256과 혼동 금지. 페이지 https://github.com/junggyeol4444/AISTING/actions/runs/39343746794
+- 기재된 코드 수정은 실제 `main` 반영 완료. **핵심 미실증 항목**: 사용자 YouTube 실제 인증 채팅, 승인된 모델/권리 확인 WAV 기반 GPT-SoVITS, 공식 Cubism 실제 오디오-입 동기, AI→한국어 음성→Live2D→OBS 전체 실출력, 장시간 실사용. 사용자가 제공하지 않은 계정/실물 모델/Windows PC를 이 회차에서 실행하지 않았다. 원본 기획 승인·SQLite/캐릭터 자료는 변경하지 않았다.
+- 최신 `main` HEAD는 문서 업데이트로 다시 이동하므로 다음 실행에서 GitHub `branches/main` 확인 필수. 원래 예약 대화 유지 희망, 불가피하면 본 문서와 누적 코드/CI를 먼저 읽고 이관 사유 명시. 매시간 예약은 변경하지 않음.
