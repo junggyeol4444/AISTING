@@ -37,8 +37,8 @@ jobs:
       - name: Install free build dependencies on disposable Windows runner
         shell: pwsh
         run: |
-          python -m pip install "pyinstaller>=6,<7" "pywebview>=5,<7" "obsws-python==1.8.0"
-          python -c "import tkinter, PyInstaller, webview, obsws_python; print('Windows build dependencies present')"
+          python -m pip install "pyinstaller>=6,<7" "pywebview>=5,<7" "obsws-python==1.8.0" "websocket-client==1.9.0"
+          python -c "import tkinter, PyInstaller, webview, obsws_python, websocket; print('Windows build dependencies present')"
 
       - name: Validate original 100-step specification and project
         shell: pwsh
