@@ -365,16 +365,23 @@ jobs:
           $probe = Join-Path $env:RUNNER_TEMP 'aisting_twitch_public_read.py'
           @'
           from ai_broadcaster.twitch_readonly import TwitchReadOnlySession
-          events = []
-          session = TwitchReadOnlySession("twitch", lambda kind, item: events.append((kind, item)))
-          session.run(max_seconds=15)
-          ready = [item for kind, item in events if kind == "ready"]
-          chat = [item for kind, item in events if kind == "chat"]
-          print("REAL_TWITCH_PUBLIC_JOIN:", bool(ready))
-          print("REAL_TWITCH_PUBLIC_CHAT_COUNT:", len(chat))
-          assert ready, "Public Twitch IRC channel was not actually joined"
-          # No viewer is obliged to type during our short probe. If count is
-          # zero, this is ONLY a connection test, NOT chat-delivery proof.
+          count = 0
+          # High-traffic public channels, not the user's account. No writes to
+          # chat; never publish message text or viewer identifiers to CI logs.
+          for channel in ("ow_esports", "xqc", "valorant"):
+              events = []
+              session = TwitchReadOnlySession(
+                  channel, lambda kind, item: events.append((kind, item)))
+              session.run(max_seconds=14)
+              ready = [item for kind, item in events if kind == "ready"]
+              chat = [item for kind, item in events if kind == "chat"]
+              print("REAL_TWITCH_PUBLIC_JOIN:", channel, bool(ready))
+              print("REAL_TWITCH_PUBLIC_CHAT_COUNT:", channel, len(chat))
+              assert ready, "Public Twitch IRC channel was not actually joined"
+              count += len(chat)
+              if count:
+                  break
+          assert count > 0, "No actual viewer chat read; do not claim live message delivery"
           '@ | Set-Content -Path $probe -Encoding utf8
           python $probe
           if ($LASTEXITCODE -ne 0) { throw 'Real public Twitch IRC read failed' }
