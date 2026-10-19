@@ -33,11 +33,11 @@ class BroadcastSceneDraft:
     show_chat: bool = True
 
     def __post_init__(self) -> None:
-        if (type(self.platforms) is not tuple or len(self.platforms) > 3
+        if (type(self.platforms) is not tuple or len(self.platforms) > 4
                 or any(type(code) is not str or code not in PLATFORMS.values()
                        for code in self.platforms)
                 or len(set(self.platforms)) != len(self.platforms)):
-            raise ValueError('방송 플랫폼은 미선택 또는 중복 없는 치지직·유튜브·트위치 선택만 허용합니다.')
+            raise ValueError('방송 플랫폼은 미선택 또는 중복 없는 치지직·유튜브·트위치·SOOP 선택만 허용합니다.')
         if type(self.content) is not str or self.content not in CONTENTS.values():
             raise ValueError('수다·게임·둘 다·미정 중 콘텐츠를 선택하세요.')
         if type(self.avatar) is not str or self.avatar not in AVATARS.values():

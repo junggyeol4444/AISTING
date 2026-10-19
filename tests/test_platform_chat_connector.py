@@ -10,7 +10,7 @@ from ai_broadcaster.platform_chat_connector import OfflinePlatformChatConnector,
 
 class PlatformChatContractTests(unittest.TestCase):
     def test_all_codes_match_existing_operator_settings(self):
-        self.assertEqual(PLATFORM_CODES, ('chzzk', 'youtube', 'twitch'))
+        self.assertEqual(PLATFORM_CODES, ('chzzk', 'youtube', 'twitch', 'soop'))
 
     def test_unselected_is_allowed_but_cannot_connect(self):
         session = OfflinePlatformChatConnector([])

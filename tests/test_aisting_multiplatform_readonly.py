@@ -71,13 +71,14 @@ class MultiplePlatformChatTests(unittest.TestCase):
                          ["chzzk","soop","youtube","twitch"])
 
     def test_stop_before_socket_start_prevents_external_connect(self):
-        for cls, args in ((ChzzkReadOnlySession,("a"*32,)),
-                          (SoopReadOnlySession,("bjid/123",)),
-                          (YouTubeReadOnlySession,("livechat","x"*39))):
+        for cls, target, credential in ((ChzzkReadOnlySession, "a"*32, None),
+                                        (SoopReadOnlySession, "bjid/123", None),
+                                        (YouTubeReadOnlySession, "livechat", "x"*39)):
             with self.subTest(cls=cls), patch(
                 "ai_broadcaster.multiplatform_readonly._json_get",
                 side_effect=AssertionError("Unexpected network request")):
-                obj=cls(*args,lambda *x: None)
+                obj=(cls(target, lambda *x: None) if credential is None else
+                     cls(target, lambda *x: None, credential))
                 obj.stop()
                 obj.run(max_seconds=1)
 

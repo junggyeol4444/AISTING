@@ -183,7 +183,7 @@ class SceneTests(unittest.TestCase):
         self.assertIs(draft.layout, layout)
 
     def test_all_selection_code_sets_match_original_options(self):
-        self.assertEqual(set(PLATFORMS.values()), {'chzzk', 'youtube', 'twitch'})
+        self.assertEqual(set(PLATFORMS.values()), {'chzzk', 'youtube', 'twitch', 'soop'})
         self.assertEqual(set(AVATARS.values()), {'undecided', '2d', '3d'})
         self.assertEqual(set(CONTENTS.values()), {'undecided', 'chat', 'game', 'both'})
 

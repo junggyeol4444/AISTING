@@ -20,9 +20,9 @@ from ai_broadcaster.requirements import load_json, status, validate
 
 
 class TestOptionalRuntimePlatformSelection(unittest.TestCase):
-    def test_platforms_are_three_requested_choices(self):
+    def test_platforms_follow_current_user_requested_four_choices(self):
         self.assertEqual(PLATFORMS, {
-            '치지직': 'chzzk', '유튜브': 'youtube', '트위치': 'twitch',
+            '치지직': 'chzzk', '유튜브': 'youtube', '트위치': 'twitch', 'SOOP': 'soop',
         })
 
     def test_default_has_no_platform_and_does_not_need_a_decision(self):
@@ -30,7 +30,7 @@ class TestOptionalRuntimePlatformSelection(unittest.TestCase):
 
     def test_all_eight_none_single_multiple_combinations_are_valid(self):
         codes = list(PLATFORMS.values())
-        for count in range(4):
+        for count in range(len(codes)+1):
             for choice in itertools.combinations(codes, count):
                 with self.subTest(choice=choice):
                     config = copy.deepcopy(DEFAULTS)
