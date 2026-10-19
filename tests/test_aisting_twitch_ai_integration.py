@@ -31,16 +31,16 @@ class LiveChatReplyOrderTests(unittest.TestCase):
         inbox.put(None)
         recorder = SimpleNamespace(_results=outbox)
         calls = []
-        def local_reply(model, text, *, sender):
-            calls.append((model, text, sender))
+        def local_reply(model, text, *, sender, use_committed_gui_character):
+            calls.append((model, text, sender, use_committed_gui_character))
             return SimpleNamespace(reply="한국어 답변 " + text, remembered_count=len(calls))
         with patch("ai_broadcaster.desktop_chat_tab.run_local_chat",
                    side_effect=local_reply):
             LocalChatTab._work_twitch_ai(recorder, "local-model", inbox)
         self.assertEqual(calls, [
-            ("local-model", "안녕", "[트위치] alice"),
-            ("local-model", "하이 😀", "[트위치] bob"),
-            ("local-model", "안녕", "[트위치] alice"),
+            ("local-model", "안녕", "[트위치] alice", True),
+            ("local-model", "하이 😀", "[트위치] bob", True),
+            ("local-model", "안녕", "[트위치] alice", True),
         ])
         results = [outbox.get_nowait() for _ in range(3)]
         self.assertTrue(all(kind == "twitch_ai_ok" for kind, _ in results))
@@ -56,7 +56,8 @@ class LiveChatReplyOrderTests(unittest.TestCase):
             inbox.put(x)
         stub = SimpleNamespace(_results=outbox)
         seen = []
-        def local_reply(model, text, *, sender):
+        def local_reply(model, text, *, sender, use_committed_gui_character):
+            self.assertTrue(use_committed_gui_character)
             seen.append(text)
             if text == "첫 채팅":
                 raise ConnectionError("실제 로컬 AI 서버 없음")
