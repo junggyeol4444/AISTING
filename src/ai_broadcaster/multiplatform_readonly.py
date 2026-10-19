@@ -255,6 +255,7 @@ class SoopReadOnlySession(ReadOnlySession):
             # A WebSocket connection alone does not mean the chat room was entered.
             self.emit("connected", self.channel)
             frames_seen = 0
+            command_counts: dict[str, int] = {}
             join_sent = False
             entered = False
             next_ping = None
@@ -265,6 +266,8 @@ class SoopReadOnlySession(ReadOnlySession):
                 if isinstance(decoded, str) and decoded.startswith("\x1b\t"):
                     for frame in decoded.split("\x1b\t")[1:]:
                         code = frame[:4]
+                        if len(code) == 4 and code.isascii() and code.isdigit():
+                            command_counts[code] = command_counts.get(code, 0) + 1
                         if code == "0001" and not join_sent:
                             sock.send(join_packet)
                             join_sent = True
@@ -287,6 +290,7 @@ class SoopReadOnlySession(ReadOnlySession):
             finally:
                 # Counts only: never publish chat text or viewer identity.
                 self.emit("packet_count", frames_seen)
+                self.emit("packet_commands", dict(sorted(command_counts.items())))
         finally:
             self._socket = None
             sock.close()

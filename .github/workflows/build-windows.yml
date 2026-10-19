@@ -671,6 +671,9 @@ jobs:
                       print("REAL_SOOP_ROOM_ENTERED:", any(k=="ready" for k,_ in events))
                       print("REAL_SOOP_WEBSOCKET_FRAMES:", sum(v for k,v in events if k=="packet_count"))
                       print("REAL_SOOP_CHAT_EVENTS:", sum(k=="chat" for k,_ in events))
+                      print("REAL_SOOP_PACKET_TYPES:", json.dumps(
+                          next((v for k,v in events if k=="packet_commands"), {}),
+                          sort_keys=True))
                   except Exception as error:
                       print("REAL_SOOP_ERROR_TYPE:",type(error).__name__)
                       continue
