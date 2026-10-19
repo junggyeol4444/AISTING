@@ -385,3 +385,146 @@ jobs:
           '@ | Set-Content -Path $probe -Encoding utf8
           python $probe
           if ($LASTEXITCODE -ne 0) { throw 'Real public Twitch IRC read failed' }
+
+
+  # Actual official Ollama CPU inference + original operator-facing Tk GUI.
+  # Only on the disposable Windows CI machine; never modify the user's PC.
+  ollama-real-local-e2e:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      PYTHONPATH: src
+      PYTHONUTF8: '1'
+      OLLAMA_NUM_GPU: '0'
+      OLLAMA_HOST: '127.0.0.1:11434'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          architecture: x64
+      - name: Download verified official portable Ollama into throwaway CI folder
+        shell: pwsh
+        timeout-minutes: 12
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $zip = Join-Path $env:RUNNER_TEMP 'ollama-windows-amd64.zip'
+          $url = 'https://github.com/ollama/ollama/releases/download/v0.20.2/ollama-windows-amd64.zip'
+          Invoke-WebRequest -Uri $url -OutFile $zip -MaximumRedirection 5
+          $actual = (Get-FileHash -Path $zip -Algorithm SHA256).Hash
+          $expected = 'F26EAD8BAA55E919828FFE88CDDF3E588444891E43E19A059F1D6C933FB1A5B6'
+          if ($actual -ne $expected) { throw 'Official Ollama binary SHA256 mismatch' }
+          $folder = Join-Path $env:RUNNER_TEMP 'ollama-portable'
+          Expand-Archive -Path $zip -DestinationPath $folder -Force
+          if (-not (Test-Path (Join-Path $folder 'ollama.exe'))) {
+            throw 'Official portable Ollama CLI missing'
+          }
+          Write-Host 'Official CPU-only Ollama portable SHA256 verified on isolated CI'
+      - name: Actually infer Korean using real Ollama and existing AISTING Tk buttons
+        shell: pwsh
+        timeout-minutes: 18
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $cli = Join-Path $env:RUNNER_TEMP 'ollama-portable\ollama.exe'
+          $env:OLLAMA_MODELS = Join-Path $env:RUNNER_TEMP 'ollama-models'
+          $env:LOCALAPPDATA = Join-Path $env:RUNNER_TEMP 'AISTING-real-local-AI'
+          New-Item -ItemType Directory -Path $env:LOCALAPPDATA -Force | Out-Null
+          $server = Start-Process -FilePath $cli -ArgumentList 'serve' -PassThru -WindowStyle Hidden
+          try {
+            $healthy = $false
+            for ($i=0; $i -lt 45; $i++) {
+              try {
+                $probe = Invoke-RestMethod -Uri 'http://127.0.0.1:11434/api/tags' -TimeoutSec 2
+                $healthy = $true
+                break
+              } catch {
+                Start-Sleep -Seconds 2
+              }
+            }
+            if (-not $healthy) { throw 'Real local Ollama server did not become healthy' }
+            & $cli pull qwen2.5:0.5b
+            if ($LASTEXITCODE -ne 0) { throw 'Actual free 0.5B Ollama model pull failed' }
+            $script = Join-Path $env:RUNNER_TEMP 'aisting_real_ollama_gui.py'
+            @'
+          import queue
+          import time
+          from tkinter import ttk
+          from ai_broadcaster.desktop import AistingApp
+          from ai_broadcaster.offline_settings import load_settings
+          from ai_broadcaster.twitch_readonly import TwitchChatLine
+          from ai_broadcaster.desktop_chat_tab import LocalChatTab
+
+          def find_button(node, name):
+              found = []
+              def scan(widget):
+                  if isinstance(widget, ttk.Button) and widget.cget("text") == name:
+                      found.append(widget)
+                  for child in widget.winfo_children():
+                      scan(child)
+              scan(node)
+              assert len(found) == 1, (name, len(found))
+              return found[0]
+
+          app = None
+          try:
+              app = AistingApp()
+              app.withdraw()
+              find_button(app, "내 캐릭터").invoke()
+              app._persona_mode.set("직접 만들기")
+              expected = {"name": "CI한국어방송인", "style": "간결하고 명확한 한국어",
+                          "character": "친절한 가상 방송 진행자"}
+              for key, value in expected.items():
+                  widget = app._persona[key]
+                  widget.delete(0, "end")
+                  widget.insert(0, value)
+              find_button(app, "캐릭터 확정·저장").invoke()
+              assert load_settings()["persona"] == expected
+              find_button(app, "실제 채팅·AI").invoke()
+              tab = app._real_chat_tab
+              assert isinstance(tab, LocalChatTab) and tab.winfo_exists()
+              tab._model_name.set("qwen2.5:0.5b")
+              tab._input.set("안녕. 한국어로 한 문장만 인사해 줘.")
+              find_button(tab, "텍스트 전송").invoke()
+              deadline = time.monotonic() + 155
+              while time.monotonic() < deadline and tab._last_reply is None:
+                  app.update()
+                  time.sleep(.15)
+              assert tab._last_reply and tab._last_reply.strip(), (
+                  "Existing AISTING Tk button did not obtain a real Ollama reply"
+              )
+              assert "AI:" in tab._dialog.get("1.0", "end"), (
+                  "Real Ollama reply was not rendered in AISTING chat window"
+              )
+              print("REAL_OLLAMA_TK_KOREAN_REPLY_CHARS:", len(tab._last_reply))
+              # Run the live-viewer FIFO through the same REAL Ollama instance.
+              # This particular chat is a CI test fixture; the separate Twitch
+              # job proves actual public internet chat arrivals.
+              tab._last_reply = None
+              inbox = queue.SimpleQueue()
+              inbox.put(TwitchChatLine("ciroom", "testviewer", "안녕하세요, AI"))
+              inbox.put(None)
+              import threading
+              worker = threading.Thread(target=tab._work_twitch_ai,
+                                        args=("qwen2.5:0.5b", inbox), daemon=True)
+              worker.start()
+              deadline = time.monotonic() + 155
+              while time.monotonic() < deadline and tab._twitch_replied < 1:
+                  app.update()
+                  time.sleep(.15)
+              assert tab._twitch_replied == 1 and tab._twitch_ai_failures == 0, (
+                  "Real model did not answer chat through AISTING viewer FIFO"
+              )
+              assert "AI → [트위치] testviewer:" in tab._dialog.get("1.0", "end")
+              print("REAL_OLLAMA_VIEWER_FIFO_REPLIES:", tab._twitch_replied)
+              assert not app.settings["streaming_enabled"]
+          finally:
+              if app is not None:
+                  app.destroy()
+          '@ | Set-Content -Path $script -Encoding utf8
+            python $script
+            if ($LASTEXITCODE -ne 0) { throw 'Real AISTING GUI + local Ollama inference failed' }
+          } finally {
+            if (-not $server.HasExited) {
+              Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
+            }
+          }
