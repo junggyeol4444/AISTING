@@ -408,3 +408,46 @@ GitHub repo `junggyeol4444/AISTING` main 고정. 이번 코드 기준 커밋 `c9
 
 ### ⑨ 원래 AISTING 예약 생성 대화 유지
 사용자 최우선 희망은 기존 AISTING 예약 생성 원본 채팅에서 매시간 계속하고 타 대화로 임의 이동하지 않는 것. 대화 길이·플랫폼 차원에서 불가능한 경우 원래 문맥에 접근한 척하지 말고 본 GitHub 문서와 원본 기획·로드맵·main 이력·실제 CI를 먼저 읽어 이어가며, 이동 사유를 실제 확인 가능한 수준에서만 명시할 것. 이번 실행에서 예약을 만들거나 변경·종료하지 않았음.
+
+## 19. 2026-10-20 원본 대화 연속 회차 — 실제 Cubism 입·음성 샘플 시각과 OBS 관찰 시간 교차 검증
+
+### ① 원래 기획/사용자 강제 지시·금지
+사용자는 계속 개발·검증을 요구하며 **복수 파일의 실질 개발을 묶어 → 전체 회귀검사 → 실패 수정 → 전체 회귀·Windows EXE/GUI/실연동 재검증**하기를 반복 지시했다. `docs/ORIGINAL_PLAN.txt`, `docs/ROADMAP_100.md`, `config/roadmap.json`, 누적 Tk Windows 10/11 x64 AISTING.exe, 저장된 캐릭터 이름·말투·성격/SQLite/설정, 공식 Open-LLM-VTuber+Live2D, 권리 있는 한국어 GPT-SoVITS, OBS 실제 오디오·영상, CHZZK/SOOP/Twitch/YouTube 중복 포함 채팅 FIFO와 사용자 선택 플랫폼을 보존. 신규 브랜치·브랜치 삭제·강제푸시·기존 소스 원복·재개발/HTML앱·계정 로그인/유료 API·실방송/녹화 시작·채팅 게시·사용자 PC 접속·권리 없는 음성 훈련 금지. 기존 시간당 예약과 타 프로젝트 예약 변경 금지. 원래 대화가 지원되는 동안 원래 대화에서 이어가고, 시스템이 다른 대화에 표시할 경우 전체 문서로 먼저 인수인계한다.
+
+### ② 누적 실제 코드 개발 완료 및 ⑤ 정확한 main/파일·커밋
+- 실제 저장소 `junggyeol4444/AISTING`의 기존 `main`에 소스·테스트 4파일을 **단일 묶음 커밋** `349ccda36abc4bef0368dbaca265b5d5aa64664d`로 변경:
+  - `src/ai_broadcaster/original_plan_frontend.py`: 실제 공식 WebView2/Cubism 관찰 시 RMS와 입 움직임이 **동일 샘플에서 변화**한 시점에 `time.monotonic()`을 기록, 해당 첫/마지막 실측 시각을 기존 IPC JSON에 추가. `OfficialLipSyncEvidence`에 실제 관측 시작·끝 필드를 추가하되 구버전 응답은 0으로 유지해 별도 실측의 성공 증거로 쓰지 않음. 비정상 숫자/NaN/역전된 시각은 거부.
+  - `src/ai_broadcaster/original_plan_full_pipeline.py`: OBS 미터가 양성이라고 해도 **AI 질문 전체 시간대가 아닌, 실제 Cubism RMS↔입 겹침이 측정된 시각과 OBS 양성 음성 구간이 중첩되어야만** `temporal_overlap_candidate`를 true 처리. 공식 시각 정보가 없는 예전 IPC 답변은 동시 관찰 인증에 사용하지 않음. 단, OBS 오디오 미터는 정밀 샘플 타임스탬프가 아닌 관찰 구간이므로 **동일 음원·발화·방송 송출의 완전한 인과적 증명은 아직 아니다**.
+  - `tests/test_aisting_native_live2d.py`/ `tests/test_aisting_official_chat_obs_pipeline.py`: 실제 샘플 시각 기록과 비어 있는/부정확한 응답의 fail-closed, 양성 신호만으로 거짓 인증하지 않는 검사 추가.
+- 첫 전체 CI 테스트 실패 후 **수정 묶음 커밋** `0e5e7dfe35ecd5e5d4bb5c5ec808a099c8dfc361` (기존 main에 빠른전진, 원본 내용 유지):
+  - `tests/test_aisting_native_live2d.py`: 모의 `time.monotonic` 호출 시퀀스가 새 실제 관찰 2회 추가를 반영하도록 수정. 실제 제품 로직의 관찰 샘플 수를 인위적으로 줄이지 않음.
+  - `tests/test_aisting_native_live2d.py`: NaN·무한대·음수·문자열·역전된 시간 필드 입력 거부 검사 추가.
+  - `src/ai_broadcaster/original_plan_full_pipeline.py`: OBS 독립 모니터가 시작 준비 지연·오류로 거부될 때 취소 이벤트를 설정하고 관찰 스레드를 깨워 불필요한 세션이 대기하지 않도록 보강. 승인하지 않은 질문 재전송 없음.
+  - `tests/test_aisting_official_chat_obs_pipeline.py`: 실제 OBS 구간과 겹치지 않는 과거 Cubism 샘플은 전체 동시 성공으로 올리지 않는 회귀 검사 추가.
+- 원래 캐릭터 설정, 저장 데이터, SQLite, 공식 모델 및 OBS 사용자 설정을 수정하지 않고 GitHub 원본 코드·테스트만 수정. 새 브랜치/강제푸시 없음.
+
+### ③ 진행/CI 실패 및 수정 결과, ⑥ 실제 Windows EXE와 로그
+- **실패 증거** 첫 버전 회귀: https://github.com/junggyeol4444/AISTING/actions/runs/39359362221 — `completed/failure`, `Ran 2384 tests`, 실패 1건 (`test_lipsync_probe_samples_real_viewer_values_not_random`: 새 Cubism `time.monotonic` 호출로 모의 시계 시퀀스와 샘플 수가 어긋남). 첫 버전 Windows https://github.com/junggyeol4444/AISTING/actions/runs/39359362233 역시 `failure`. **실패를 숨기지 않고 다시 코드·테스트를 수정한 후 모두 재실행**.
+- **최신 전체 회귀 PASS**: https://github.com/junggyeol4444/AISTING/actions/runs/39359568732 — `completed/success`, 로그 `Ran 2386 tests`, `OK (skipped=2)`, **실패 0**.
+- **동일 코드 기준 Windows 전체 PASS**: https://github.com/junggyeol4444/AISTING/actions/runs/39359568698 — `completed/success`. `windows-exe`(기존 Windows x64 EXE 빌드·실행/네이티브 Tk GUI 실버튼 격리 검사), `ollama-real-local-e2e`(격리 CI Windows에서 실제 로컬 Ollama 한국어 추론), `obs-real-readonly`(CI 실제 OBS 화면·입력 읽기 전용), `twitch-public-readonly`, `korean-public-chat-readonly`(치지직·SOOP 공개 수신) **5개 작업 모두 PASS**.
+- 새 Windows artifact `AISTING-Windows-EXE-integrated`, id `12236263884`, 19,653,918바이트, GitHub artifact **ZIP** SHA-256 `4d0ea0ddca27a2c37ba951f7acdb6bddafeacb7571b7ddec770b6a3138caabc2`. EXE 단독 파일 해시는 확인하지 않았으므로 ZIP 해시와 혼동 금지.
+- 실제 소스 검증 커밋 `0e5e7dfe35ecd5e5d4bb5c5ec808a099c8dfc361`. 이 문서 업데이트 자체가 main HEAD를 다시 이동하므로 다음 회차에 저장된 최신 HEAD 확인.
+
+### ④ 남은 기능·오류·미실증
+- 아직 **운영자 승인 한국어 GPT-SoVITS 실제 모델/권리 확보된 참조 음성에서 한국어 WAV 실제 합성·음질/지연**, 공식 Cubism 모델의 해당 발화와 OBS 프로그램 음성/영상 실제 동일 출력, 설치된 사용자 Windows EXE에서 전체 버튼 흐름 **실제 장비 실증 안 됨**. 기존 CI Windows Tk 실제 버튼은 외부 GPT-SoVITS/Live2D/OBS 동일 음성을 모의; 실제 Ollama/OBS 각각 독립 검사임. 모의 성공을 실사용 전체 경로 PASS라고 표시 금지.
+- 실제 YouTube 소유 API 키/활성 생방송의 인증 채팅 수신, 네 플랫폼 100~500명 동시 수신·1~3초 실응답·24시간 스트레스, 여러 회차/종료 후 재기동 실운영 미검증.
+- OBS 관찰 구간과 Cubism 실측 타임스탬프 겹침은 **음성 원본/샘플 파형 동일성 검증이 아닌 보수적 후보**. 실제 음성 소스 확인과 시각·오디오 지연 정밀 실측 필요. 승인되지 않은 녹화·방송은 금지.
+- 기존 원본 `config/roadmap.json`의 승인 pending 항목은 변경하지 않음.
+
+### ⑦ 사용자 자료/설정 보존
+저장된 캐릭터 이름·말투·성격, SQLite 기억, 기존 설정·원본 기획·100단계 기록, 사용자 소유 모델·OBS 프로젝트/오디오 입력을 보존. CI는 격리 Windows/모의 장치/읽기 전용 공개 채팅만 접근, 계정 로그인·실제 송출/녹화·채팅 게시나 권리 없는 음성 모델 학습 없음.
+
+### ⑧ 다음 회차의 구체적 복수 작업
+1. 공식 WebView2/Cubism 실제 동작 모델과 권리 확인된 GPT-SoVITS 한국어 음성 서버/OBS 기존 음성 입력이 갖춰진 승인 환경을 사용할 수 있으면 동일 발화의 실제 TTS → 입 움직임 → OBS 음성/화면 관찰 사용자 흐름을 실행해 지연/음성 일치/오류를 재현·수정. 아니면 실제 모델 통합 실증은 미완료 유지.
+2. 기존 Tk GUI 장시간 AI/OBS 관찰 중 Cancel/Stop/창 닫기 이후 작업 스레드·세션 정리/재실행, SQLite 및 캐릭터 재시작 영속 보존과 음성 길이 지연의 교차 회귀 추가.
+3. YouTube API cursor/메시지 ID/Stop 및 치지직·SOOP·Twitch 네 플랫폼 멀티세션 FIFO 장기 부하·실제 공개 프로토콜/버전 오류 검사. 실제 YouTube 키가 없어도 API 시뮬레이션만 PASS 구분.
+4. 여러 실질 코드·테스트를 묶음 개발한 뒤 **전량 회귀검사→Windows EXE/실제 Tk GUI→Ollama/OBS 읽기/플랫폼 실채팅 전량 검사**, 실패 시 묶음 수정 후 재검증. SHA 반복 보고 대신 남은 실제 기능 완성을 우선.
+5. 새 run/artifact/커밋/인수인계 파일을 누적 저장, 다른 프로젝트 예약 변경 금지.
+
+### ⑨ 원래 예약 생성 대화 유지·불가능 시 인계
+사용자가 AISTING 예약을 만든 원래 이 대화에서 계속 작업·결과 보고하는 것을 최우선으로 요구. 시스템의 채팅 길이/플랫폼 제약으로 다른 대화에 결과가 나타날 때는 이동을 임의로 했다고 꾸미지 말고 본 전체 GitHub 인계와 원본 문서·최신 main/CI 확인 후 **전체를 인수인계하고 다음 작업 그대로 이어감**. 이번 작업 중 기존 매시간 예약을 수정/종료하지 않음.
