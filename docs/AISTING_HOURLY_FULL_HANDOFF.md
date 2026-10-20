@@ -838,3 +838,28 @@ GitHub `junggyeol4444/AISTING`, **기존 main에만 빠른전진 반영**:
 - 실제 모델이 없거나 캐릭터를 아직 확정 저장하지 않은 사용자가 문제를 알아볼 수 있도록 상수 안내 `캐릭터 확정 저장·연동 설정 확인`을 복원하면서 인증 키/URL/예외 원문 비노출 정책 유지.
 - 수정 파일: `src/ai_broadcaster/desktop_chat_tab.py` 하나만 변경. 원본 사용자 캐릭터/SQLite/설정과 로드맵은 무변경. GitHub main 에 반영 후 전체 회귀 + Windows EXE GUI 5-job **반드시 새 HEAD 재검증**.
 - 실패 결과를 완성 또는 성공으로 표현 금지. 실제 음성·Live2D/OBS 동일발화·실소유 YouTube 인증 및 수백명/24시간 운영은 여전히 미실증.
+
+## 42. 2026-10-21 기존 누적 개발 원본 전체 병합 인수인계 — 28~38절 보존본
+
+이전 2026-10-20 18:30부터 2026-10-21 07:30까지 각 회차에서 작성한 **모든 추가 인수인계 파일 원문 14개**를 삭제·축약 없이 `docs/hourly-handoff-appendices/`에 Git blob 원본별 보존하였다. 각 회차의 SHA, 진행/미검증, 로컬 패치 형태, 쓰기 차단 이력은 시간 당시 기록이며 현재 최신 코드 사실과 혼동하지 않는다.
+
+다음 저장소 경로 파일을 1~27절, 39~41절과 함께 순서대로 읽는다.
+
+- `docs/hourly-handoff-appendices/AISTING_20261020_1830_HANDOFF_APPEND.md`
+- `docs/hourly-handoff-appendices/AISTING_20261020_1930_HANDOFF_APPEND.md`
+- `docs/hourly-handoff-appendices/AISTING_20261020_2030_HANDOFF_APPEND.md`
+- `docs/hourly-handoff-appendices/AISTING_20261020_2130_HANDOFF_APPEND.md`
+- `docs/hourly-handoff-appendices/AISTING_20261020_2230_HANDOFF_APPEND.md`
+- `docs/hourly-handoff-appendices/AISTING_20261020_2330_HANDOFF_APPEND.md`
+- `docs/hourly-handoff-appendices/AISTING_20261021_0030_HANDOFF_APPEND_31.md`
+- `docs/hourly-handoff-appendices/AISTING_20261021_0130_HANDOFF_APPEND_32.md`
+- `docs/hourly-handoff-appendices/AISTING_20261021_0230_HANDOFF_APPEND_33.md`
+- `docs/hourly-handoff-appendices/AISTING_20261021_0330_HANDOFF_APPEND_34.md`
+- `docs/hourly-handoff-appendices/AISTING_20261021_0430_HANDOFF_APPEND_35.md`
+- `docs/hourly-handoff-appendices/AISTING_20261021_0530_HANDOFF_APPEND_36.md`
+- `docs/hourly-handoff-appendices/AISTING_20261021_0630_HANDOFF_APPEND_37.md`
+- `docs/hourly-handoff-appendices/AISTING_20261021_0730_HANDOFF_APPEND_38.md`
+
+2026-10-21 최신 `main`에는 기존 4개 채팅 수신기, Windows Tk `전체` 선택/4채널 연결, 단일 AI FIFO, Stop 공통 시간, 오류 인증정보 비노출 및 원본 캐릭터·기억 보호 기능이 누적 반영됐다. 누락된 **기존 v14까지의 격리 테스트 의도**를 반영하는 다중 플랫폼 2,000건 FIFO/AI 응답 통합 회귀검사를 추가한다. 현재까지 별도 Windows/YouTube 실인증/GPT-SoVITS 실제 음성·Cubism 동기화·OBS 실제 같은 발화·24시간 수백명 실증은 완료가 아니다. 원본 roadmap.json과 010 승인 상태 변경 금지.
+
+소스 누적 변경은 완료한 구간만 완료라고 표시하고, 단계별 SHA/HEAD 자체를 기능 성과로 제시하지 않는다. GitHub HEAD 확인은 충돌·덮어쓰기 방지 목적일 뿐이다.
