@@ -496,3 +496,42 @@ GitHub repo `junggyeol4444/AISTING` main 고정. 이번 코드 기준 커밋 `c9
 
 ### ⑨ 원래 대화 유지/불가피한 대화 이동 시
 사용자는 **예약 생성 바로 이 AISTING 대화**에서 매시간 진행하고 다른 대화로 임의 이전하지 말라고 최우선 지시. 이 실행에서 원래 대화를 바꾸지 않았으며 일정 및 다른 프로젝트 예약 수정/종료 없음. 플랫폼 길이/예약 응답 연결 제약으로 다른 대화에 출력될 경우 이전 대화를 읽을 수 있다고 꾸미지 말고 **본 GitHub full handoff와 원본 기획/로드맵/최신 main/Actions**를 먼저 읽고 작업 복원, 사용자에게 재설명 요구 금지. 이동 사유도 확인 가능한 실제 플랫폼 제약만 보고.
+
+## 21. 2026-10-20 12시 이후 연속 실행 — Stop 후 미완료 AI/SQLite 생명주기 보호와 Windows Tk 2,048 FIFO 부하검사
+
+### ① 사용자 기획·강제 지시·금지 (기존 전체 문서 누적 유지)
+원래 AISTING 예약 생성 대화에서 사용자가 "계속" 지시. 기존 고정 요구: 여러 **실질 기능을 묶음 개발한 뒤 전체 회귀검사, Windows 10/11 x64 네이티브 EXE·실제 Tk 버튼·로컬 Ollama·공식 OBS 읽기 전용·실제 가능한 공개 채팅 전체 검사, 실패 즉시 수정·전체 재검증**. 저장소 `junggyeol4444/AISTING`, `main`만 빠른전진 유지, 원본 `docs/ORIGINAL_PLAN.txt`, `docs/ROADMAP_100.md`, `config/roadmap.json`, 기존 캐릭터 이름/말투/성격 1회 저장·SQLite 기억·앱 설정, 공식 Open-LLM-VTuber+Live2D, 권리 확보 한국어 GPT-SoVITS, OBS 오디오/영상, YouTube/치지직/SOOP/Twitch 중복 포함 FIFO, 플랫폼 선택 목표 불변. 임의 브랜치 생성·삭제/강제푸시/코드 원복/재개발·웹/HTML 대체/유료 API·로그인/사용자 PC 접속/실제 송출·녹화 시작/채팅 게시/권리 없는 음성 모델 훈련 및 사용자 데이터 임의 변경 금지. 기존 매시간 예약과 타 프로젝트 예약 변경·종료 금지. 예약을 만든 **원래 대화**에서 계속하는 것이 사용자 최우선 요구; 플랫폼 제약으로 다른 대화에 출력되면 본 GitHub full handoff를 먼저 읽고 복원, 이전 대화 내용을 읽은 척하거나 사용자에게 재설명 요구하지 않음.
+
+### ② 이번 실제 개발 및 ⑤ git 파일·커밋
+- `9e5eec522a170a20da060582a22cbe86b2a1c8f7`, 다음 두 파일을 기존 **main**에 보존형 수정:
+  * `src/ai_broadcaster/desktop_chat_tab.py`: 새/중지된 공개 채팅 세션과 **실제로 아직 Ollama/공식 Live2D AI 작업·SQLite 기억 저장을 끝내지 못한 작업자**를 분리하여 추적하는 `_twitch_active_workers` lifecycle set 추가. Stop 버튼은 즉시 UI 읽기 중지 상태로 전환하지만, AI worker가 실제 종료해 종료마커를 Tk 메인 이벤트 루프에서 처리하기 전에는 **새 공개 채팅 AI 연결과 기억 전체 삭제 거부**. 이전 AI 세션 작업이 메모리에 작성 중인데 새 채팅이 같은 기억을 다시 쓰거나 운영자가 대화를 삭제하는 경합을 방지. 기존 응답 FIFO와 중복 채팅 보존 및 기존 Stop UI 동작 유지. 실제 worker `finally`에서 내부 종료마커 보내고, Tk 수신 큐에서는 이전 세션의 늦은 일반 채팅 결과를 여전히 무시하면서도 **해당 종료마커는 반드시 처리**해 잠금 해제. 종료 마커는 대화 내용·사용자 설정을 변경하지 않음.
+  * `tests/test_aisting_twitch_ai_integration.py`: 같은 시청자의 동일 채팅 **2,048건 모두 순서·중복 보존·응답 수량** 검사; 이전 AI 작업이 실제 메모리 저장 과정에서 블로킹된 상태에서 Stop→기억 삭제·재연결 차단→worker 종료 이벤트→재연결 잠금 해제 테스트 추가. 테스트 내부 모델은 모의라 지연 1~3초 실제 인증 실증은 아님.
+- `22a50a3ff89106b8827bddee0aea54a18f691ce6`, `scripts/gui_official_pipeline_click_windows.py`: 실제 GitHub Actions Windows Tk 앱을 열고 생산 코드의 **공개 채팅 Stop 버튼과 기억 삭제 Tk 버튼 직접 클릭, 블로킹된 이전 AI 응답 작업 존재 시 기억 삭제 및 재연결 차단, 작업 완료 후 잠금 해제**를 검증. AI 모델 응답만 모의, 실제 Windows GUI / 이벤트 루프는 실행.
+- `d4f8c35b22a223f231c00b57b80282936fe16a76`, `scripts/gui_official_pipeline_click_windows.py`: Windows GUI 검사에서 `AistingApp`과 `operator_settings.DEFAULT_FILE`/ `conversation_memory.DEFAULT_MEMORY_FILE`의 모듈 import를 **`LOCALAPPDATA` 테스트 전용 경로 고정 이후**로 이동. 실제 설정·SQLite 기본 경로가 disposable CI 폴더 밖 사용자 폴더를 가리키면 검사 실패. 기존 CI 모의 캐릭터/설정/SQLite 내용 해시 불변 검사 유지. 실제 사용자 폴더 삭제·변경 없음.
+- 위 파일만 수정; 사용자의 원본 `docs/ORIGINAL_PLAN.txt`, `docs/ROADMAP_100.md`, `config/roadmap.json`, 확정된 캐릭터/SQLite/OBS 원본 자료는 수정하지 않았다.
+
+### ③ 전체 검증 결과 및 ⑥ Actions URL, Windows EXE 실제 artifact·SHA
+- 앞선 소스 두 파일 기준 전량 회귀: https://github.com/junggyeol4444/AISTING/actions/runs/39366884886 : `completed/success`, **2,393 tests, skipped 2, failures 0**.
+- Windows 실사용 버튼·AI worker-drain 추가 후 전량 회귀: https://github.com/junggyeol4444/AISTING/actions/runs/39367157853 : `completed/success`, **2,393 tests, skipped 2, failures 0**.
+- 최종 `LOCALAPPDATA` 경로 격리 보완이 포함된 실제 최신 코드 기준 전량 회귀: https://github.com/junggyeol4444/AISTING/actions/runs/39367336333 : `completed/success`, **2,393 tests, skipped 2, failures 0**.
+- **최종 Windows EXE/GUI/공개수신/OBS/Ollama 통합**: https://github.com/junggyeol4444/AISTING/actions/runs/39367336518 : `completed/success`이며 다음 5개 job 모두 `completed/success`: `windows-exe` (네이티브 Windows EXE 실제 빌드·기존 Tk 버튼 경로), `obs-real-readonly` (disposable Windows CI의 실제 OBS 프로그램 장면·프레임/소스 읽기), `ollama-real-local-e2e` (Windows CI에서 실제 로컬 Ollama 추론), `twitch-public-readonly`, `korean-public-chat-readonly`(치지직·SOOP 공개 채팅 읽기).
+- 최신 Windows 네이티브 Tk GUI 로그 (외부 AI/Live2D/OBS 동일 발화는 모의): `GUI_REAL_WINDOWS_PROFILE_PATH_ISOLATED_PASS`, `GUI_NATIVE_CANCEL_NO_LATE_SUCCESS_PASS (SIMULATED MODEL)`, `GUI_STOP_INFLIGHT_SQLITE_DELETE_RECONNECT_BLOCKED_PASS`, `GUI_STOP_INFLIGHT_WORKER_DRAIN_RECONNECT_READY_PASS`, `CHARACTER_SETTINGS_SQLITE_BYTES_UNCHANGED_PASS`. 실제 Windows GUI 버튼/이벤트 흐름은 실행, 실제 TTS→Cubism→OBS 하나의 발화는 실행하지 않음.
+- 실제 Windows Actions artifact `AISTING-Windows-EXE-integrated`, ID **12239449527**, size **19,662,327 bytes**, artifact **ZIP SHA-256** `8a7cef54e6450771f2ca1152667dd2a0ca3b3d9cd28bc7191297296efffde4b0`. 이 값은 **ZIP digest이고 AISTING.exe 단독 파일 SHA가 아님**. 위 workflow run Artifacts에서 다운로드.
+- 기능 수정 기준 `main` HEAD `d4f8c35b22a223f231c00b57b80282936fe16a76`. 인수인계 문서 업데이트 때문에 이후 실제 HEAD가 다시 바뀌며 최신은 다음 회차에서 확인할 것. 커밋 확인만으로 완료라고 주장하지 말 것.
+- 이번 회차 전체 회귀/Windows 경로의 새 코드 실패 없음. 이전 성공한 검사만 재사용한 것이 아니라 위 각 최신 커밋에서 전량 다시 실행해 실제 확인.
+
+### ④ 남은 기능·오류·실증 제한
+- **실제 운영자 소유/권리 확보 음성 참조 모델**이 설치된 Windows PC의 GPT-SoVITS **실제 한국어 발화** → 공식 Live2D Cubism 실제 동기 입 움직임 → OBS **동일한 음성**의 프로그램 오디오·영상 경로, Windows AISTING.exe로 전 기능 사용자 조작 실증은 **여전히 미완료**. 이번 Windows Actions의 실제 OBS 읽기와 로컬 Ollama/GUI 버튼 성공은 서로 독립된 CI 작업이며 TTS/Live2D/OBS 동일 발화 전체 실증이 아니다. 음성 합성·모델 자체 음질/시간 지연 증명 아님. 모델/권리 자료/사용자 PC를 임의 요구·접속·훈련하지 말 것.
+- YouTube 소유 계정의 키를 이용한 활성 라이브 채팅 **실제 인증 수신** 미완료. 네 플랫폼 실제 100~500명 1~3초 응답/24시간 운영 스트레스 미실증. 2,048건의 동일 채팅 FIFO는 **로컬 모의** 검사로서 실제 플랫폼/모델 부하가 아니다.
+- Stop 후 이전 모델 요청을 **취소/되돌리는 것은 불가능할 수 있음**. 이번 변경은 실제 완료 전 메모리 삭제/새 모델 연결을 막아 교차 write 위험을 낮춘 것이며 모델 비정상 hang의 강제 종료 기능은 아님. 동일 발화 음원 샘플 검증/24시간 실제 고장 회복 정책은 후속 작업.
+- 사용자 데이터/설정/캐릭터/SQLite 원본 보존, CI는 disposable 임시 사용자 폴더와 모의 외부 발화만 사용. 승인 없이 방송·녹화·채팅 게시·외부 계정 로그인 없음.
+
+### ⑧ 다음 회차에서 반드시 진행할 복수 작업
+1. 진짜 승인된 GPT-SoVITS/Live2D/OBS 모델이 있는 환경에서 동일 한국어 음성의 전송→음성 합성→입 움직임→OBS 오디오/영상 타임라인을 **실제 동일 발화로 실증하고 오류 수정**. 없는 경우에는 그 한계를 명시하고 코드·검사·관찰 품질만 개선, 가짜 PASS 주장 금지.
+2. 원래 Win Tk EXE의 캐릭터/SQLite 재시작 영속 저장을 실제 앱 프로필 경로의 사용 흐름으로 검사. 채팅 Stop 중단/재시작 작업자/SQLite 파일 잠금, 수천 건 FIFO, 사용자 설정 불변과 정확한 GUI 상태 회복을 함께 확인.
+3. 플랫폼 YouTube page/token/ID 중복 보존·중단/재연결/실제 공개 읽기 프로토콜, 한국 2플랫폼/Twitch 및 24h 장기 작업 큐 메모리/CPU/지연·오류 회복 검증. 키 없이 모의 YouTube 테스트를 실제 인증이라고 하지 말 것.
+4. 매회 소스 복수 기능 작업을 묶어 진행한 후 전량 회귀·실제 Windows EXE/GUI·CI OBS/Ollama/공개 채팅 전체 검사, 중간 실패 시 원인 수정 후 **다시 전체를 재검증**. 해당 Actions·Artifact ID/ZIP digest·최종 SHA·변경 파일·남은 미실증을 같은 GitHub handoff에 누적.
+5. 기존 예약 시간 유지·원래 대화 연결 최우선, 다른 프로젝트 예약 변경하지 않음. 새 채팅에 나타났다면 이전 전체 인수인계와 main 기획 문서부터 읽고 동일 프로젝트를 이어갈 것.
+
+### ⑨ 대화 유지/예약
+이번 실행은 기존 AISTING 사용자 대화 안에서 계속 진행. 예약 실행 주기 변경/생성/종료, 타 프로젝트 예약 변경·삭제 없음. 플랫폼 제약으로 새 대화에 출력 시 본 문서를 먼저 읽고 해당 변경 사유를 확인 가능한 범위에서 기록, 사용자가 다시 설명하도록 요구하지 않음.
