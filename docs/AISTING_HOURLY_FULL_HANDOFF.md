@@ -887,3 +887,18 @@ GitHub `junggyeol4444/AISTING`, **기존 main에만 빠른전진 반영**:
 ### 검증 경계와 남은 과제
 - 실제 소유 YouTube API 인증/생방송 활성 채팅, 정당한 모델의 GPT-SoVITS 한국어 합성→공식 Live2D 실제 입 움직임→OBS 동일 발화 오디오·화면 실증, 수백명 1~3초 및 24시간 실운영은 여전히 미검증.
 - 사용자 계정 로그인·방송 시작·녹화·채팅 송신·무단 TTS 훈련·자료 업로드는 수행하지 않는다. roadmap.json 원본 승인 상태 변경하지 않음.
+
+## 45. 2026-10-21 누적 운영 기능 개발 후 전체 회귀·Windows EXE 5작업 최종 성공 검증 (44절 후속)
+
+### 실제 반영된 기존 프로그램 변경 및 검사 수준
+- 44절 코드 묶음(4플랫폼 개별 수신 종료 알림, 안전 예외 표시, API 키 종료시 정리, 음성·기억 삭제 실패 원문 차단)까지 `main`에 실제 통합.
+- 해당 코드 전체 회귀 [GitHub Actions run 39516049109](https://github.com/junggyeol4444/AISTING/actions/runs/39516049109): `Ran 2440 tests`, `OK (skipped=2)`, 실패 0. 신규 격리검사 4건 반영, 모의검사는 실방송 성공 증거가 아님.
+- Windows 5 작업 [GitHub Actions run 39516049082](https://github.com/junggyeol4444/AISTING/actions/runs/39516049082): `windows-exe`, `ollama-real-local-e2e`, `obs-real-readonly`, `twitch-public-readonly`, `korean-public-chat-readonly` **각각 success, 총 5/5**. 실제 Windows 네이티브 EXE 빌드/GUI 클릭과 가능한 읽기전용 외부 연동까지 검증. 공식 GPT-SoVITS/Live2D/OBS 전체 발화 동시 실증이란 뜻은 아님.
+- 해당 Windows Actions 산출물 `AISTING-Windows-EXE-integrated`, artifact ID `12307694096`, ZIP artifact digest `sha256:3559c44704becf753c60fbf0ff2bb35298f60377f679d4e07b7a4499eea0efb3`, 크기 19,803,615 bytes, 만료 예정 2026-11-19T23:37:55Z.
+- 직전 이전 코드 Windows run `39514469995`도 5/5 success, 과거 Windows 보이는 요소 관련 실패 `39512652161`은 43절에서 수정해 5/5 CI 재검증. 이전 성공 증거와 새 코드 성공 증거를 혼동하지 않는다.
+
+### 계속 미실증이며 다음 회차가 반드시 처리할 항목
+- 실제 소유하거나 사용 승인이 확인된 한국어 GPT-SoVITS 모델/참조 WAV → 공식 Open-LLM-VTuber Live2D Cubism 해당 발화의 입 움직임 실제 신호 → OBS **동일 발화** 영상·음성 출력은 현장 실증 완료되지 않았다.
+- 실제 소유한 YouTube API 키/승인된 생방송 `activeLiveChatId`의 인증 채팅 수신, 4플랫폼 실시간 중복 포함 전체 채팅, 수백 명 환경 1~3초 및 24시간 실운용, 로드맵 010/100 운영자 최종 승인 모두 미완료/미실증.
+- 사용자 계정 로그인·채팅 전송·방송 시작·녹화·유료 모델 설치·타인 음성 학습/권리 없는 모델 사용·외부 드라이브 연결 없음. 기존 설정/캐릭터·SQLite/원본 기획/100단계 승인 상태 보존.
+- 후속 회차는 코드에 없는 기능을 누적 구현한 뒤 전량 회귀·Windows EXE·가능한 연동을 검사, 문제 있으면 수정 후 전체 재검사할 것. 편의상 SHA 자체를 개발 결과라고 반복 보고하지 말 것.
