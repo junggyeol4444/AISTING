@@ -46,8 +46,12 @@ class FullPipelineContracts(unittest.TestCase):
 
     def test_existing_official_ai_turn_only_once_and_obs_read_only(self):
         obs = make_obs()
-        lip = SimpleNamespace(verified_signal=True)
-        send = Mock(side_effect=lambda *a, **k: (time.sleep(0.02), lip)[1])
+        def sampled_lip(*args, **kwargs):
+            time.sleep(0.01)
+            moment = time.monotonic()
+            return SimpleNamespace(verified_signal=True,
+                first_audio_mouth_monotonic=moment, last_audio_mouth_monotonic=moment)
+        send = Mock(side_effect=sampled_lip)
         with patch.object(pipeline, "OfficialObsWebsocket", return_value=obs), (
             patch.object(pipeline, "send_to_native_live2d_session_with_observation", send)
         ):
@@ -75,6 +79,19 @@ class FullPipelineContracts(unittest.TestCase):
             temporal_overlap_candidate=True,
         )
         self.assertFalse(evidence.verified_observation)
+
+    def test_lip_and_obs_positive_but_without_real_sample_times_is_unverified(self):
+        obs = make_obs()
+        lip = SimpleNamespace(verified_signal=True)
+        with patch.object(pipeline, "OfficialObsWebsocket", return_value=obs), (
+            patch.object(pipeline, "send_to_native_live2d_session_with_observation",
+                         return_value=lip)
+        ):
+            outcome = pipeline.verify_official_chat_live2d_obs(
+                "관찰 시각 없음", obs_password="local", obs_input_name="Mic",
+                operator_approved=True, voice_rights_confirmed=True)
+        self.assertFalse(outcome.verified_observation)
+        self.assertFalse(outcome.temporal_overlap_candidate)
 
     def test_active_obs_recording_denies_prompt_without_side_effect(self):
         obs = make_obs()
@@ -118,12 +135,16 @@ class FullPipelineContracts(unittest.TestCase):
 
     def test_obs_monitor_owns_separate_connection(self):
         safety, monitor = make_obs(), make_obs()
-        lip = SimpleNamespace(verified_signal=True)
+        def sampled_lip(*args, **kwargs):
+            time.sleep(0.01)
+            moment = time.monotonic()
+            return SimpleNamespace(verified_signal=True,
+                first_audio_mouth_monotonic=moment, last_audio_mouth_monotonic=moment)
         with patch.object(
             pipeline, "OfficialObsWebsocket", side_effect=[safety, monitor]
         ) as factory, patch.object(
             pipeline, "send_to_native_live2d_session_with_observation",
-            side_effect=lambda *a, **k: (time.sleep(0.02), lip)[1],
+            side_effect=sampled_lip,
         ):
             result = pipeline.verify_official_chat_live2d_obs(
                 "테스트", obs_password="local", obs_input_name="Mic",
@@ -158,7 +179,9 @@ class FullPipelineContracts(unittest.TestCase):
                 second_window.wait(2),
                 "The OBS monitor stopped before delayed Korean TTS started",
             )
-            return SimpleNamespace(verified_signal=True)
+            moment = time.monotonic()
+            return SimpleNamespace(verified_signal=True,
+                first_audio_mouth_monotonic=moment, last_audio_mouth_monotonic=moment)
 
         monitor.inspect_program_media = monitor_window
         send.side_effect = slow_official_turn

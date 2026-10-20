@@ -349,6 +349,9 @@ class NativeLive2DTests(unittest.TestCase):
         self.assertEqual(report['active_rms_samples'], 2)
         self.assertEqual(report['renderer_active_samples'], 3)
         self.assertEqual(report['overlapping_audio_mouth_samples'], 2)
+        self.assertGreater(report['first_audio_mouth_monotonic'], 0)
+        self.assertGreaterEqual(report['last_audio_mouth_monotonic'],
+                                report['first_audio_mouth_monotonic'])
 
     def test_lipsync_requires_current_renderer_engine_enabled(self):
         import json

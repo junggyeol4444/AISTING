@@ -14,6 +14,7 @@ import hashlib
 import hmac
 import http.client
 import json
+import math
 import secrets
 import threading
 import time
@@ -353,6 +354,10 @@ class OfficialLipSyncEvidence:
     changing_mouth_samples: int
     renderer_active_samples: int = 0
     overlapping_audio_mouth_samples: int = 0
+    # The real Cubism/RMS samples use Windows' shared monotonic clock.
+    # Old viewer builds return zero (not evidence of time alignment).
+    first_audio_mouth_monotonic: float = 0.0
+    last_audio_mouth_monotonic: float = 0.0
 
     @property
     def verified_signal(self) -> bool:
@@ -420,9 +425,17 @@ def _parse_official_lipsync_evidence(reply: dict) -> OfficialLipSyncEvidence:
                 or type(rms) not in (int, float) or not 0 <= rms <= 10
                 or type(mouth) not in (int, float) or not 0 <= mouth <= 20):
             raise ValueError('관측값 범위 오류')
+        first = reply.get('first_audio_mouth_monotonic', 0.0)
+        last = reply.get('last_audio_mouth_monotonic', 0.0)
+        if (type(first) not in (float, int) or type(last) not in (float, int)
+                or not math.isfinite(first) or not math.isfinite(last)
+                or first < 0 or last < first
+                or (overlapping > 0 and ((first == 0) != (last == 0)))):
+            raise ValueError('실제 음성·입 움직임 관찰시각 오류')
         return OfficialLipSyncEvidence(
             samples, model_seen, canvas_seen, ids, float(rms), active,
-            float(mouth), changes, renderer_active, overlapping
+            float(mouth), changes, renderer_active, overlapping,
+            float(first), float(last)
         )
     except (KeyError, ValueError, TypeError) as exc:
         raise FrontendUnavailable('공식 Live2D 검사 결과에 유효하지 않은 데이터가 있습니다.') from exc
@@ -461,6 +474,7 @@ def _observe_actual_live2d_model(window, seconds: float) -> dict:
     model_seen = canvas_seen = False
     ids = active = changing = renderer_active = overlapping = 0
     peak_rms = 0.0
+    first_overlap = last_overlap = 0.0
     low = high = previous = None
     deadline = time.monotonic() + seconds
     script = _official_live2d_probe_script()
@@ -493,6 +507,10 @@ def _observe_actual_live2d_model(window, seconds: float) -> dict:
                         if (lipsync_enabled and type(rms) in (int, float)
                                 and 0.01 < rms <= 10):
                             overlapping += 1
+                            # Capture the real Cubism mouth+RMS sample time.
+                            last_overlap = time.monotonic()
+                            if first_overlap == 0.0:
+                                first_overlap = last_overlap
                     previous = m
                 else:
                     previous = None
@@ -513,6 +531,8 @@ def _observe_actual_live2d_model(window, seconds: float) -> dict:
         'changing_mouth_samples': changing,
         'renderer_active_samples': renderer_active,
         'overlapping_audio_mouth_samples': overlapping,
+        'first_audio_mouth_monotonic': first_overlap,
+        'last_audio_mouth_monotonic': last_overlap,
     }
 
 

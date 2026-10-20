@@ -6,6 +6,7 @@ source. A stable OBS media candidate does not prove encoder/audience delivery.
 """
 from __future__ import annotations
 
+import math
 import threading
 import time
 from dataclasses import dataclass
@@ -195,12 +196,20 @@ def verify_official_chat_live2d_obs(
     ensure_offline()
     # Prefer an actually observed, coherent media route; never treat an
     # earlier silent frame as proof that speech did not reach the OBS input.
-    # OBS meter timestamps are coarse window bounds, not precise audio frames.
-    # Require a candidate during the actual official request. Do not claim
-    # the same spoken utterance or encoded livestream was proved.
-    matching = [sample for began, ended, sample in observation
-                if began <= prompt_finished_at and ended >= prompt_started_at
-                and sample.coherent_media_candidate]
+    # Compare an OBS positive meter window with the *real measured*
+    # overlap of RMS and Cubism mouth changes, not the entire AI request.
+    # Lack of the official real sample times must fail closed.
+    mouth_first = getattr(lip, 'first_audio_mouth_monotonic', 0.0)
+    mouth_last = getattr(lip, 'last_audio_mouth_monotonic', 0.0)
+    valid_mouth_window = (type(mouth_first) in (int, float)
+                          and type(mouth_last) in (int, float)
+                          and math.isfinite(mouth_first)
+                          and math.isfinite(mouth_last)
+                          and 0 < mouth_first <= mouth_last)
+    matching = ([sample for began, ended, sample in observation
+                 if began <= mouth_last and ended >= mouth_first
+                 and sample.coherent_media_candidate]
+                if valid_mouth_window else [])
     selected = next(
         (sample for _, _, sample in observation if sample.coherent_media_candidate),
         observation[-1][2],
