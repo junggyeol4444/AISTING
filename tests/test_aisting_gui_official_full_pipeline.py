@@ -163,12 +163,12 @@ class RealOfficialPipelineTkTests(unittest.TestCase):
 
     def test_platform_reader_does_not_interrupt_approved_full_probe(self):
         # The callback must return before touching model/network UI state.
-        stub = SimpleNamespace(_pipeline_busy=True, _twitch_session=None)
+        stub = SimpleNamespace(_closed=False, _pipeline_busy=True, _twitch_session=None)
         LocalChatTab._start_twitch(stub)
 
     def test_official_public_chat_requires_committed_character_before_consent(self):
         tab = SimpleNamespace(
-            _twitch_session=None, _pipeline_busy=False,
+            _closed=False, _twitch_session=None, _pipeline_busy=False, _busy=False,
             _model_name=Value(""), _official_live2d=Value(True),
         )
         with tempfile.TemporaryDirectory() as root, patch(
