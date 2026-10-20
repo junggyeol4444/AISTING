@@ -189,7 +189,7 @@ class RealOfficialPipelineTkTests(unittest.TestCase):
             "안녕하세요", SimpleNamespace(
                 verified_observation=True,
                 lip=SimpleNamespace(verified_signal=True),
-                obs=SimpleNamespace(coherent_media_candidate=True))))
+                obs=SimpleNamespace(coherent_media_candidate=True)))))
         tab._append = lambda *_args: self.fail("Cancelled result claimed success")
         tab.after = lambda *_args: None
         tab._poll = lambda: None
