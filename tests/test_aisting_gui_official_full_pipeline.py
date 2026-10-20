@@ -63,6 +63,8 @@ class RealOfficialPipelineTkTests(unittest.TestCase):
                  Path(root)), patch(
                  "ai_broadcaster.original_plan_studio.inspect_saved_persona_alignment",
                  return_value=True), patch(
+                 "ai_broadcaster.official_tts_readiness.require_saved_korean_gpt_sovits",
+                 return_value=None), patch(
                  "ai_broadcaster.desktop_chat_tab.messagebox.askyesno", return_value=False):
                 LocalChatTab._start_official_pipeline(tab)
         self.assertFalse(tab._pipeline_busy)
@@ -89,6 +91,8 @@ class RealOfficialPipelineTkTests(unittest.TestCase):
                  Path(root)), patch(
                  "ai_broadcaster.original_plan_studio.inspect_saved_persona_alignment",
                  return_value=True), patch(
+                 "ai_broadcaster.official_tts_readiness.require_saved_korean_gpt_sovits",
+                 return_value=None), patch(
                  "ai_broadcaster.desktop_chat_tab.messagebox.askyesno", return_value=True
             ), patch("ai_broadcaster.desktop_chat_tab.threading.Thread", Thread):
                 LocalChatTab._start_official_pipeline(tab)
