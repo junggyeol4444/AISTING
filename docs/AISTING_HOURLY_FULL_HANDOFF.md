@@ -613,3 +613,43 @@ GitHub `junggyeol4444/AISTING`, **기존 main에만 빠른전진 반영**:
 
 ### ⑨ 대화·예약 유지
 가능하면 이 원래 AISTING 사용자/예약 대화에서 매시간 개발·검증·결과 보고. 기술적으로 다른 대화에 출력되면 원래 대화를 참조한 척하지 않고 본 GitHub 전체 인수인계, 원본 기획·로드맵·main과 마지막 CI를 먼저 확인하여 맥락 손실 없이 이어감. 이번 회차 기존 예약 및 다른 프로젝트 예약을 생성·변경·중지하지 않았음.
+
+## 24. 2026-10-20 같은 AISTING 대화 — AI FIFO 장기 역압/YouTube 순환 페이지 토큰/네이티브 GUI 3회 재실행 묶음
+
+### ① 사용자 원문 요구와 고정 금지사항
+이번 지시 `계속`. 최근 사용자 지시대로 **남아 있는 복수 기능을 한 묶음으로 먼저 개발하고, 코드·테스트 개발이 끝난 뒤 전량 회귀 및 Windows EXE·실제 Tk GUI·OBS/Ollama/공개 수신 검사**; 실패 시 한 부분만 PASS 처리하지 말고 누적 전체를 수정·재검증한다. 원본 `docs/ORIGINAL_PLAN.txt`, `docs/ROADMAP_100.md`, `config/roadmap.json` 및 이 인수인계 전체가 최우선. Windows 10/11 x64 네이티브 `AISTING.exe`/Tk GUI 유지; 캐릭터 이름·말투·성격 최초 1회 확정 후 SQLite 기억 포함 영속, 원래 선택 플랫폼·기획, 공식 Open-LLM-VTuber/Live2D, 사용자 권리 확보 GPT-SoVITS 한국어 TTS, OBS 실제 오디오/영상과 4개 플랫폼(치지직/SOOP/Twitch/YouTube) 중복 문장도 모두 FIFO 응답. 사용자 PC 무단 접속·라이브 송출/녹화/채팅 게시, 무단 API 결제·계정 로그인·음성 모델 훈련, HTML/웹 대체·임의 새 브랜치/강제푸시·설정/캐릭터/SQLite 삭제·로드맵 pending 임의 완료 금지. 기존 시간당 예약과 타 프로젝트 예약을 변경하지 말 것. 가능한 경우 예약 원래 대화에서 계속하고 다른 대화에서 실행된 경우 본 파일을 온전히 먼저 읽고 이어갈 것.
+
+### ② 실제 여러 기능 묶음 개발·⑤ 정확한 소스 변경/커밋
+- `junggyeol4444/AISTING` 기존 **main**, 기능 5파일을 단일 fast-forward commit `cb1b944555a3b9cfc1b7c15820f1c37b26c155a8`로 동시에 수정. 새 브랜치·강제푸시·원본 기획/로드맵 변경 없음.
+  1. `src/ai_broadcaster/desktop_chat_tab.py`: 앞서 `_results` Tk 수신 큐만 `4096`개 역압 제한하던 **실제 AI 응답 대기 `_twitch_ai_inbox` SimpleQueue의 무한 대기 누적 버그**를 수정. 이제 공개 채팅 리더가 `_results` 및 AI FIFO 길이를 함께 확인하여 느린 로컬 AI 응답 속도에 맞춰 네트워크 **리더 스레드에서만** 잠시 대기. Tk 메인 이벤트 루프를 막지 않으며 Stop Event가 오면 풀려나 뒤늦은 채팅을 추가하지 않음. 메시지 텍스트의 중복을 삭제하거나 합치지 않고 기존 수신 순서 유지. 버퍼 규모는 각 대기 큐 최대 4096 근방으로 유도, 네트워크/OS 버퍼 전체의 절대 메모리 상한 보장이나 실제 24시간 시험과는 다름.
+  2. `src/ai_broadcaster/multiplatform_readonly.py`: YouTube API `nextPageToken`이 단순 즉시 같은 토큰을 반복하는 경우뿐 아니라 **A→B→A처럼 여러 페이지가 순환하는 경우**를 감지. 최근 페이지 토큰을 최대 10,000개 유계 deque/set으로 기록, 순환 확인 즉시 재전송되는 페이지 내용을 AI FIFO에 넣기 전 중단. 메시지 고유 ID 기준 재수신만 중복 제거하고 별도 ID의 동일 문장은 각각 유지. 실제 소유 YouTube 계정/인증 채팅을 수행한 것은 아님.
+  3. `tests/test_aisting_twitch_ai_integration.py`: 느린 AI로 미처리된 메시지 대기열 때문에 리더가 역압을 받는지, AI 대기열이 비워지면 같은 순서로 재개하는지, 중지 누르면 새 채팅을 더 쌓지 않고 대기에서 종료하는지 재현 2개 검사.
+  4. `tests/test_aisting_multiplatform_readonly.py`: 3개 YouTube 모의 페이지에서 A→B→A 토큰 순환을 재현, 마지막 잘못된 페이지는 전달되지 않고 먼저 유효하게 받은 별도 ID의 같은 문장 2건은 각각 전달되는지 검사.
+  5. `scripts/gui_official_pipeline_click_windows.py`: 기존 disposable Windows runner의 **실제 `AistingApp` Tk 창**에서 1280×768과 1366×768에 공식 음성/OBS 버튼이 실제 화면 안에 있는지 확인. 기존 창 종료→재시작 이후 다시 3번째 실제 Tk 앱을 생성해 한 번 확정된 캐릭터 이름/스타일/성격, 별개의 동일 질문 두 건과 응답 순서가 실제 SQLite에서 변함없이 남았는지 검증. 외부 모델/OBS/TTS 동일 음성은 별도로 실증하지 않았고, 테스트는 CI 전용 LOCALAPPDATA만 사용.
+
+### ③ 전량 검사·수정 상태 / ⑥ Windows EXE 산출물
+- **최신 기능 묶음 전체 회귀** https://github.com/junggyeol4444/AISTING/actions/runs/39374581641 — `completed/success`, 실제 로그 `Ran 2404 tests`, `OK (skipped=2)`, 실패 0.
+- **동일 코드 기준 Windows 통합** https://github.com/junggyeol4444/AISTING/actions/runs/39374581632 — `completed/success`, 정확히 `windows-exe`, `ollama-real-local-e2e`, `obs-real-readonly`, `twitch-public-readonly`, `korean-public-chat-readonly` 5개 job 모두 성공. CI 실제 Ollama/OBS/공개 수신은 독립 작업; 실제 GPT-SoVITS→Live2D→OBS 동일 한국어 발화 통합은 아님.
+- Windows EXE 빌드 후 실제 Windows Tk GUI 로그 `GUI_NATIVE_1280_1366_WIDTH_BUTTON_VISIBLE_PASS`, `GUI_NATIVE_THIRD_SESSION_CHARACTER_MEMORY_PERSISTENCE_PASS`, `GUI_NATIVE_RESTART_REAL_PERSONA_SQLITE_PERSISTENCE_PASS`, `GUI_MANUAL_OFFICIAL_PUBLIC_AI_CROSSMODE_SQLITE_GUARD_PASS`, `CHARACTER_SETTINGS_SQLITE_BYTES_UNCHANGED_PASS` 확인. 사용자 PC 실기기 방문/화면 클릭이라고 주장하지 말 것; GitHub Windows runner에서 네이티브 원본 Tk 콜백을 실제 실행한 것.
+- 새 GitHub EXE artifact `AISTING-Windows-EXE-integrated` ID **12241984483**, ZIP bytes **19,669,882**, artifact **ZIP SHA-256** `ef61c6335b0ee1163317e5f217a34e34bcf6ce11c633f0237e5350c1fec4d6b3`. EXE 파일 단독 SHA 아님.
+- 이번 묶음의 최초 전체 회귀/Windows 실행에서 모두 성공하였으므로 중간 실패/수정 없이 최종 합격. 본 인수인계 문서 업데이트 이후 main HEAD가 새 커밋으로 이동, 문서-only 새 CI가 발생할 수 있음. 위 기능 코드 검증 커밋 `cb1b944555a3b9cfc1b7c15820f1c37b26c155a8`과 구분.
+- Windows 10/11 실제 사용자 PC의 모든 음성·방송 기능이 되는 것으로 보증하지 않음.
+
+### ④ 남은 기능과 미검증/실증 경계
+1. **진짜 사용자 권리 확보 음성 모델·참조 WAV가 있는 Windows PC에서 GPT-SoVITS 한국어 음성 생성 → 원본 공식 Live2D/Cubism 실제 해당 발화 립싱크 → OBS 오디오·영상이 한 발화로 연결되는 전체 경로**는 여전히 실제 모델/권한/장비 접근이 없어 미실증. 현재 CI는 원본 Tk 네이티브 GUI에 대한 격리 외부 mock + 독립 OBS/Ollama 검사.
+2. 실제 소유 YouTube API 키/활성 라이브 채팅 인증 수신, 네 플랫폼 동시 100~500명 응답 지연 1~3초와 24시간 무인 장기 실운용 미완료. 유계 10,000 페이지 토큰 캐시의 오래된 토큰 재등장은 감지되지 않을 수 있음. AI 큐 제한은 로컬 메모리 폭주 위험을 낮출 뿐 긴급 상황/채팅 폭주를 처리한 실제 성능 숫자가 아님.
+3. 원래 Windows 설치 EXE를 사용자가 직접 설치·조작한 장기 세션, 권리·모델·OBS 버전별 정합성 및 라이브 동시 출력 미검증. OBS 장면 읽기와 사용자 승인 녹화·실방송은 엄격히 별개, 승인 없이 송출·녹화 금지.
+4. `config/roadmap.json`의 pending 항목을 CI 성공만으로 completed 처리 금지. 남은 기획 우선 순위는 사용자 원문 및 본 문서 전항에 있는 실사용 미완료 기능 그대로.
+
+### ⑦ 사용자 자료/설정 보존
+원본 저장 확정 캐릭터 이름·말투·성격/SQLite·Windows 사용자 OBS 구성·공식 Live2D 모델을 건드리지 않고 GitHub 소스·검사 파일만 수정. Windows 실제 앱 3회 생성 검사에 사용된 설정과 SQLite는 임시 LOCALAPPDATA에서만 생성/재조회/삭제. 사용자 PC 및 실제 방송 계정 접속/외부 송신·녹화/음성 학습/유료 API 호출 없음.
+
+### ⑧ 다음 회차의 구체적인 복수 과제
+- 실제 승인된 GPT-SoVITS 한국어 음성·Live2D 에셋·OBS가 사용 가능한 환경이면 **동일 발화 전체 E2E 및 한 번의 질문만 전달되었는지 직접 검증/결함 수정**. 아니면 대체 mock를 실기기로 포장하지 않기.
+- Tk+AI 수신 FIFO를 수천건 이상 동시 유입하고 모델 응답이 늦을 때 GUI 반응/메모리·CPU·중지/재연결을 더 오래 점검. 네 플랫폼 실제 24h·수백 명 처리 및 지연은 독립 미실증 유지.
+- 실제 Windows EXE 사용자 설정/SQLite 여러 세션 영속, 강제 비정상 종료 복구/OBS 외부 연결 중단, YouTube API token/HTTP 중단·유효 채팅 수신 재시도에 대한 중복 방지 고도화.
+- 여러 남은 기능 먼저 묶음 개발 → 전량 회귀 + Windows EXE/Tk GUI + 가능한 실제 OBS/Ollama/공개 채팅 검증 → 실패 수정 후 전량 재검사. 완료한 작은 단위만 보여주지 말고 기획 전체의 미완료를 중심으로 작업.
+- 신규 코드/검사/Actions/artifact/실제 미완료를 본 파일에 누적, 브랜치·예약/타 프로젝트 예약 변경 금지.
+
+### ⑨ 원래 예약 대화·이동 사유
+기존 AISTING 예약을 만든 원래 채팅에서 결과를 이어가는 사용자 지시 유지. 이 회차 예약 만들기/수정/종료 없음. 플랫폼 시스템 제약으로 다른 채팅에서 나타날 경우 본 GitHub 누적 인수인계 1~24절과 원본 기획/100단계 상태/최신 main/Actions를 우선 읽어 변경 사유를 확인 가능한 수준에서만 설명, 사용자에게 맥락 재입력 요구하지 않음.
