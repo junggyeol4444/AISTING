@@ -8,7 +8,11 @@ from pathlib import Path
 
 from .original_plan_config_io import decode_official_utf8
 from .original_plan_studio import check_official_project, StageOneUnavailable
-from .original_plan_tts import validate_local_gpt_sovits_url
+from .original_plan_tts import (
+    validate_local_gpt_sovits_url,
+    inspect_reference_audio_container,
+    VoiceConfigurationError,
+)
 
 
 def require_saved_korean_gpt_sovits(project: str | Path) -> None:
@@ -59,5 +63,24 @@ def require_saved_korean_gpt_sovits(project: str | Path) -> None:
         validate_local_gpt_sovits_url(selected("api_url"))
     except ValueError as exc:
         raise StageOneUnavailable("GPT-SoVITS 음성 API가 로컬 주소가 아닙니다.") from exc
-    if not selected("ref_audio_path") or not selected("prompt_text"):
+    # A nonempty path string is NOT an actual voice reference. The
+    # configuration writer stores an absolute, existing, validated file;
+    # a deleted/renamed reference after app restart must fail *before* the
+    # official Live2D user message is sent. Inspect headers only: no sound
+    # playback, voice training, network access or implied licensing proof.
+    reference_path = selected("ref_audio_path")
+    spoken_words = selected("prompt_text")
+    if not reference_path or not spoken_words:
         raise StageOneUnavailable("실제 GPT-SoVITS 참조 음성/대사 설정이 없습니다.")
+    if (len(spoken_words.strip()) < 1 or len(spoken_words) > 500
+            or any(ord(ch) < 32 for ch in spoken_words)):
+        raise StageOneUnavailable("실제 참조 음성 녹음 대사가 올바르지 않습니다.")
+    reference = Path(reference_path)
+    if not reference.is_absolute():
+        raise StageOneUnavailable("GPT-SoVITS 참조 음성은 절대 경로로 지정해야 합니다.")
+    try:
+        inspect_reference_audio_container(reference)
+    except (VoiceConfigurationError, OSError, ValueError) as exc:
+        raise StageOneUnavailable(
+            "GPT-SoVITS 참조 음성이 실제 WAV/FLAC 파일인지 확인하지 못했습니다."
+        ) from exc

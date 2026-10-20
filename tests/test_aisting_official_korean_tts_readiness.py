@@ -2,6 +2,7 @@
 import sys
 import tempfile
 import unittest
+import wave
 from pathlib import Path
 from unittest.mock import patch
 
@@ -28,8 +29,17 @@ class SavedVoiceConfigurationTests(unittest.TestCase):
         self.addCleanup(self.root.cleanup)
         self.folder = Path(self.root.name)
         self.file = self.folder / "conf.yaml"
+        self.reference = self.folder / "licensed-reference.wav"
+        with wave.open(str(self.reference), "wb") as audio:
+            audio.setnchannels(1)
+            audio.setsampwidth(2)
+            audio.setframerate(16000)
+            audio.writeframes((b"\x02\x00\x04\x00") * 800)
 
     def check(self, text):
+        # The caller's C:/licensed.wav is a placeholder, not a real sample.
+        # The preflight must accept only a *real local* disposable WAV file.
+        text = text.replace("C:/licensed.wav", self.reference.as_posix())
         self.file.write_text(text, encoding="utf-8")
         with patch(
             "ai_broadcaster.official_tts_readiness.check_official_project",
@@ -55,6 +65,29 @@ class SavedVoiceConfigurationTests(unittest.TestCase):
     def test_empty_reference_audio_setting_is_rejected(self):
         with self.assertRaisesRegex(StageOneUnavailable, "참조 음성"):
             self.check(VALID.replace("'C:/licensed.wav'", "''"))
+
+    def test_deleted_reference_blocks_unusable_real_audio_before_send(self):
+        self.reference.unlink()
+        with self.assertRaisesRegex(StageOneUnavailable, "실제 WAV/FLAC"):
+            self.check(VALID)
+
+    def test_invalid_reference_container_blocks_non_audio_data(self):
+        self.reference.write_bytes(b"not a real wav file")
+        with self.assertRaisesRegex(StageOneUnavailable, "실제 WAV/FLAC"):
+            self.check(VALID)
+
+    def test_refuses_relative_reference_to_avoid_wrong_process_workdir(self):
+        self.file.write_text(VALID.replace(
+            "'C:/licensed.wav'", "'relative.wav'"), encoding="utf-8")
+        with patch("ai_broadcaster.official_tts_readiness.check_official_project",
+                   return_value=self.folder):
+            with self.assertRaisesRegex(StageOneUnavailable, "절대 경로"):
+                require_saved_korean_gpt_sovits(self.folder)
+
+    def test_reference_text_control_chars_cannot_inject_real_prompt(self):
+        with self.assertRaisesRegex(StageOneUnavailable, "녹음 대사"):
+            self.check(VALID.replace(
+                "정당하게 사용 가능한 내 음성", "참조\u0001문장"))
 
     def test_duplicated_engine_key_is_rejected(self):
         with self.assertRaisesRegex(StageOneUnavailable, "누락 또는 중복"):
