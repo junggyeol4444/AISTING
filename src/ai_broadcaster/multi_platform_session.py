@@ -124,6 +124,14 @@ class MultiPlatformReadOnlySession:
                                 # Exception text may contain an API key.
                                 self._emit("error", code + " 읽기 실패 (" +
                                            type(exc).__name__ + ")")
+                finally:
+                    # A single transport may end while other reader threads
+                    # continue. Never silently imply all four remain online.
+                    if not self._stop.is_set():
+                        with self._emit_lock:
+                            if not self._stop.is_set():
+                                self._emit("reader_stopped",
+                                           code + " 채팅 수신 종료 · 다른 플랫폼은 계속 수신")
             workers = [
                 threading.Thread(target=read_one, args=(code, reader),
                                  name="aisting-public-" + code, daemon=True)

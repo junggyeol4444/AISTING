@@ -31,6 +31,29 @@ class NativeChatRouting(unittest.TestCase):
             _results=queue.SimpleQueue(),
         )
 
+    def test_voice_playback_failure_does_not_disclose_raw_exception(self):
+        received = queue.SimpleQueue()
+        obj = SimpleNamespace(_results=received,
+              _voice_player=SimpleNamespace(read=lambda *args: (_ for _ in ()).throw(
+                  RuntimeError("PRIVATE_VOICE_REFERENCE_PATH"))))
+        LocalChatTab._read_worker(obj, "text", object())
+        self.assertEqual(received.get_nowait(),
+                         ("speech_error", "RuntimeError"))
+
+    def test_memory_delete_failure_does_not_expose_local_path(self):
+        shown = []
+        fake = SimpleNamespace(_busy=False, _pipeline_busy=False,
+                               _twitch_session=None, _twitch_active_workers=set())
+        with patch("ai_broadcaster.desktop_chat_tab.messagebox.askyesno",
+                   return_value=True), patch(
+                   "ai_broadcaster.desktop_chat_tab.ConversationMemory.clear",
+                   side_effect=OSError("PRIVATE_SQLITE_FILE_PATH")), patch(
+                   "ai_broadcaster.desktop_chat_tab.messagebox.showerror",
+                   side_effect=lambda *args, **kwargs: shown.append(args)):
+            LocalChatTab._clear_memory(fake)
+        self.assertEqual(len(shown), 1)
+        self.assertNotIn("PRIVATE_SQLITE_FILE_PATH", repr(shown))
+
     def test_missing_channel_refuses_connect_before_any_reader(self):
         tab = self.fake()
         with patch("ai_broadcaster.desktop_chat_tab.load_settings",

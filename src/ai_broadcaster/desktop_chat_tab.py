@@ -606,6 +606,8 @@ class LocalChatTab(ttk.Frame):
             self._pipeline_cancel.set()
         self._queued_voice.clear()
         self._pipeline_obs_password.set("")
+        # YouTube API key is memory-only, and must not survive GUI shutdown.
+        self._youtube_api_key.set("")
         self._stop_twitch()
         if self._twitch_ai_inbox is not None:
             self._twitch_ai_inbox.put(None)
@@ -709,6 +711,11 @@ class LocalChatTab(ttk.Frame):
                         self._twitch_status.set(
                             "AI 처리 실패 " + str(self._twitch_ai_failures)
                             + "건 · 성공 응답으로 계산하지 않음")
+                    elif kind == "twitch_reader_stopped":
+                        # A single channel can disconnect without terminating
+                        # other transports or dropping queued AI replies.
+                        self._append("수신기 상태: " + str(payload))
+                        self._twitch_status.set("플랫폼별 수신 상태: " + str(payload))
                     elif kind == "twitch_error":
                         self._twitch_reader_error = str(payload)
                         self._twitch_status.set(
@@ -895,7 +902,7 @@ class LocalChatTab(ttk.Frame):
         try:
             result = self._voice_player.read(reply, voice)
         except Exception as exc:
-            self._results.put(("speech_error", str(exc)))
+            self._results.put(("speech_error", type(exc).__name__))
         else:
             self._results.put(("speech_done", result))
 
@@ -915,7 +922,9 @@ class LocalChatTab(ttk.Frame):
         try:
             ConversationMemory().clear()
         except (OSError, Exception) as exc:
-            messagebox.showerror("삭제 실패", str(exc), parent=self)
+            messagebox.showerror(
+                "삭제 실패", "기억 저장소 처리 오류 (" + type(exc).__name__ + ")",
+                parent=self)
             return
         self._refresh_memory_count()
         self._append("시스템: PC에 저장된 대화 기억을 삭제했어요.")

@@ -53,6 +53,29 @@ class CoordinatorLifecycle(unittest.TestCase):
         for reader in MockReader.instances:
             reader.release.set()
 
+    def test_single_reader_finishes_and_others_continue_with_status(self):
+        events = []
+        session = self.session(events)
+        MockReader.instances[0].release.set()
+        session.run(max_seconds=0.1)
+        statuses = [message for kind, message in events
+                    if kind == "reader_stopped"]
+        self.assertEqual(len(statuses), 1)
+        self.assertIn("twitch", statuses[0])
+        self.assertNotIn("secret", statuses[0])
+        self.assertTrue(all(r.stopped.is_set() for r in MockReader.instances))
+
+    def test_reader_exception_hides_token_and_marks_one_reader_down(self):
+        events = []
+        session = self.session(events)
+        def broken(*, max_seconds=None):
+            raise RuntimeError("DO_NOT_EXPOSE_SECRET_CREDENTIAL")
+        MockReader.instances[0].run = broken
+        session.run(max_seconds=0.1)
+        self.assertIn("reader_stopped", [kind for kind, _ in events])
+        self.assertIn("error", [kind for kind, _ in events])
+        self.assertNotIn("DO_NOT_EXPOSE_SECRET_CREDENTIAL", repr(events))
+
     def test_whole_session_timeout_closes_all_four(self):
         session = self.session()
         before = time.monotonic()

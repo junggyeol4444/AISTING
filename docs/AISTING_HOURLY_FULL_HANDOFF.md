@@ -870,3 +870,20 @@ GitHub `junggyeol4444/AISTING`, **기존 main에만 빠른전진 반영**:
 - 원인은 기존 Tk `_dialog.pack(expand=True)`의 아래에 새 4채널 입력 GUI가 배치되어 1280x768 높이에서 사용 가능한 공간이 없었던 것과 프로그램 내부 `StringVar.set`이 Combobox 이벤트만으로는 화면 표시를 보장하지 않았던 것이다.
 - 기존 Windows `AISTING.exe` 소스 `src/ai_broadcaster/desktop_chat_tab.py`만 보존형 수정하여 공개채팅 채널 선택·API 입력·공식 AI 승인 체크·상태를 확대형 대화창 이전에 배치하고 플랫폼 StringVar의 `trace_add`로 선택 시 실제 네이티브 GUI 표시를 보장한다. 캐릭터·SQLite·로드맵/설정 데이터는 변경하지 않는다.
 - 기능 위조 없이 전체 Windows EXE/GUI Actions와 전체 단위검사 다시 검증, 실패 시 추가 수정할 것.
+
+## 44. 2026-10-21 Windows 4플랫폼 누적 운영 — 개별 종료 감지·예외 비밀값 차단·GUI 종료 키 제거
+
+### 원본 지시 준수
+- 기존 누적 AISTING 원본 기능/main/인수인계 원문과 14개 로컬 보존 인수인계 파일을 유지한다. 다른 프로젝트·예약/브랜치/드라이브를 변경하지 않는다.
+- 2026-10-21 직전 실제 원본 main 누적 Windows Actions `39514469995`은 5개 job 성공, EXE artifact `AISTING-Windows-EXE-integrated` ID `12308021012`, digest `sha256:d6fde6f18b7bb97c40661d2224ec05893febd2a2736549b43694b60ebc265149`. 전체 회귀 `39514469945` 성공 `Ran 2436 tests, OK(skipped=2)`. 둘 다 이전 HEAD 기준이며 본 수정안에 대한 실증이 아니다.
+- 사용자 요청대로 기능 구현을 묶어 수행한 후 전체 회귀/Windows EXE 네이티브 GUI/읽기 전용 통합을 재검증하고 오류 수정·재검증한다.
+
+### 추가 실제 개발 (기존 코드 보존형 4파일)
+1. `src/ai_broadcaster/multi_platform_session.py`: 일부 플랫폼 채팅 수신기가 오류 또는 EOF로 종료됐을 때 나머지 수신기를 종료하지 않으며, 운영자 Stop 여부에 따라 별도의 안전한 `reader_stopped` 상태 이벤트를 출력한다. 실제 종료 여부를 숨기지 않으며 오류 원문·인증정보는 노출하지 않는다.
+2. `src/ai_broadcaster/desktop_chat_tab.py`: 기존 GUI에 개별 수신기 종료 알림 표시를 연결하되 다른 플랫폼 채팅과 단일 AI FIFO는 중단하지 않는다. 창 종료 시 YouTube API 메모리 키를 비우고, 음성 재생 실패 및 승인된 SQLite 기억 삭제 실패에서도 외부 경로·비밀 문자열이 사용자 화면에 나오지 않도록 예외 클래스와 한국어 안내만 표시한다.
+3. `tests/test_aisting_multiplatform_session_lifecycle.py`: 한 플랫폼 조기 종료/4플랫폼 나머지 지속, 자격증명 포함 리더 예외의 상태·본문 차단 검사 2개 보강.
+4. `tests/test_aisting_multiplatform_gui_routing.py`: 음성 재생 및 SQLite 삭제 실패 시 경로·예외 원문 비노출 회귀검사 2개 보강.
+
+### 검증 경계와 남은 과제
+- 실제 소유 YouTube API 인증/생방송 활성 채팅, 정당한 모델의 GPT-SoVITS 한국어 합성→공식 Live2D 실제 입 움직임→OBS 동일 발화 오디오·화면 실증, 수백명 1~3초 및 24시간 실운영은 여전히 미검증.
+- 사용자 계정 로그인·방송 시작·녹화·채팅 송신·무단 TTS 훈련·자료 업로드는 수행하지 않는다. roadmap.json 원본 승인 상태 변경하지 않음.
