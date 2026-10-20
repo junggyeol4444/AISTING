@@ -311,6 +311,59 @@ class MultiplePlatformChatTests(unittest.TestCase):
         self.assertEqual(api.call_count, 1)
         self.assertEqual(observed, [("stopped", "existingChatId")])
 
+    def test_youtube_temporary_network_error_retries_same_page_without_loss(self):
+        from urllib.parse import urlsplit, parse_qs
+        events, pages = [], []
+        first = {"nextPageToken": "p1", "pollingIntervalMillis": 1,
+                 "items": [{"id": "A", "snippet": {"type": "textMessageEvent",
+                            "displayMessage": "같은 문장"},
+                            "authorDetails": {"displayName": "시청자"}}]}
+        final = {"nextPageToken": "p2", "offlineAt": "2026-10-20T15:00:00Z",
+                 "pollingIntervalMillis": 1,
+                 "items": [{"id": "B", "snippet": {"type": "textMessageEvent",
+                            "displayMessage": "같은 문장"},
+                            "authorDetails": {"displayName": "시청자"}}]}
+        def fake_api(url, *, timeout=10):
+            token = parse_qs(urlsplit(url).query).get("pageToken", [""])[0]
+            pages.append(token)
+            if len(pages) <= 2:
+                raise TimeoutError("transient connection")
+            return first if token == "" else final
+        reader = YouTubeReadOnlySession(
+            "existingChatId", lambda k,v: events.append((k,v)), "x"*39)
+        with patch("ai_broadcaster.multiplatform_readonly._json_get", side_effect=fake_api):
+            reader.run(max_seconds=5)
+        self.assertEqual(pages, ["", "", "", "p1"])
+        self.assertEqual([item.text for kind,item in events if kind == "chat"],
+                         ["같은 문장", "같은 문장"])
+
+    def test_youtube_http_error_does_not_retry_or_expose_api_key(self):
+        from urllib.error import HTTPError
+        api_key = "top-secret-simulated-key-1234567890"
+        reader = YouTubeReadOnlySession("existingChatId", lambda *_: None, api_key)
+        with patch("ai_broadcaster.multiplatform_readonly._json_get",
+                   side_effect=HTTPError("http://private/?key="+api_key, 403,
+                                         "forbidden", {}, None)) as api:
+            with self.assertRaises(RuntimeError) as caught:
+                reader.run(max_seconds=5)
+        self.assertEqual(api.call_count, 1)
+        self.assertNotIn(api_key, str(caught.exception))
+
+    def test_youtube_stop_during_transient_retry_never_reopens_connection(self):
+        from threading import Event
+        stopped = Event()
+        reader = YouTubeReadOnlySession("existingChatId", lambda *_: None, "x"*39)
+        calls = []
+        def fake_api(url, *, timeout=10):
+            calls.append(url)
+            reader.stop()
+            stopped.set()
+            raise TimeoutError("temporary")
+        with patch("ai_broadcaster.multiplatform_readonly._json_get", side_effect=fake_api):
+            reader.run(max_seconds=5)
+        self.assertTrue(stopped.is_set())
+        self.assertEqual(len(calls), 1)
+
     def test_youtube_page_chat_and_superchat(self):
         items = [
             {"snippet":{"type":"textMessageEvent","displayMessage":"안녕"},

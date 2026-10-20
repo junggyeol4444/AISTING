@@ -23,6 +23,15 @@ class TestOperatorSettings(unittest.TestCase):
         self.assertEqual(s["platforms"],[])
         self.assertEqual(s["content"],"undecided")
 
+    def test_legacy_settings_supports_all_four_selected_platforms(self):
+        s = default_settings()
+        s["platforms"] = ["chzzk", "soop", "twitch", "youtube"]
+        self.assertEqual(validate_settings(s)["platforms"], s["platforms"])
+        with tempfile.TemporaryDirectory() as folder:
+            file = Path(folder) / "operator_settings.json"
+            save_settings(s, file)
+            self.assertEqual(load_settings(file)["platforms"], s["platforms"])
+
     def test_multiple_platforms(self):
         s=default_settings();s["platforms"]=["chzzk","youtube"]
         self.assertEqual(validate_settings(s)["platforms"],["chzzk","youtube"])

@@ -16,6 +16,7 @@ import time
 from dataclasses import dataclass
 from urllib.parse import parse_qs, urlencode, urlsplit
 from urllib.request import Request, urlopen
+from urllib.error import HTTPError
 
 
 @dataclass(frozen=True)
@@ -394,6 +395,28 @@ class YouTubeReadOnlySession(ReadOnlySession):
                 return 10.0
             return max(0.1, min(10.0, max_seconds - (time.monotonic() - start)))
 
+        def guarded_get(url: str):
+            # Keep the SAME URL/cursor on a transient connection failure.
+            # A successful page is delivered only once; no API key is logged.
+            # HTTP status errors (including quota, access and authentication)
+            # must NEVER trigger automatic quota-consuming retries.
+            for attempt in range(3):
+                if self._stop.is_set():
+                    return None
+                try:
+                    return _json_get(url, timeout=remaining_timeout())
+                except HTTPError:
+                    raise
+                except OSError:
+                    if (attempt >= 2 or (max_seconds is not None
+                            and time.monotonic() - start >= max_seconds)):
+                        raise
+                    backoff = min(0.5 * (2 ** attempt),
+                                  remaining_timeout() if max_seconds is not None else 2)
+                    if self._stop.wait(backoff):
+                        return None
+            raise RuntimeError("유튜브 연결 복구 시도 제한 초과")
+
         live_chat_id = self.channel
         if self._video_id is not None:
             # Public videos.list only. Do not access an account, perform OAuth,
@@ -401,9 +424,8 @@ class YouTubeReadOnlySession(ReadOnlySession):
             lookup = {"part":"liveStreamingDetails",
                       "id":self._video_id, "key":self._key}
             try:
-                details = _json_get("https://www.googleapis.com/youtube/v3/"
-                                    "videos?" + urlencode(lookup),
-                                    timeout=remaining_timeout())
+                details = guarded_get("https://www.googleapis.com/youtube/v3/"
+                                      "videos?" + urlencode(lookup))
             except Exception:
                 # An HTTP exception may contain the API key-bearing URL.
                 raise RuntimeError("유튜브 영상의 실시간 채팅 조회 또는 권한 오류") from None
@@ -438,9 +460,8 @@ class YouTubeReadOnlySession(ReadOnlySession):
             if cursor:
                 params["pageToken"] = cursor
             try:
-                payload = _json_get("https://www.googleapis.com/youtube/v3/"
-                                    "liveChat/messages?" + urlencode(params),
-                                    timeout=remaining_timeout())
+                payload = guarded_get("https://www.googleapis.com/youtube/v3/"
+                                      "liveChat/messages?" + urlencode(params))
             except Exception:
                 # Never leak operator-entered API credentials into GUI or logs.
                 raise RuntimeError("유튜브 채팅 API 연결 또는 권한 오류") from None

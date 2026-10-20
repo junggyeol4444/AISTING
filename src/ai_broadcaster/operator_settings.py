@@ -25,7 +25,7 @@ def default_settings_path() -> Path:
 
 DEFAULT_FILE = default_settings_path()
 
-PLATFORMS = ("chzzk", "youtube", "twitch")
+PLATFORMS = ("chzzk", "soop", "youtube", "twitch")
 CONTENTS = ("undecided", "chat", "game", "both")
 VOICES = ("undecided", "local_basic", "own_recording", "licensed_recording")
 AVATARS = ("undecided", "2d", "3d")

@@ -60,6 +60,47 @@ class TestConversationMemory(unittest.TestCase):
         self.path = Path(self.folder.name) / "history.sqlite3"
         self.memory = ConversationMemory(self.path)
 
+    def test_foreign_database_is_refused_without_changing_existing_bytes(self):
+        import sqlite3
+        with sqlite3.connect(self.path) as db:
+            db.execute("CREATE TABLE foreign_data (secret TEXT)")
+            db.execute("INSERT INTO foreign_data VALUES ('keep')")
+        before = self.path.read_bytes()
+        with self.assertRaisesRegex(ValueError, "대화 기억 전용"):
+            ConversationMemory(self.path)
+        self.assertEqual(self.path.read_bytes(), before)
+        with sqlite3.connect(self.path) as db:
+            self.assertEqual(db.execute("SELECT secret FROM foreign_data").fetchone()[0], "keep")
+
+    def test_corrupt_sqlite_not_replaced_or_reinitialized(self):
+        self.path.write_bytes(b"not-sqlite-user-data")
+        before = self.path.read_bytes()
+        with self.assertRaises(ValueError):
+            ConversationMemory(self.path)
+        self.assertEqual(self.path.read_bytes(), before)
+
+    def test_valid_existing_memory_survives_read_only_schema_preflight(self):
+        self.memory.append(ChatMessage("persist", "시청자", "같은 질문"), "응답")
+        before = self.path.read_bytes()
+        reopened = ConversationMemory(self.path)
+        self.assertEqual(reopened.count(), 1)
+        self.assertEqual(reopened.recent(1)[0].user_text, "같은 질문")
+        self.assertEqual(self.path.read_bytes(), before)
+
+    def test_symlinked_memory_path_is_refused_without_target_mutation(self):
+        external = Path(self.folder.name) / "external.sqlite3"
+        with sqlite3.connect(external) as db:
+            db.execute("CREATE TABLE external_data(value TEXT)")
+        before = external.read_bytes()
+        link = Path(self.folder.name) / "linked.sqlite3"
+        try:
+            link.symlink_to(external)
+        except (OSError, NotImplementedError):
+            self.skipTest("현재 Windows CI 계정은 심볼릭 링크 생성 권한이 없습니다")
+        with self.assertRaisesRegex(ValueError, "심볼릭 링크"):
+            ConversationMemory(link)
+        self.assertEqual(external.read_bytes(), before)
+
     def test_empty_memory(self):
         self.assertEqual(self.memory.count(), 0)
         self.assertEqual(self.memory.recent(), [])
