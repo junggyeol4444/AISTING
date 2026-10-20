@@ -127,6 +127,30 @@ class RealOfficialPipelineTkTests(unittest.TestCase):
         stub = SimpleNamespace(_pipeline_busy=True, _twitch_session=None)
         LocalChatTab._start_twitch(stub)
 
+    def test_official_public_chat_requires_committed_character_before_consent(self):
+        tab = SimpleNamespace(
+            _twitch_session=None, _pipeline_busy=False,
+            _model_name=Value(""), _official_live2d=Value(True),
+        )
+        with tempfile.TemporaryDirectory() as root, patch(
+            "ai_broadcaster.offline_settings.settings_file",
+            return_value=Path(root) / "missing-character.json"
+        ), patch("ai_broadcaster.desktop_chat_tab.messagebox.showwarning") as warn, patch(
+            "ai_broadcaster.desktop_chat_tab.messagebox.askyesno"
+        ) as confirm:
+            LocalChatTab._start_twitch(tab)
+            warn.assert_called_once()
+            confirm.assert_not_called()
+
+    def test_memory_delete_is_blocked_while_official_probe_runs(self):
+        tab = SimpleNamespace(_busy=False, _pipeline_busy=True, _twitch_session=None)
+        with patch("ai_broadcaster.desktop_chat_tab.messagebox.showwarning") as warn, patch(
+            "ai_broadcaster.desktop_chat_tab.messagebox.askyesno"
+        ) as confirm:
+            LocalChatTab._clear_memory(tab)
+            warn.assert_called_once()
+            confirm.assert_not_called()
+
     def test_worker_passes_real_approved_path_and_queues_only_safe_evidence(self):
         events = queue.SimpleQueue()
         tab = SimpleNamespace(_results=events)

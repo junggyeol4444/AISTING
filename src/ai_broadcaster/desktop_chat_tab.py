@@ -298,6 +298,27 @@ class LocalChatTab(ttk.Frame):
                 "로컬 AI 모델", "먼저 설치한 Ollama 모델 이름을 입력해 주세요.",
                 parent=self)
             return
+        if official:
+            # Apply the same saved-character/official Korean TTS gate to
+            # continuous live chat that the operator's manual probe requires.
+            try:
+                from .offline_settings import settings_file, active_persona
+                from .original_plan_studio import inspect_saved_persona_alignment
+                from .official_tts_readiness import require_saved_korean_gpt_sovits
+                from . import original_plan_frontend as official_frontend
+                saved = settings_file()
+                if (not saved.is_file() or saved.is_symlink()
+                        or saved.parent.is_symlink()):
+                    raise ValueError("먼저 이름·말투·성격을 확정 저장하세요.")
+                fields = active_persona(load_settings(saved))
+                project = official_frontend._native_viewer_project
+                if (project is None
+                        or not inspect_saved_persona_alignment(project, fields)):
+                    raise ValueError("저장한 캐릭터와 실행 중인 공식 Live2D 설정이 다릅니다.")
+                require_saved_korean_gpt_sovits(project)
+            except (ValueError, OSError, KeyError, RuntimeError) as exc:
+                messagebox.showwarning("공식 AI 연결 준비", str(exc), parent=self)
+                return
         if official and not messagebox.askyesno(
                 "공식 AI·Live2D 채팅 연결 승인",
                 "연결 후 들어오는 모든 플랫폼 채팅을 기존 공식 Live2D 창의 "
@@ -579,6 +600,9 @@ class LocalChatTab(ttk.Frame):
                             ("실제 입 움직임 확인" if lip_ok else "립싱크 미확인") +
                             " / " + ("OBS 영상·음성 후보 확인" if obs_ok
                                       else "OBS 화면·음성 경로 미확인") +
+                            " / " + ("OBS 관찰 시간 중첩 후보" if getattr(
+                                evidence, "temporal_overlap_candidate", False)
+                                else "동일 발화 관찰 시간 중첩 미확인") +
                             " · 실제 방송/시청자 출력은 별도 실증 필요")
                         if evidence.verified_observation:
                             self._append("공식 AI·Live2D·OBS 동시 읽기 검사 통과: " + sent)
@@ -705,8 +729,8 @@ class LocalChatTab(ttk.Frame):
             self._tts_status.set("음성 재생 중지를 요청했습니다.")
 
     def _clear_memory(self) -> None:
-        if self._busy:
-            messagebox.showwarning("사용 중", "현재 응답 처리가 끝난 뒤 삭제할 수 있습니다.", parent=self)
+        if self._busy or self._pipeline_busy or self._twitch_session is not None:
+            messagebox.showwarning("사용 중", "AI·채팅·실측 종료 후에만 대화 기억을 삭제할 수 있습니다.", parent=self)
             return
         approved = messagebox.askyesno("대화 기억 삭제", "저장된 대화 기억 전체를 삭제할까요? 되돌릴 수 없습니다.", parent=self)
         if not approved:

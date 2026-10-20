@@ -7,6 +7,7 @@ source. A stable OBS media candidate does not prove encoder/audience delivery.
 from __future__ import annotations
 
 import threading
+import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -22,11 +23,14 @@ if TYPE_CHECKING:
 class OfficialChatObsEvidence:
     lip: "OfficialLipSyncEvidence"
     obs: "ActualObsProgramMediaObservation"
+    # Positive signals observed at unrelated times cannot prove one turn.
+    temporal_overlap_candidate: bool = False
 
     @property
     def verified_observation(self) -> bool:
         """Two real concurrent observations; NOT proof of encoded stream."""
-        return bool(self.lip.verified_signal and self.obs.coherent_media_candidate)
+        return bool(self.lip.verified_signal and self.obs.coherent_media_candidate
+                    and self.temporal_overlap_candidate)
 
 
 def verify_official_chat_live2d_obs(
@@ -93,7 +97,7 @@ def verify_official_chat_live2d_obs(
 
     # The monitor runs at the same time as the official real conversation.
     # It only reads the current scene image and exact input's volume meters.
-    observation: list = []
+    observation: list[tuple[float, float, object]] = []
     errors: list[Exception] = []
     started = threading.Event()
     # The official server may take seconds to synthesize Korean audio. Keep
@@ -101,6 +105,7 @@ def verify_official_chat_live2d_obs(
     # No additional prompt is issued for subsequent meter observations.
     send_finished = threading.Event()
     prompt_started = threading.Event()
+    cancel_observation = threading.Event()
     monitor_ended_before_reply = []
 
     def obs_worker() -> None:
@@ -117,7 +122,7 @@ def verify_official_chat_live2d_obs(
             started.set()
             # Do not let fast callbacks (or a slow OBS safety preflight) use
             # up the audio observation budget BEFORE the actual user turn.
-            if not prompt_started.wait(timeout=8):
+            if not prompt_started.wait(timeout=8) or cancel_observation.is_set():
                 return
             # A single 8-second OBS probe can finish before the official
             # GPT-SoVITS speech starts. Observe bounded consecutive windows
@@ -125,10 +130,13 @@ def verify_official_chat_live2d_obs(
             for _ in range(6):
                 if send_finished.is_set() and observation:
                     break
-                observation.append(observer.inspect_program_media(
+                capture_started = time.monotonic()
+                sample = observer.inspect_program_media(
                     operator_approved=True, input_name=obs_input_name,
                     duration=min(float(duration), 3.0),
-                ))
+                )
+                capture_ended = time.monotonic()
+                observation.append((capture_started, capture_ended, sample))
                 if send_finished.is_set():
                     break
             if not send_finished.is_set():
@@ -146,9 +154,17 @@ def verify_official_chat_live2d_obs(
         raise RuntimeError("OBS 관찰 연결 준비 실패 · AI 질문을 보내지 않았습니다.") from errors[0]
     # No text is handed to the official upstream session if OBS began
     # broadcasting/recording during the read-only monitor setup.
-    ensure_offline()
+    try:
+        ensure_offline()
+    except Exception:
+        cancel_observation.set()
+        prompt_started.set()
+        monitor.join(timeout=2)
+        raise
     lip = None
     send_failure = None
+    prompt_started_at = time.monotonic()
+    prompt_finished_at = prompt_started_at
     try:
         prompt_started.set()
         lip = send_to_native_live2d_session_with_observation(
@@ -158,6 +174,7 @@ def verify_official_chat_live2d_obs(
         # Sending may have succeeded before a lost IPC response. NO retry.
         send_failure = exc
     finally:
+        prompt_finished_at = time.monotonic()
         send_finished.set()
     monitor.join(timeout=duration + 20)
     if monitor.is_alive():
@@ -178,8 +195,15 @@ def verify_official_chat_live2d_obs(
     ensure_offline()
     # Prefer an actually observed, coherent media route; never treat an
     # earlier silent frame as proof that speech did not reach the OBS input.
+    # OBS meter timestamps are coarse window bounds, not precise audio frames.
+    # Require a candidate during the actual official request. Do not claim
+    # the same spoken utterance or encoded livestream was proved.
+    matching = [sample for began, ended, sample in observation
+                if began <= prompt_finished_at and ended >= prompt_started_at
+                and sample.coherent_media_candidate]
     selected = next(
-        (sample for sample in observation if sample.coherent_media_candidate),
-        observation[-1],
+        (sample for _, _, sample in observation if sample.coherent_media_candidate),
+        observation[-1][2],
     )
-    return OfficialChatObsEvidence(lip=lip, obs=selected)
+    return OfficialChatObsEvidence(
+        lip=lip, obs=selected, temporal_overlap_candidate=bool(matching))

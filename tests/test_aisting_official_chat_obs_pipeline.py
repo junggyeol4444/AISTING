@@ -3,6 +3,7 @@
 No real network, voice training, stream start, account access, OBS state changes.
 """
 import sys
+import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -46,7 +47,7 @@ class FullPipelineContracts(unittest.TestCase):
     def test_existing_official_ai_turn_only_once_and_obs_read_only(self):
         obs = make_obs()
         lip = SimpleNamespace(verified_signal=True)
-        send = Mock(return_value=lip)
+        send = Mock(side_effect=lambda *a, **k: (time.sleep(0.02), lip)[1])
         with patch.object(pipeline, "OfficialObsWebsocket", return_value=obs), (
             patch.object(pipeline, "send_to_native_live2d_session_with_observation", send)
         ):
@@ -57,6 +58,22 @@ class FullPipelineContracts(unittest.TestCase):
         self.assertEqual(obs.probe_count, 1)
         send.assert_called_once_with(
             "한국어 테스트", operator_approved=True, duration=8.0)
+
+    def test_separate_positive_signals_without_time_overlap_are_not_verified(self):
+        evidence = pipeline.OfficialChatObsEvidence(
+            lip=SimpleNamespace(verified_signal=True),
+            obs=SimpleNamespace(coherent_media_candidate=True),
+            temporal_overlap_candidate=False,
+        )
+        self.assertFalse(evidence.verified_observation)
+
+    def test_observation_overlap_without_real_audio_is_not_verified(self):
+        evidence = pipeline.OfficialChatObsEvidence(
+            lip=SimpleNamespace(verified_signal=True),
+            obs=SimpleNamespace(coherent_media_candidate=False),
+            temporal_overlap_candidate=True,
+        )
+        self.assertFalse(evidence.verified_observation)
 
     def test_active_obs_recording_denies_prompt_without_side_effect(self):
         obs = make_obs()
@@ -105,7 +122,7 @@ class FullPipelineContracts(unittest.TestCase):
             pipeline, "OfficialObsWebsocket", side_effect=[safety, monitor]
         ) as factory, patch.object(
             pipeline, "send_to_native_live2d_session_with_observation",
-            return_value=lip,
+            side_effect=lambda *a, **k: (time.sleep(0.02), lip)[1],
         ):
             result = pipeline.verify_official_chat_live2d_obs(
                 "테스트", obs_password="local", obs_input_name="Mic",
