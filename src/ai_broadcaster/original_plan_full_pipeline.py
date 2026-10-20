@@ -67,11 +67,29 @@ def verify_official_chat_live2d_obs(
     # Do not conduct an unproven source/voice experiment on a live stream.
     if before.streaming:
         raise RuntimeError("OBS가 송출 중일 때 전체 경로 검증을 시작하지 않습니다.")
+
+    def ensure_offline() -> None:
+        # The existing OBS scene can capture official voice even if AISTING
+        # never starts a recording. Refuse when the user's OBS is recording.
+        now = obs.status()
+        if now.streaming or now.scene != before.scene:
+            raise RuntimeError("OBS 방송 또는 프로그램 장면이 변경되어 음성 요청을 중단합니다.")
+        try:
+            active = obs._client.get_record_status().output_active
+        except Exception as exc:
+            raise RuntimeError("OBS 녹화 상태를 확인하지 못했습니다.") from exc
+        if type(active) is not bool:
+            raise RuntimeError("OBS 녹화 상태 응답이 유효하지 않습니다.")
+        if active:
+            raise RuntimeError("OBS 녹화 중에는 공식 AI·음성 동시 검사를 실행하지 않습니다.")
+
+    ensure_offline()
     route = obs.read_program_audio_route(
         input_name=obs_input_name, scene=before.scene
     )
     if not route.confirmed:
         raise RuntimeError("OBS 현재 프로그램 장면의 실제 음성 입력 경로가 확인되지 않았습니다.")
+    ensure_offline()
 
     # The monitor runs at the same time as the official real conversation.
     # It only reads the current scene image and exact input's volume meters.
@@ -94,6 +112,9 @@ def verify_official_chat_live2d_obs(
     monitor.start()
     if not started.wait(timeout=3):
         raise RuntimeError("OBS 영상·음성 관찰을 시작하지 못했습니다.")
+    # No text is handed to the official upstream session if OBS began
+    # broadcasting/recording during the read-only monitor setup.
+    ensure_offline()
     lip = None
     send_failure = None
     try:
@@ -114,7 +135,5 @@ def verify_official_chat_live2d_obs(
         raise RuntimeError("OBS 화면·음성 동시 관찰 실패") from errors[0]
     if len(observation) != 1 or lip is None:
         raise RuntimeError("공식 Live2D 또는 OBS 관찰 결과가 없습니다.")
-    after = obs.status()
-    if after.streaming or after.scene != before.scene:
-        raise RuntimeError("검사 도중 OBS 송출·장면 상태가 변경되었습니다.")
+    ensure_offline()
     return OfficialChatObsEvidence(lip=lip, obs=observation[0])
