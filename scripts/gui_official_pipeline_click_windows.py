@@ -167,6 +167,71 @@ def main():
                 assert "중지됨" in tab._pipeline_status.get()
             print("GUI_NATIVE_CANCEL_NO_LATE_SUCCESS_PASS (SIMULATED MODEL)")
 
+            # Windows native Tk integration: Stop must not permit a new AI
+            # session or memory deletion while the previous model is still
+            # finishing a committed conversation / SQLite write.
+            from tkinter import ttk
+            from ai_broadcaster.multiplatform_readonly import PlatformChat
+            import queue
+            class IsolatedReadOnlySession:
+                def __init__(self):
+                    self._stop = threading.Event()
+                def stop(self):
+                    self._stop.set()
+
+            existing = IsolatedReadOnlySession()
+            pending_inbox = queue.SimpleQueue()
+            pending_inbox.put(PlatformChat("room", "시청자", "저장 중", "soop"))
+            tab._twitch_session = existing
+            tab._twitch_active_workers.add(existing)
+            tab._twitch_ai_inbox = pending_inbox
+            tab._twitch_start.configure(state="disabled")
+            tab._twitch_end.configure(state="normal")
+            in_flight, allow_finish = threading.Event(), threading.Event()
+            def committed_reply(*args, **kwargs):
+                assert kwargs["use_committed_gui_character"]
+                in_flight.set()
+                assert allow_finish.wait(5)
+                return SimpleNamespace(reply="응답", remembered_count=1)
+            with patch("ai_broadcaster.desktop_chat_tab.run_local_chat",
+                       side_effect=committed_reply):
+                worker = threading.Thread(
+                    target=tab._work_twitch_ai,
+                    args=("local-model", pending_inbox, False, existing),
+                    daemon=True,
+                )
+                worker.start()
+                try:
+                    pump_until(app, in_flight.is_set)
+                    tab._twitch_end.invoke()
+                    app.update()
+                    assert existing._stop.is_set() and tab._twitch_session is None
+                    assert existing in tab._twitch_active_workers
+                    with patch("ai_broadcaster.desktop_chat_tab.messagebox.showwarning") as warn, patch(
+                        "ai_broadcaster.desktop_chat_tab.messagebox.askyesno"
+                    ) as confirm:
+                        memory_buttons = [
+                            x for parent in tab.winfo_children()
+                            for x in parent.winfo_children()
+                            if isinstance(x, ttk.Button)
+                            and str(x.cget("text")) == "대화 기억 삭제"
+                        ]
+                        assert len(memory_buttons) == 1
+                        memory_buttons[0].invoke()
+                        assert warn.call_count == 1
+                        confirm.assert_not_called()
+                        tab._twitch_start.invoke()
+                        assert warn.call_count == 2
+                    print("GUI_STOP_INFLIGHT_SQLITE_DELETE_RECONNECT_BLOCKED_PASS")
+                finally:
+                    allow_finish.set()
+                    worker.join(5)
+                assert not worker.is_alive()
+                pump_until(app, lambda: not tab._twitch_active_workers)
+                assert str(tab._twitch_start.cget("state")) == "normal"
+                assert str(tab._twitch_end.cget("state")) == "disabled"
+                print("GUI_STOP_INFLIGHT_WORKER_DRAIN_RECONNECT_READY_PASS")
+
             assert sha256(settings) == before_settings
             assert sha256(database) == before_db
             with closing(sqlite3.connect(database)) as db:
