@@ -309,7 +309,7 @@ class MultiplePlatformChatTests(unittest.TestCase):
                    side_effect=respond) as api:
             session.run(max_seconds=0.3)
         self.assertEqual(api.call_count, 1)
-        self.assertEqual(observed, [])
+        self.assertEqual(observed, [("stopped", "existingChatId")])
 
     def test_youtube_page_chat_and_superchat(self):
         items = [
