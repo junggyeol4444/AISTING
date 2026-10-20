@@ -166,10 +166,19 @@ class LocalChatTab(ttk.Frame):
         self.after(150, self._poll)
 
     def _append(self, line: str) -> None:
+        # Keep the *visible* native Tk transcript bounded during long shows.
+        # This must never filter, drop or reorder AI/chat FIFO events or modify
+        # persistent SQLite conversation memory; it only trims older display
+        # lines in chunks to avoid an O(n) delete on every received chat.
         self._dialog.configure(state="normal")
-        self._dialog.insert("end", line + "\n\n")
-        self._dialog.see("end")
-        self._dialog.configure(state="disabled")
+        try:
+            self._dialog.insert("end", line + "\n\n")
+            lines = int(self._dialog.index("end-1c").split(".", 1)[0])
+            if lines > 12000:
+                self._dialog.delete("1.0", "4001.0")
+            self._dialog.see("end")
+        finally:
+            self._dialog.configure(state="disabled")
 
     def _refresh_memory_count(self) -> None:
         try:

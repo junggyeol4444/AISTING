@@ -450,18 +450,27 @@ class YouTubeReadOnlySession(ReadOnlySession):
             if (max_seconds is not None
                     and time.monotonic() - start >= max_seconds):
                 break
+            if not isinstance(payload, dict):
+                raise ValueError("유튜브 채팅 API 응답 형식 오류")
+            # Parse and validate the entire envelope before sending any event.
+            # In particular, a no-message response can keep the same cursor
+            # while the broadcaster is idle; honor pollingIntervalMillis.
+            raw_items = payload.get("items", [])
+            if not isinstance(raw_items, list):
+                raise ValueError("유튜브 채팅 페이지 메시지 목록 형식 오류")
             next_cursor = payload.get("nextPageToken")
             ended = isinstance(payload.get("offlineAt"), str) and bool(payload["offlineAt"])
             if (not isinstance(next_cursor, str) or not next_cursor) and not ended:
                 # An empty cursor would silently restart at page one and
                 # repeatedly respond to the same historical chat messages.
                 raise RuntimeError("유튜브 채팅 페이지 응답 토큰이 없습니다.")
-            if not ended and next_cursor in seen_page_tokens:
-                # Includes one-page repeats AND longer cyclic sequences.
-                # Check before forwarding, so the repeated page cannot
-                # duplicate an already delivered AI response.
+            idle_same_cursor = bool(not ended and cursor
+                                    and next_cursor == cursor and not raw_items)
+            if not ended and next_cursor in seen_page_tokens and not idle_same_cursor:
+                # A nonempty replay or multi-page cycle is not an idle poll:
+                # fail *before* forwarding any duplicate AI work.
                 raise RuntimeError("유튜브 채팅 페이지 토큰이 반복되어 수신을 중단했습니다.")
-            if not ended:
+            if not ended and next_cursor not in seen_page_tokens:
                 seen_page_tokens.add(next_cursor)
                 recent_page_tokens.append(next_cursor)
                 if len(recent_page_tokens) > max_seen_pages:
@@ -474,9 +483,6 @@ class YouTubeReadOnlySession(ReadOnlySession):
             # Resolve identities before forwarding any page items so a replay
             # of the same API event does not cause a second AI request. Events
             # with absent/invalid IDs are still delivered (no silent loss).
-            raw_items = payload.get("items", [])
-            if not isinstance(raw_items, list):
-                raise ValueError("유튜브 채팅 페이지 메시지 목록 형식 오류")
             for raw_item in raw_items:
                 if self._stop.is_set():
                     break

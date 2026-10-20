@@ -356,6 +356,39 @@ class MultiplePlatformChatTests(unittest.TestCase):
                          ["같은 내용", "같은 내용"])
         self.assertEqual([kind for kind,_ in messages], ["chat", "ready", "chat"])
 
+    def test_youtube_repeated_empty_cursor_polls_until_new_chat_without_replay(self):
+        from urllib.parse import parse_qs, urlsplit
+        seen, calls = [], []
+        pages = [
+            {"nextPageToken":"p1", "items":[], "pollingIntervalMillis":1},
+            {"nextPageToken":"p1", "items":[], "pollingIntervalMillis":1},
+            {"nextPageToken":"p2", "offlineAt":"2026-10-20T01:00:00Z",
+             "pollingIntervalMillis":1,
+             "items":[{"id":"message-1",
+                        "snippet":{"type":"textMessageEvent","displayMessage":"늦게 온 메시지"},
+                        "authorDetails":{"displayName":"시청자"}}]},
+        ]
+        def request(url, **_kwargs):
+            calls.append(parse_qs(urlsplit(url).query).get("pageToken", [""])[0])
+            return pages[len(calls)-1]
+        reader = YouTubeReadOnlySession("existingChatId",
+                    lambda kind,item: seen.append((kind,item)), "x"*39)
+        with patch("ai_broadcaster.multiplatform_readonly._json_get", side_effect=request):
+            reader.run(max_seconds=3)
+        self.assertEqual(calls, ["", "p1", "p1"])
+        self.assertEqual([k for k, _ in seen], ["ready", "chat", "stopped"])
+        self.assertEqual([v.text for k,v in seen if k=="chat"], ["늦게 온 메시지"])
+
+    def test_youtube_non_object_api_response_fails_closed_without_leaking_key(self):
+        reader = YouTubeReadOnlySession("existingChatId",
+                 lambda *_: self.fail("Invalid response should not emit chat"), "secret" * 7)
+        for malformed in (None, [], "invalid"):
+            with self.subTest(response=malformed), patch(
+                    "ai_broadcaster.multiplatform_readonly._json_get",
+                    return_value=malformed):
+                with self.assertRaisesRegex(ValueError, "API 응답 형식"):
+                    reader.run(max_seconds=2)
+
     def test_youtube_replayed_id_is_once_but_separate_identical_text_is_fifo(self):
         from unittest.mock import patch
         events, calls = [], []
