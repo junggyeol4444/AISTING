@@ -214,6 +214,7 @@ class LocalChatTab(ttk.Frame):
             from .offline_settings import settings_file, active_persona
             from . import original_plan_frontend as frontend
             from .original_plan_studio import inspect_saved_persona_alignment
+            from .official_tts_readiness import require_saved_korean_gpt_sovits
             saved = settings_file()
             if (not saved.is_file() or saved.is_symlink()
                     or saved.parent.is_symlink()):
@@ -222,6 +223,7 @@ class LocalChatTab(ttk.Frame):
             project = frontend._native_viewer_project
             if project is None or not inspect_saved_persona_alignment(project, fields):
                 raise ValueError("저장된 캐릭터·공식 설정·실행 중인 Live2D 창을 확인하세요.")
+            require_saved_korean_gpt_sovits(project)
         except (ValueError, OSError, KeyError, RuntimeError) as exc:
             self._pipeline_status.set("공식 캐릭터 실측 준비 실패: " + str(exc))
             return
@@ -245,6 +247,7 @@ class LocalChatTab(ttk.Frame):
             from .offline_settings import settings_file, active_persona
             from . import original_plan_frontend as frontend
             from .original_plan_studio import inspect_saved_persona_alignment
+            from .official_tts_readiness import require_saved_korean_gpt_sovits
             saved = settings_file()
             if (not saved.is_file() or saved.is_symlink()
                     or saved.parent.is_symlink()
@@ -252,6 +255,7 @@ class LocalChatTab(ttk.Frame):
                     or frontend._native_viewer_project != project
                     or not inspect_saved_persona_alignment(project, fields)):
                 raise ValueError("승인 중 캐릭터/공식 Live2D 설정이 변경됐습니다.")
+            require_saved_korean_gpt_sovits(project)
         except (ValueError, OSError, KeyError, RuntimeError) as exc:
             self._pipeline_status.set("변경 감지 · 실제 전송 취소: " + str(exc))
             return
