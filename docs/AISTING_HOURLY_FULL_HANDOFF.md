@@ -830,3 +830,11 @@ GitHub `junggyeol4444/AISTING`, **기존 main에만 빠른전진 반영**:
 ### 다음 회차 복수 실질 과제
 - 정확한 새 HEAD/Actions Windows 5개 jobs/EXE artifact를 확인하고 실패하면 전체 코드 수정 후 전체 재검증.
 - 승인받은 실제 모델/Windows PC/YouTube API 정보 없이는 현장 실증 완료를 주장하지 않는다. 공식 GPT-SoVITS 한국어 실제 합성→공식 Live2D Cubism 발화 립싱크→OBS 영상/오디오 한 발화 동기화, 실제 소유 YouTube API 활성 채팅 및 수백명 1~3초/24시간 운영은 여전히 미실증.
+
+## 41. 2026-10-21 — 전체 회귀검사 1개 실패 즉시 수정 및 전체 재검증 대상
+
+- 실제 두 번째 묶음 Windows Tk 4플랫폼 통합 코드 commit `e6ad00f1828d311d844074c1172131dcabe56ed4`에 대한 전체 회귀 Actions: https://github.com/junggyeol4444/AISTING/actions/runs/39512397456
+- 결과: `Ran 2434 tests`, `FAILED (failures=1, skipped=2)`. 실패 검사: `test_aisting_gui_official_full_pipeline.RealOfficialPipelineTkTests.test_no_confirmed_persona_file_denies_before_consent`. 기존 진단 메시지 `확정 저장` 문구 제거로 인한 회귀.
+- 실제 모델이 없거나 캐릭터를 아직 확정 저장하지 않은 사용자가 문제를 알아볼 수 있도록 상수 안내 `캐릭터 확정 저장·연동 설정 확인`을 복원하면서 인증 키/URL/예외 원문 비노출 정책 유지.
+- 수정 파일: `src/ai_broadcaster/desktop_chat_tab.py` 하나만 변경. 원본 사용자 캐릭터/SQLite/설정과 로드맵은 무변경. GitHub main 에 반영 후 전체 회귀 + Windows EXE GUI 5-job **반드시 새 HEAD 재검증**.
+- 실패 결과를 완성 또는 성공으로 표현 금지. 실제 음성·Live2D/OBS 동일발화·실소유 YouTube 인증 및 수백명/24시간 운영은 여전히 미실증.

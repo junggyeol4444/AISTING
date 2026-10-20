@@ -276,7 +276,7 @@ class LocalChatTab(ttk.Frame):
                 raise ValueError("저장된 캐릭터·공식 설정·실행 중인 Live2D 창을 확인하세요.")
             require_saved_korean_gpt_sovits(project)
         except (ValueError, OSError, KeyError, RuntimeError) as exc:
-            self._pipeline_status.set("공식 캐릭터 실측 준비 실패 (" + type(exc).__name__ + ")")
+            self._pipeline_status.set("공식 캐릭터 실측 준비 실패: 캐릭터 확정 저장·연동 설정 확인 (" + type(exc).__name__ + ")")
             return
         if not messagebox.askyesno(
             "실제 공식 AI·한국어 음성·Live2D·OBS 동시 검사 승인",
