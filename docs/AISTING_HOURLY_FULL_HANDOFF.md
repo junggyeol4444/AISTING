@@ -451,3 +451,48 @@ GitHub repo `junggyeol4444/AISTING` main 고정. 이번 코드 기준 커밋 `c9
 
 ### ⑨ 원래 예약 생성 대화 유지·불가능 시 인계
 사용자가 AISTING 예약을 만든 원래 이 대화에서 계속 작업·결과 보고하는 것을 최우선으로 요구. 시스템의 채팅 길이/플랫폼 제약으로 다른 대화에 결과가 나타날 때는 이동을 임의로 했다고 꾸미지 말고 본 전체 GitHub 인계와 원본 문서·최신 main/CI 확인 후 **전체를 인수인계하고 다음 작업 그대로 이어감**. 이번 작업 중 기존 매시간 예약을 수정/종료하지 않음.
+
+## 20. 2026-10-20 12시 KST 회차 — Windows Tk 공식 AI·Live2D·OBS 중지 처리/재진입 안전성, 실제 사용자 버튼 검증
+
+### ① 원본 기획 및 사용자 강제 지시·금지
+사용자가 단순 "계속"으로 원래 AISTING 예약 대화에서 **남은 실제 기능을 개발·수정·검증**하라고 지시한 상황. 앞 회차의 "하나씩 찔끔 개발·검증 반복 금지; 복수 실질 기능 개발 → 전체 회귀·Windows 실제 GUI/EXE 검사 → 오류 수정 → 전량 재검증"을 최우선으로 유지. 기초 파일 `docs/ORIGINAL_PLAN.txt`, `docs/ROADMAP_100.md`, `config/roadmap.json` 및 기존 Windows 10/11 x64 네이티브 `AISTING.exe`/Tk, 확정 캐릭터 이름·말투·성격 1회 저장·영구 유지, SQLite 기억·설정, 공식 Open-LLM-VTuber/Live2D/GPT-SoVITS 한국어 음성, OBS 프로그램 오디오·영상, YouTube/CHZZK/SOOP/Twitch 중복 포함 FIFO 수신, 사용자 선택 플랫폼 보존. 임의 신규 브랜치/삭제·강제푸시/원본 기능 복구/웹·HTML 대체/계정 로그인·유료 API/사용자 PC 원격 접속/실제 방송·녹화 시작·채팅 게시/권리 확인 없는 음성 훈련 금지. 이전 성공한 단위 검사·CI 모델과 실제 GPT-SoVITS→Cubism→OBS 전체 실증 구별. 매시간 기존 예약과 타 프로젝트 예약 변경·종료 금지. 원래 생성 대화 유지 최우선, 플랫폼의 불가피한 새 대화 출현 시 본 전체 문서+원본 기획+main을 먼저 읽고 인수인계.
+
+### ② 이번 완료 코드/기능 및 ⑤ 정확한 변경파일·커밋
+- GitHub `junggyeol4444/AISTING` **기존 `main`**, 신규 브랜치·강제푸시 없음.
+- `4846aaded5ae6954ef65c1524d47d5bb4d162a66`: 5개 파일을 한 커밋으로 수정.
+  1. `src/ai_broadcaster/original_plan_full_pipeline.py`: 명시 운영자 중지 `cancel_event` 추가. 이전에 승인·권리 확인된 단일 한국어 음성 요청일 때 OBS 사전 검사 시작 전, 공식 AI 전송 직전, 모니터 6구간 사이, 결과 최종 반환 전에 중지 확인. 중지 후 AI 요청 재전송·기존 늦은 결과 성공 처리 방지. 이미 upstream에 전달된 요청은 무효화/전송 취소로 주장하지 않음. OBS 독립 모니터는 Event로 중지 신호 확인.
+  2. `src/ai_broadcaster/desktop_chat_tab.py`: 기존 네이티브 Tk 공식 실측에 **"실측 중지 요청" 버튼** 추가. 실행 중에만 활성화, 중지 눌러도 기존 AI request 작업 스레드가 반환하기 전에는 새 실행 버튼을 막음. 완료 이벤트에서 오류/중지/정상 성공을 구분하며 GUI 상태 복구, 창 닫기 시 중지 이벤트 설정, 원래 입력 텍스트·캐릭터·SQLite 미수정. 이미 upstream에 도착한 질문을 취소한다고 거짓 안내하지 않음.
+  3. `tests/test_aisting_official_chat_obs_pipeline.py`: 작업 시작 전 중지 시 OBS/AI 무호출, 승인 질문이 전송된 뒤 중지 시 긍정 결과 폐기·재전송 없음 검사 2개 추가.
+  4. `tests/test_aisting_gui_official_full_pipeline.py`: 진행 중 중지 클릭은 GUI 잠금을 유지, 작업자 늦은 양성 결과를 중지로 처리하는 단위 회귀 추가.
+  5. `scripts/gui_official_pipeline_click_windows.py`: Windows 가상 PC에서 **실제 Tk 버튼 클릭, 느린 외부 모델은 모의 스레드로 격리, 중지 버튼 클릭, 이미 들어온 결과 거부, 입력 내용 보존**까지 확인하는 E2E UI smoke 추가. AI 모델/Live2D/OBS 동일 발화 실제 통합은 이 검증에서 모의임.
+- `5273606553b39b62cb64d4c51ce67024c4b189f3`: 변경된 worker 인수(중지 Event 4번째)의 기존 단위 검사 가정 수리, 수정 파일 `tests/test_aisting_gui_official_full_pipeline.py`.
+- `b3197d463876c0ed14a7d9a86ca16bb8f94b5836`: `src/ai_broadcaster/desktop_chat_tab.py`의 race 수정. 성공 이벤트가 큐에 놓인 직후 운영자가 Stop을 누르더라도 **Tk 결과 처리 직전에 cancel_event를 다시 검사해 성공으로 표시하지 않음**. `tests/test_aisting_gui_official_full_pipeline.py`에 늦은 성공 큐 재현 검사.
+- `306977935a1f6502e00d79531e34b32d5d957ac2`: 위 테스트 파일에 괄호 하나가 빠져 발생한 SyntaxError 수정. 이 커밋의 실제 소스/테스트가 아래 성공 CI의 기준. 문서 추가 커밋 이후 HEAD는 변경되므로 후속 실행에서 최신 원격 HEAD를 내부 재확인.
+
+### ③ 검증 실패·수정 및 ⑥ 최종 GitHub Actions·실제 Windows EXE artifact
+- 첫 묶음 검증 https://github.com/junggyeol4444/AISTING/actions/runs/39365352472 : `completed/failure`, **2,390 tests, 1 failure, skipped=2**. `test_explicit_approval_calls_one_worker_and_disables_button`는 기존 인수 3개를 가정하지만 새 실제 worker 인수는 Event 포함 4개 → 신규 Event 존재/미설정과 실제 질문 1회 전달 검증으로 수정.
+- 추가 중지 경합 회귀 후 https://github.com/junggyeol4444/AISTING/actions/runs/39365536304 : `completed/failure`, 테스트 새 파일 188행의 `SyntaxError: '(' was never closed`로 테스트 로드 불가. 테스트 결과를 성공 처리하지 않고 원인 파일 문법 수정 뒤 전량 재실행.
+- **최종 성공 전체 회귀** https://github.com/junggyeol4444/AISTING/actions/runs/39365639890 : `completed/success`, 실제 로그 `Ran 2391 tests`, `OK (skipped=2)`, **실패 0**.
+- **최종 성공 Windows 통합** https://github.com/junggyeol4444/AISTING/actions/runs/39365639900 : `completed/success`, 5개 job 전체 `completed/success`: `windows-exe`, `ollama-real-local-e2e`, `obs-real-readonly`, `twitch-public-readonly`, `korean-public-chat-readonly`.
+- Windows GUI 로그 명시 실버튼 확인: `NATIVE_BUTTON_GEOMETRY 244 277 749`, `GUI_DECLINE_NO_SEND_PASS`, `GUI_BUTTON_THREAD_EVENT_SUCCESS_ROUTE_PASS (SIMULATED OBS/MODEL)`, `GUI_FAILURE_RECOVERY_PASSWORD_REDACTED_PASS`, **`GUI_NATIVE_CANCEL_NO_LATE_SUCCESS_PASS (SIMULATED MODEL)`**, `CHARACTER_SETTINGS_SQLITE_BYTES_UNCHANGED_PASS`.
+- 실제 Actions artifact `AISTING-Windows-EXE-integrated`, id `12239054164`, 크기 `19,657,995`바이트, GitHub 산출물 **ZIP SHA-256** `134d5951eb0d847d513b83f7977fd6138e99c8505ee786553ac33a434dc84c92`; 개별 EXE 파일 해시 아님. 로그인된 GitHub 사용자는 Windows 워크플로 페이지에서 Artifacts를 내려받을 수 있음.
+- 본 문서 업데이트는 별도 HEAD와 CI를 만들 수 있음. 위 검증은 전량 코드를 담은 마지막 기능 커밋의 실제 성공이고, 문서-only 커밋의 새 진행 CI와 구분.
+
+### ④ 남은 기능·오류·실사용 미검증
+- 실제 사용자 Windows PC에서 권리 확인된 음성 참조 및 GPT-SoVITS 모델/서버로 **한국어 TTS 합성 → 공식 Live2D 실제 Cubism 음성 동기 립싱크 → OBS 프로그램 음성·화면** 동일 발화 end-to-end 실측은 **미완료**. 이번 CI는 **Windows GUI의 실제 버튼·상태는 실행**했지만 음성/Live2D/OBS 같은 발화의 외부 서비스는 모의, 별도 CI OBS와 Ollama는 독립 실행이므로 전체 모델 실사용을 인증하지 못함.
+- 실제 인증 YouTube 활성 방송 채팅 수신, 4개 플랫폼 실제 수백 명 동시 FIFO와 1~3초 처리·24시간 안정성은 검증하지 못함. YouTube 메시지 ID 중복 제거/오프라인 테스트와 실제 API 실증은 다름.
+- Stop은 이미 공식 AI 서버가 받은 요청을 취소할 수 있는 방법이 아님. 중지 요청이 들어가면 새 요청 재전송 금지·GUI 늦은 결과 성공 표시 방지, 기존 외부 server가 처리를 지속할 가능성은 사용자에게 명확히 알림. 실제 외부 음성 모델/OBS 장시간 연결의 안전 종료 사용자 실기 검증 미수행.
+- 원본 로드맵/사용자 개인정보·설정 상태의 pending 항목을 근거 없는 완료 상태로 변경하지 않음.
+
+### ⑦ 데이터·설정·캐릭터 보존
+원본 확정 캐릭터 이름·성격·말투/저장 설정/SQLite 기억/사용자 OBS 입력·장면/공식 Live2D 프로젝트를 건드리지 않음. 테스트는 임시 격리 SQLite·설정의 해시·값 불변으로 검증. 사용자 PC 접속·계정 로그인·방송/녹화/채팅 송신·권리 없는 모델 학습 없음.
+
+### ⑧ 다음 회차에서 수행할 구체적 묶음 작업
+1. 기존 승인형 공식 AI·GPT-SoVITS·Live2D/OBS **실제 모델**의 고지연 음성 합성·중지·재호출 중 라이브 세션 충돌/중복 발화, Windows 실기기 재실행·닫기·실패 복구 실증. 모델/권리/PC 접근이 없다면 완료 주장 금지.
+2. 실제 Cubism 입 움직임 monotonic 타임스탬프 ↔ OBS 입력 미터 시간의 교차 관찰을 넘어 같은 음성 샘플인지 검증할 수 있는 실제 경로/오디오 증거 보강 (방송·녹화/외부 송신 없이 승인된 로컬 실측에서만).
+3. YouTube 활성 채팅 키 없는 환경에서는 공식 API 응답·토큰·정지·메시지 ID 일관성 테스트 보강. 한국 2플랫폼/Twitch 포함 중복 채팅 FIFO/1~N천건 밀집 이벤트/중단·재연결 안전성 점검.
+4. Windows 네이티브 GUI의 사용자가 Stop을 눌렀다가 닫기/재실행할 때 모델 서버의 이미 전달된 요청 및 후행 이벤트 누락/데이터 영속성 재검증. 전체 회귀 2391+ 및 Actions Windows 5개 잡을 묶음 끝에 전량 실행해 발견한 오류 수정 후 다시 반복.
+5. 각 실행 끝에 최신 본 문서와 정확한 main commit, 변경 파일, 전체 검사 수, EXE Artifact 및 **실제 미실증**을 누적 기록.
+
+### ⑨ 원래 대화 유지/불가피한 대화 이동 시
+사용자는 **예약 생성 바로 이 AISTING 대화**에서 매시간 진행하고 다른 대화로 임의 이전하지 말라고 최우선 지시. 이 실행에서 원래 대화를 바꾸지 않았으며 일정 및 다른 프로젝트 예약 수정/종료 없음. 플랫폼 길이/예약 응답 연결 제약으로 다른 대화에 출력될 경우 이전 대화를 읽을 수 있다고 꾸미지 말고 **본 GitHub full handoff와 원본 기획/로드맵/최신 main/Actions**를 먼저 읽고 작업 복원, 사용자에게 재설명 요구 금지. 이동 사유도 확인 가능한 실제 플랫폼 제약만 보고.
