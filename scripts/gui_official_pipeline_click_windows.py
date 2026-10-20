@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import os
 from pathlib import Path
+from contextlib import closing, ExitStack
 import sqlite3
 import sys
 import tempfile
@@ -45,7 +46,7 @@ def main():
         settings = root / "original_persona.json"
         settings.write_text('{"preserve":"캐릭터/설정은 변경하지 않습니다"}', encoding="utf-8")
         database = root / "user_memory.sqlite3"
-        with sqlite3.connect(database) as db:
+        with closing(sqlite3.connect(database)) as db:
             db.execute("CREATE TABLE identity_preserve(id INTEGER PRIMARY KEY, note TEXT)")
             db.execute("INSERT INTO identity_preserve(note) VALUES (?)", ("기억 보존",))
         before_settings, before_db = sha256(settings), sha256(database)
@@ -84,7 +85,6 @@ def main():
             ]
 
             # Declined operator confirmation cannot send a prompt or clear text.
-            from contextlib import ExitStack
             calls = []
             def simulated_pipeline(text, **kwargs):
                 calls.append(text)
@@ -138,7 +138,7 @@ def main():
 
             assert sha256(settings) == before_settings
             assert sha256(database) == before_db
-            with sqlite3.connect(database) as db:
+            with closing(sqlite3.connect(database)) as db:
                 assert db.execute("SELECT note FROM identity_preserve").fetchone()[0] == "기억 보존"
             print("CHARACTER_SETTINGS_SQLITE_BYTES_UNCHANGED_PASS")
         finally:
