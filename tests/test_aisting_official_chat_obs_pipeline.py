@@ -94,6 +94,37 @@ class FullPipelineContracts(unittest.TestCase):
                     operator_approved=True, voice_rights_confirmed=True)
             sender.assert_not_called()
 
+    def test_obs_monitor_owns_separate_connection(self):
+        safety, monitor = make_obs(), make_obs()
+        lip = SimpleNamespace(verified_signal=True)
+        with patch.object(
+            pipeline, "OfficialObsWebsocket", side_effect=[safety, monitor]
+        ) as factory, patch.object(
+            pipeline, "send_to_native_live2d_session_with_observation",
+            return_value=lip,
+        ):
+            result = pipeline.verify_official_chat_live2d_obs(
+                "테스트", obs_password="local", obs_input_name="Mic",
+                operator_approved=True, voice_rights_confirmed=True)
+        self.assertTrue(result.verified_observation)
+        self.assertEqual(factory.call_count, 2)
+        self.assertEqual(safety.probe_count, 0)
+        self.assertEqual(monitor.probe_count, 1)
+
+    def test_failed_obs_observer_setup_prevents_ai_prompt(self):
+        safety, monitor = make_obs(), make_obs()
+        monitor.connect = Mock(side_effect=OSError("OBS disconnected"))
+        with patch.object(
+            pipeline, "OfficialObsWebsocket", side_effect=[safety, monitor]
+        ), patch.object(
+            pipeline, "send_to_native_live2d_session_with_observation"
+        ) as sender:
+            with self.assertRaisesRegex(RuntimeError, "질문을 보내지 않았습니다"):
+                pipeline.verify_official_chat_live2d_obs(
+                    "테스트", obs_password="local", obs_input_name="Mic",
+                    operator_approved=True, voice_rights_confirmed=True)
+        sender.assert_not_called()
+
     def test_unconfirmed_obs_route_does_not_send_ai_prompt(self):
         obs = make_obs(confirmed=False)
         with patch.object(pipeline, "OfficialObsWebsocket", return_value=obs), (
