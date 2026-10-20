@@ -781,3 +781,11 @@ GitHub `junggyeol4444/AISTING`, **기존 main에만 빠른전진 반영**:
 3. 묶음 개발 완료 이후 **전체** 회귀 + Windows EXE 빌드/기존 native Tk 클릭·가능한 실제 Ollama/OBS/공개 플랫폼 검사. 오류가 나면 수정하고 **최신 전체 전량 재검증**. 모델 접근 없어 미실증이면 그대로 미실증 명시, 우회용 더미 PASS 금지.
 4. 실제 GitHub 차단 시 모든 **허용된** 접근 경로를 점검하여 원본 코드 보호. Google Drive 불필요. 새 브랜치/강제푸시/무단 방송·녹화·계정 로그인·유료 API/개인 음성 학습/원본 캐릭터·SQLite 삭제 금지.
 5. 실행 종료 시 이 문서 **1~26절 원문을 모두 보존하며 추가 절 append**, commit/files/검증 수/Windows 아티팩트/실증 미완료/다음 작업 기재. 다른 프로젝트 예약 변경 금지.
+
+
+## 27. 2026-10-20 17:30 다른 대화 예약 전용 독립 전체 원문 백업
+
+- 사용자 지시를 다른 대화에서 복원할 수 있도록 **누적 인수인계 전체 원문을 복제해 별도 파일에 저장**: [AISTING_NEXT_CONVERSATION_COMPLETE_HANDOFF_20261020_1730_KST.md](AISTING_NEXT_CONVERSATION_COMPLETE_HANDOFF_20261020_1730_KST.md).
+- 다음 예약 실행은 이 누적 문서의 1절부터 끝까지, 별도 원문 백업, `docs/ORIGINAL_PLAN.txt`, `docs/ROADMAP_100.md`, `config/roadmap.json`, 최신 main 소스와 검증 이력을 모두 읽어 **복수 미완료 기능 개발부터** 시작한다. 개발 전체 → 전체 검증 → 오류 수정 → 전체 재검증 순서 외 임의 재해석 금지.
+- 2026-10-20 **17:30 KST부터 매시간** 별도 대화 예약 요청, 가장 높은 사용 가능 모델 요청, Google Drive 불필요, GitHub 허용된 다양한 경로 탐색 요청을 명시한다. 실제 모델·대화 라우팅을 통제/선택했다고 허위 확답 금지. 중복 예약이 있다면 대상을 확인해 동일 작업의 중복 GitHub 쓰기를 피한다. 다른 프로젝트 자동화 건드리지 않는다.
+- 가장 최신 검증은 코드 커밋 `a5c074f3c5ef1ce3e955c80d0dd8b9929a6fe2ed`, 전체 회귀 2,421개 https://github.com/junggyeol4444/AISTING/actions/runs/39388635212, Windows 5job https://github.com/junggyeol4444/AISTING/actions/runs/39388635145, Artifact ID `12248437439` (ZIP SHA-256 `8dfae3480593e34d489f61fd4e11faf38312824074ecdebc964cd9ec3fe91f97`). 실제 음성 모델/YouTube 인증/24시간 수백 명 실운용 미검증은 계속 명시.
