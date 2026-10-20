@@ -335,3 +335,37 @@ GitHub repo `junggyeol4444/AISTING` main 고정. 이번 코드 기준 커밋 `c9
 
 ### ⑨ 원래 예약 대화 유지 및 불가피한 이동 사유
 현재 사용자가 "계속개발 하고 검증하라고" 요청한 AISTING 대화에서 바로 이어서 작업함. 향후 시간/플랫폼 제한으로 다른 대화로 나타날 경우 원래 대화에 연결하려는 사용자 요청을 그대로 유지하고, 본 GitHub 인수인계와 원본 기획·코드·CI를 먼저 읽고 작업 복원. 다른 예약을 변경/종료하지 말 것.
+
+## 17. 2026-10-20 11시 이후 사용자 요청: 복수 기능 묶음 개발 → 전량 회귀검사 → 오류 수정 → 전량 재검증
+
+### ① 사용자 원 지시·금지/원본 기획
+사용자는 "남은 것 좀 하라", "하나 개발·검증 후 다음으로 넘어가지 말고 개발하고 검증하고 수정하라"고 반복 지시. 이에 따라 이번에는 **음성·Live2D·OBS 관찰의 시간상 거짓 양성 방지, 공식 공개 채팅의 저장 캐릭터·한국어 GPT-SoVITS 안전 게이트, 기억 삭제 차단, 그리고 교차 모듈 검사**를 하나의 Git 커밋에서 묶음 반영하고 CI 전체 회귀검사를 실행. 원본 `docs/ORIGINAL_PLAN.txt`, `docs/ROADMAP_100.md`, `config/roadmap.json`, 기존 Windows 10/11 네이티브 `AISTING.exe`/Tk, 원본 캐릭터 이름·말투·성격 1회 저장 유지, SQLite, 모든 플랫폼 중복 채팅 포함 FIFO, 기존 Open-LLM-VTuber/Live2D/GPT-SoVITS/OBS를 그대로 유지. 새 브랜치·강제 푸시·복구되지 않는 원본 교체·웹/HTML 대체·무단 로그인/유료 API·사용자 PC 원격 실행·실방송/녹화/게시·권리 없는 음성 모델 학습 금지. 기존 시간당 예약 및 타 프로젝트 예약 절대 변경 금지.
+
+### ② 이번 실제 완료 개발 및 ⑤ 정확한 소스 변경
+- Repo `junggyeol4444/AISTING` 오직 `main`, 묶음 코드/테스트 원자적 빠른전진 커밋 `f42e96d550817064f340a4801784711389755573`. 변경 파일 4개:
+  1. `src/ai_broadcaster/original_plan_full_pipeline.py`: 공식 Live2D 립싱크와 OBS 선택 입력의 음성 후보를 **서로 다른 시간에 별도로 관찰했는데도 연결 성공 후보로 분류하는 오류 방지**. 각 OBS 읽기 구간의 `time.monotonic()` 시작/종료 시각과 공식 AI 한 번의 요청 시간 구간 중첩을 확인하고, 두 신호 존재+시간 중첩 후보가 함께 있어야 `verified_observation`이 true. **OBS 미터의 정확한 음성 프레임 타임스탬프가 아닌 관찰창 경계**이므로 실제 동일 발화/코덱/시청자 전달까지 증명하지는 않음. OBS preflight에서 취소될 때 불필요한 관찰 스레드를 깨우는 처리 추가.
+  2. `src/ai_broadcaster/desktop_chat_tab.py`: 수동 한 건 검사만 적용되던 **저장 캐릭터/공식 Live2D 프로젝트 정합성 및 저장된 한국어 GPT-SoVITS TTS 선택 검사를 공식 공개 채팅 연결 시작 전에도 필수화**. 승인 전 파일/로컬 모델이 없거나 다르면 fail-closed. 운영자 AI/실측/공개 채팅 세션 실행 중에는 SQLite 대화 기억 삭제 버튼이 실제 삭제 작업에 들어가지 못하도록 제한. GUI에 음성↔OBS 관찰 시간 중첩 결과의 후보/미확인 표시 추가.
+  3. `tests/test_aisting_official_chat_obs_pipeline.py`: OBS와 입 움직임이 모두 양수여도 **시간 중첩 후보가 없으면 전체 성공으로 표시하지 않으며**, 실제 오디오가 없어도 성공하지 않는 음성 관찰 교차 회귀 강화.
+  4. `tests/test_aisting_gui_official_full_pipeline.py`: 공식 공개 채팅 연결 시 확정 캐릭터 미존재면 사용자 승인/송신 이전에 차단, 실측 중 삭제 방지 회귀 추가.
+- 동일 `main`에서 선행 코드 내용을 되돌리지 않고 위 묶음의 과거 회귀검사와 현재 복수 구간 동작을 일치시키는 테스트 수정 커밋 `2082ae28e3b730bbb5d19eee49f2ba8d782bd556`; 변경 파일 `tests/test_aisting_official_chat_obs_pipeline.py`. 코드는 OBS 여러 번 관찰하므로 기존 `probe_count==1` 테스트 2곳을 `1<=probe_count<=6`으로 고침. 공식 AI 질문 중복 전송 금지 검사 유지.
+
+### ③ CI 중간 실패 및 해결/⑥ 성공한 전체 회귀·EXE
+- **실패 증거** https://github.com/junggyeol4444/AISTING/actions/runs/39356757325 : `completed/failure`, 실행 2,380개 중 **2개 실패**, 건너뜀 2. 실패 원인은 `test_existing_official_ai_turn_only_once_and_obs_read_only`, `test_obs_monitor_owns_separate_connection` 두 테스트가 기존 OBS probe 정확히 1회 가정을 했으나 실제 5회였기 때문. 실제 음성/인증 검증 실패가 아니라 변경된 관찰 방식에 대한 회귀검사 조건 오류.
+- **최종 성공 전체 회귀** https://github.com/junggyeol4444/AISTING/actions/runs/39356851151 : `completed/success`, 실제 로그 `Ran 2380 tests`, `OK (skipped=2)`, 실패 0.
+- **동일한 최종 소스의 Windows EXE·실제 Tk·공개 연동 검증** https://github.com/junggyeol4444/AISTING/actions/runs/39356851195 : `completed/success`; `windows-exe`, `obs-real-readonly`, `ollama-real-local-e2e`, `twitch-public-readonly`, `korean-public-chat-readonly` 5개 job 모두 PASS. 별도 EXE selftest/Windows Tk 격리 사용자 버튼 검사 포함; 음성·Cubism/OBS 전체 실송출 검증은 아님.
+- 실제 Windows artifact `AISTING-Windows-EXE-integrated`, id **12236200160**, ZIP 크기 **19,645,783 bytes**, GitHub artifact **ZIP SHA-256** `773b13f6b5a98f733f8f37068b18a33ee6b133d32d7fb2f69ac2b08c1fce6621`. 개별 AISTING.exe 파일 SHA-256이 아님.
+- 이번 검증 완료 소스 기준 `main` SHA는 `2082ae28e3b730bbb5d19eee49f2ba8d782bd556`이며 인수인계 문서 저장으로 최종 HEAD는 추가 이동한다. 다음 회차에는 실제 remote HEAD와 CI·파일를 내부 확인하되 **SHA 보고 자체를 개발 성과처럼 포장하지 말 것**.
+
+### ④ 남은 기능·오류·미실증
+1. **승인된 모델·실제 음성 참조 파일이 설치된 운영자의 Windows PC에서** 실제 한국어 GPT-SoVITS WAV 생성, 공식 Cubism RMS와 입 파라미터, 실제 OBS 입력 및 프로그램 음성/영상이 **동일한 발화로 이어지는지**는 실행하지 못함. Windows CI는 독립 OBS/Ollama와 격리된 UI 이벤트를 검증할 뿐, 동일 실제 한국어 음성 모델의 통합 실증이 아님. 관찰 시간 구간 중첩만으로 합성·음질·실송출 성공이라 하지 말 것.
+2. YouTube 실제 소유 API 키와 활성 라이브 채팅 인증 수신 및 커서/FIFO 실증 미완료. 4개 플랫폼 100~500명 동시 고부하, 24시간 실운용, 1~3초 지연 실측 미완료.
+3. 사용자 PC에서 실제 `AISTING.exe`를 실행해 캐릭터 저장→공식 Live2D 창→한국어 음성→OBS의 모든 버튼을 사용한 사용자 승인 경로 미검증. GitHub runner 결과로 대체 금지.
+4. 사용자 원본 기획의 로드맵 91개 미승인 단계는 운영자 명시 승인 없이 completed로 표시하지 말 것. 초기 기획/정책 및 저장 정보 유지.
+
+### ⑦ 사용자 자료·환경 및 ⑧ 다음 회차 묶음 작업
+- 기존 저장 캐릭터·설정·SQLite·모델/OBS 자료 파일 미수정. 원격 GitHub 코드와 테스트 파일만 변경. 계정 로그인/방송 시작/녹화·채팅 게시·임의 TTS 학습 없음. Windows CI는 격리된 임시 테스트 파일과 공개 읽기 전용 검사를 사용.
+- **다음 묶음**: 1) 실제 GPT-SoVITS 사용 권리·모델/OBS가 있는지 확인 가능한 환경에서 동일 음성 실증·오류 수정; 접근 불가면 단계 미실증 유지, 2) OBS 미터 이벤트와 Cubism RMS에 실제 같은 발화의 샘플 타임스탬프가 없는 한 "동일 음성 완전 증명" 금지·유효 증거 수집 강화, 3) 원본 네이티브 GUI 재시작/취소/예외·SQLite 영속 보존 및 공식 공개 채팅 FIFO 병행 검사, 4) YouTube API page/stop 및 권리 있는 로그인 없는 읽기 전용 실험, 5) 모든 수정 묶음 뒤 전량 회귀→Windows EXE/GUI·OBS/Ollama/공개 채팅 전량 검사→오류 묶음 수정 후 다시 전량 검사.
+- **순서 중요**: 한 작업마다 회귀 빌드를 반복하는 대신 복수 기능을 계획·구현한 한 묶음을 종료한 뒤 전체 시스템을 검사한다. 실제 오류가 발생하면 누적 코드를 잃지 않고 고쳐서 다시 전량 검사한다.
+
+### ⑨ 원래 ChatGPT 예약 생성 대화 유지
+사용자가 만든 AISTING 매시간 예약은 가능한 한 바로 이 기존 원래 대화에서 이어져야 한다. ChatGPT 플랫폼이 대화를 강제로 이동시키는 것은 여기서 통제할 수 없으므로, 이동 시에는 본 문서와 원본 기획·GitHub 전체 이력·마지막 CI를 먼저 읽고 인계 사유를 명시하며 다시 사용자에게 설명을 요구하지 않는다. 이번 실행 중 예약·다른 프로젝트의 예약은 생성·수정·종료하지 않음.
