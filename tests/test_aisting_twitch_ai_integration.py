@@ -49,6 +49,89 @@ class LiveChatReplyOrderTests(unittest.TestCase):
         self.assertEqual([payload[1].reply for _, payload in results],
                          ["한국어 답변 안녕", "한국어 답변 하이 😀", "한국어 답변 안녕"])
 
+    def test_two_thousand_repeated_chats_preserve_fifo_without_drops(self):
+        from ai_broadcaster.multiplatform_readonly import PlatformChat
+        inbox, outbox = queue.SimpleQueue(), queue.SimpleQueue()
+        messages = [PlatformChat("room", "viewer", "같은 채팅", "chzzk")
+                    for _ in range(2048)]
+        for item in messages:
+            inbox.put(item)
+        inbox.put(None)
+        seen = []
+        def fake_model(model, text, **kwargs):
+            seen.append((text, kwargs["sender"]))
+            return SimpleNamespace(reply="확인", remembered_count=len(seen))
+        with patch("ai_broadcaster.desktop_chat_tab.run_local_chat", side_effect=fake_model):
+            LocalChatTab._work_twitch_ai(SimpleNamespace(_results=outbox), "local", inbox)
+        self.assertEqual(len(seen), len(messages))
+        self.assertEqual(seen, [("같은 채팅", "[치지직] viewer")] * 2048)
+        accepted = [outbox.get_nowait() for _ in messages]
+        self.assertEqual([kind for kind, _ in accepted], ["twitch_ai_ok"] * 2048)
+        self.assertEqual([event[1].remembered_count for _, event in accepted],
+                         list(range(1, 2049)))
+        self.assertTrue(outbox.empty())
+
+    def test_stop_cannot_delete_memory_or_start_second_ai_until_worker_exits(self):
+        from ai_broadcaster.multiplatform_readonly import PlatformChat
+        stop = threading.Event()
+        entered, released = threading.Event(), threading.Event()
+        inbox, results = queue.SimpleQueue(), queue.SimpleQueue()
+        session = SimpleNamespace(_stop=stop, stop=stop.set)
+        # Session is a SimpleNamespace and is unhashable; use an object with
+        # attributes to preserve production set identity semantics.
+        class Session:
+            def __init__(self):
+                self._stop = stop
+            def stop(self):
+                stop.set()
+        session = Session()
+        inbox.put(PlatformChat("room", "viewer", "기억 저장 중", "chzzk"))
+        inbox.put(None)
+        tab = SimpleNamespace(
+            _results=results, _closed=False, _twitch_active_workers={session},
+            _twitch_session=session, _twitch_ai_inbox=inbox,
+            _twitch_reader_finished=False, _busy=False, _pipeline_busy=False,
+            _pipeline_status=SimpleNamespace(set=lambda *_: None),
+            _twitch_status=SimpleNamespace(set=lambda *_: None),
+            _twitch_start=SimpleNamespace(configure=lambda **kw: None),
+            _twitch_end=SimpleNamespace(configure=lambda **kw: None),
+            _poll=lambda: None, after=lambda *_: None,
+        )
+        def fake_model(*args, **kwargs):
+            entered.set()
+            self.assertTrue(released.wait(3))
+            return SimpleNamespace(reply="완료", remembered_count=1)
+        with patch("ai_broadcaster.desktop_chat_tab.run_local_chat", side_effect=fake_model):
+            thread = threading.Thread(
+                target=LocalChatTab._work_twitch_ai,
+                args=(tab, "model", inbox, False, session),
+                daemon=True,
+            )
+            thread.start()
+            self.assertTrue(entered.wait(2))
+            LocalChatTab._stop_twitch(tab)
+            self.assertTrue(stop.is_set())
+            self.assertIsNone(tab._twitch_session)
+            self.assertIn(session, tab._twitch_active_workers)
+            with patch("ai_broadcaster.desktop_chat_tab.messagebox.showwarning") as warning, patch(
+                "ai_broadcaster.desktop_chat_tab.messagebox.askyesno"
+            ) as confirm, patch(
+                "ai_broadcaster.desktop_chat_tab.ConversationMemory.clear"
+            ) as delete:
+                LocalChatTab._clear_memory(tab)
+                warning.assert_called_once()
+                confirm.assert_not_called()
+                delete.assert_not_called()
+            with patch("ai_broadcaster.desktop_chat_tab.messagebox.showwarning") as warning:
+                LocalChatTab._start_twitch(tab)
+                warning.assert_called_once()
+            released.set()
+            thread.join(3)
+            self.assertFalse(thread.is_alive())
+        LocalChatTab._poll(tab)
+        self.assertEqual(tab._twitch_active_workers, set())
+        self.assertTrue(results.empty())
+
     def test_one_ai_error_is_visible_and_next_message_is_not_filtered(self):
         inbox, outbox = queue.SimpleQueue(), queue.SimpleQueue()
         first = TwitchChatLine("mychannel", "viewer1", "첫 채팅")

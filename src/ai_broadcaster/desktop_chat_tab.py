@@ -41,6 +41,9 @@ class LocalChatTab(ttk.Frame):
         self._queued_voice: deque[tuple[str, Voice]] = deque()
         self._closed = False
         self._twitch_session: TwitchReadOnlySession | None = None
+        # Includes stopped readers while their in-flight AI/SQLite turn drains.
+        # Only the Tk event loop removes completed workers from this set.
+        self._twitch_active_workers: set[object] = set()
         self._twitch_channel = tk.StringVar()
         self._chat_platform = tk.StringVar(value='트위치')
         self._official_live2d = tk.BooleanVar(value=False)
@@ -315,6 +318,12 @@ class LocalChatTab(ttk.Frame):
         # operator-approved official Live2D/OBS session probe.
         if self._twitch_session is not None or self._pipeline_busy:
             return
+        if getattr(self, "_twitch_active_workers", None):
+            messagebox.showwarning(
+                "이전 AI 작업 종료 대기",
+                "이전 채팅의 AI·기억 저장 작업이 끝난 뒤 새 연결을 시작할 수 있습니다.",
+                parent=self)
+            return
         # Do not silently receive chats that cannot reach the selected AI.
         model = self._model_name.get().strip()
         official = bool(self._official_live2d.get())
@@ -389,6 +398,7 @@ class LocalChatTab(ttk.Frame):
         self._twitch_reader_error = None
         inbox = queue.SimpleQueue()
         self._twitch_ai_inbox = inbox
+        self._twitch_active_workers.add(session)
         # One worker calls the EXISTING local Ollama conversation in order.
         # No extra model service, intentional delay or platform chat posting.
         threading.Thread(
@@ -420,38 +430,45 @@ class LocalChatTab(ttk.Frame):
                 self._results.put((kind, value))
             else:
                 self._results.put(("twitch_scoped", (session, kind, value)))
-        while True:
-            chat = inbox.get()
-            if chat is None or (session is not None and session._stop.is_set()):
-                break
-            if official:
-                # Official WebView2 owns the AI, GPT-SoVITS audio and Cubism
-                # model in ONE upstream conversation. Never duplicate this
-                # turn by also submitting to the separate Ollama model.
+        try:
+            while True:
+                chat = inbox.get()
+                if chat is None or (session is not None and session._stop.is_set()):
+                    break
+                if official:
+                    # Official WebView2 owns the AI, GPT-SoVITS audio and Cubism
+                    # model in ONE upstream conversation. Never duplicate this
+                    # turn by also submitting to the separate Ollama model.
+                    try:
+                        from .original_plan_frontend import send_to_native_live2d_session_with_observation
+                        evidence = send_to_native_live2d_session_with_observation(
+                            chat.text, operator_approved=True, duration=8)
+                    except Exception as exc:
+                        report("twitch_ai_error", (chat, str(exc)))
+                    else:
+                        report("twitch_live2d_ok", (chat, evidence))
+                    continue
                 try:
-                    from .original_plan_frontend import send_to_native_live2d_session_with_observation
-                    evidence = send_to_native_live2d_session_with_observation(
-                        chat.text, operator_approved=True, duration=8)
+                    result = run_local_chat(
+                        model, chat.text, sender="[" + {"twitch":"트위치","chzzk":"치지직",
+                            "soop":"SOOP","youtube":"유튜브"}.get(
+                                getattr(chat, "platform", "twitch"), "트위치") + "] " + chat.sender,
+                        use_committed_gui_character=True)
                 except Exception as exc:
                     report("twitch_ai_error", (chat, str(exc)))
                 else:
-                    report("twitch_live2d_ok", (chat, evidence))
-                continue
-            try:
-                result = run_local_chat(
-                    model, chat.text, sender="[" + {"twitch":"트위치","chzzk":"치지직",
-                        "soop":"SOOP","youtube":"유튜브"}.get(
-                            getattr(chat, "platform", "twitch"), "트위치") + "] " + chat.sender,
-                    use_committed_gui_character=True)
-            except Exception as exc:
-                report("twitch_ai_error", (chat, str(exc)))
-            else:
-                report("twitch_ai_ok", (chat, result))
-        # The reader can reach EOF while the serial model is still replying.
-        # This marker follows EVERY accepted AI result in the same results FIFO.
-        if session is not None and not session._stop.is_set():
-            report("twitch_ai_finished", session)
+                    report("twitch_ai_ok", (chat, result))
+            # The reader can reach EOF while the serial model is still replying.
+            # This marker follows EVERY accepted AI result in the same results FIFO.
+            if session is not None and not session._stop.is_set():
+                report("twitch_ai_finished", session)
 
+        finally:
+            # Stopping a reader is not the same as completing an AI turn.
+            # This event is processed by Tk even if the originating session
+            # was stopped or replaced; it never touches a user memory file.
+            if session is not None and session in getattr(self, "_twitch_active_workers", ()):
+                self._results.put(("twitch_ai_worker_exited", session))
     def _stop_twitch(self) -> None:
         session = self._twitch_session
         if session is None:
@@ -504,6 +521,13 @@ class LocalChatTab(ttk.Frame):
                     return
                 kind, payload = self._results.get_nowait()
                 processed += 1
+                if kind == "twitch_ai_worker_exited":
+                    # Always consume the lifecycle marker, even from a
+                    # stopped session. Scoped chat data is still discarded.
+                    workers = getattr(self, "_twitch_active_workers", None)
+                    if workers is not None:
+                        workers.discard(payload)
+                    continue
                 if kind == "twitch_scoped":
                     source_session, kind, payload = payload
                     if source_session is not self._twitch_session:
@@ -772,8 +796,9 @@ class LocalChatTab(ttk.Frame):
             self._tts_status.set("음성 재생 중지를 요청했습니다.")
 
     def _clear_memory(self) -> None:
-        if self._busy or self._pipeline_busy or self._twitch_session is not None:
-            messagebox.showwarning("사용 중", "AI·채팅·실측 종료 후에만 대화 기억을 삭제할 수 있습니다.", parent=self)
+        if (self._busy or self._pipeline_busy or self._twitch_session is not None
+                or getattr(self, "_twitch_active_workers", None)):
+            messagebox.showwarning("사용 중", "AI·채팅·실측 및 이전 응답의 기억 저장 종료 후에만 삭제할 수 있습니다.", parent=self)
             return
         approved = messagebox.askyesno("대화 기억 삭제", "저장된 대화 기억 전체를 삭제할까요? 되돌릴 수 없습니다.", parent=self)
         if not approved:
