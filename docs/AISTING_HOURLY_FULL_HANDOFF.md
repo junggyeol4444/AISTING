@@ -296,3 +296,42 @@ GitHub repo `junggyeol4444/AISTING` main 고정. 이번 코드 기준 커밋 `c9
 - 전체 회귀 https://github.com/junggyeol4444/AISTING/actions/runs/39352557815 : 2,376개 실행, 건너뜀 2개, 실패 0, `completed/success`.
 - 본 내용은 코드 성공 범위인 GUI 생성/빌드, 공개 읽기 전용 플랫폼, 실제 로컬 Ollama/OBS CI를 뜻함. **사용자 승인 음성 모델에서 GPT-SoVITS 한국어 실제 음성·공식 Live2D/OBS 전체 출력 실사용 증명이 아니다.**
 - 인수인계 문서만 추가 저장해 새 CI가 자동 시작할 수 있음. 앞서 확인한 위 5개 job의 실제 성공 증거는 사라지지 않는다.
+
+## 16. 2026-10-20 현 대화 실개발·실검증 — Windows 원본 Tk 화면에서 승인 버튼 직접 호출, SQLite 보존 검증
+
+### ① 사용자 원본 기획/지시/금지
+사용자가 "계속개발 하고 검증하라고 왜 검증 안하는데"라고 명확히 지적. 기존의 단위/오프라인 검사와 Windows EXE **실제 사용자 버튼 흐름**은 다르므로, 이번에는 원본 AISTING 네이티브 Tk UI에서 **실제 버튼과 이벤트 루프를 실행**하는 CI 검증을 추가했다. 여전히 원래 docs/ORIGINAL_PLAN.txt · docs/ROADMAP_100.md · config/roadmap.json, Windows 10/11 x64 AISTING.exe, 생성 후 영속 캐릭터·SQLite·설정, 기존 공식 Open-LLM-VTuber·Live2D, GPT-SoVITS 한국어 음성, OBS 화면/오디오, CHZZK/SOOP/Twitch/YouTube 중복 포함 FIFO 목표 유지. 브랜치 생성/삭제, 강제 푸시, 재개발/웹·HTML 대체, 실제 방송 시작/녹화/채팅 게시, 미승인 유료 API·계정 로그인·사용자 PC 원격 접근, 권리 없는 음성 훈련 및 사용자 데이터 삭제/덮어쓰기 금지. 기존 매시간 예약 및 다른 프로젝트 예약 변경하지 않음.
+
+### ② 실제 코드 개발 및 확정된 수정 파일/커밋
+- `1f7254d5ebdea347d4cfcfaf77e464f6b0dec01e`: `scripts/gui_official_pipeline_click_windows.py` 신규. Windows CI에서 **원본 `AistingApp` 실제 Tk 창/노트북을 열고 `LocalChatTab._pipeline_button.invoke()`로 실제 UI 명령을 수행**. 기존 설정·SQLite 테스트 파일을 Windows 임시 디렉터리에 고립. 실제 승인 거부, 단일 질문/스레드/이벤트 결과, 버튼 상태 복귀, 에러 발생/입력 보존, OBS WebSocket 암호 미노출, 기존 설정·SQLite 바이트 그대로 보존을 검사. 공식 실제 음성/Live2D/OBS 외부 연결만 격리 모의 결과로 대체했으며 **실제 모델 성공이 아님**.
+- `9836746bb80dcb18ca681924eb89b5a9a7aa2f07`: `.github/workflows/build-windows.yml`의 기존 Windows EXE 빌드 job에 실제 Tk 버튼 클릭 smoke 실행 단계를 추가. 실패하면 Windows 빌드 전체 FAIL.
+- `430e0b560f42659041671f8534e861170aa98cc6`: `src/ai_broadcaster/desktop_chat_tab.py`에서 기존 공식 Live2D/OBS 실제 검사 버튼을 1280×768 화면 내에 표시되도록 대화 기록 위로 배치. 원래 Tk 앱 UI만 수정, 캐릭터/SQLite/기획 설정 보존.
+- **실패·수리 이력, 숨기지 말 것**: 첫 Windows 클릭검사 https://github.com/junggyeol4444/AISTING/actions/runs/39354154896 `failure`; GUI 위치/승인 거부/모의 성공 결과/실패 복구/SQLite 파일 무변경은 통과했으나 테스트 코드의 `sqlite3.connect` 컨텍스트 매니저가 연결을 닫지 않아 Windows 임시 파일 제거 `WinError 32`. `ec48c1b82e0f53db9d9830e49401b7174965f855`에서 테스트 파일 SQLite 연결 명시 닫기.
+- 다음 Windows 클릭검사 https://github.com/junggyeol4444/AISTING/actions/runs/39354549476 `failure`: SQLite 연결은 종료되지만 CI 보존 데이터 INSERT가 commit되지 않아 SELECT 0건. 애플리케이션의 기존 사용자 DB 손실 증거 아님. `3da7d7ff1a2fcdb6ac885f2008531614669eca77`에서 테스트 SQLite 생성 INSERT를 트랜잭션 커밋 후 명시 닫기로 수정. 이전 기획/코드 버전 원복 없음.
+- 모든 위 소스/워크플로 변경은 GitHub `junggyeol4444/AISTING` 기존 **main**에 실제 누적 반영.
+
+### ③ 진행/완료 CI 및 ⑥ 실제 EXE artifact
+- **최종 회귀검사** https://github.com/junggyeol4444/AISTING/actions/runs/39354772472 — `completed/success`. Windows workflow 같은 커밋에서 회귀 2,376개 실행, 실패 0 (건너뜀 여부는 이 로그와 별개 확인).
+- **최종 Windows 통합검사** https://github.com/junggyeol4444/AISTING/actions/runs/39354772476 — `completed/success`, `windows-exe`, `obs-real-readonly`, `ollama-real-local-e2e`, `twitch-public-readonly`, `korean-public-chat-readonly` 5개 job 모두 success.
+- **실제 Windows GUI 로그 증빙** (windows-exe job): `NATIVE_BUTTON_GEOMETRY 244 277 749` (검사 버튼 화면 안에 있음); `GUI_DECLINE_NO_SEND_PASS`; `GUI_BUTTON_THREAD_EVENT_SUCCESS_ROUTE_PASS (SIMULATED OBS/MODEL)`; `GUI_FAILURE_RECOVERY_PASSWORD_REDACTED_PASS`; `CHARACTER_SETTINGS_SQLITE_BYTES_UNCHANGED_PASS`. 사용자 실제 클릭/외부 원격 접속 아님, CI Windows Tk 네이티브 버튼 command 호출임.
+- 실제 새 Windows EXE artifact: `AISTING-Windows-EXE-integrated`, id **12235020298**, ZIP 크기 **19,642,574 bytes**, GitHub artifact **ZIP SHA-256** `eaadf41545797a4895d34132dd39ba2a2bc6adf12778b83ce7b9ff59dba36577`. EXE 단일 파일 해시로 표시 금지. 기존 CI run Artifacts에서 다운로드.
+- 문서 커밋 때문에 `main` HEAD는 바뀜. 직전 실제 코드/CI 검증 커밋 `3da7d7ff1a2fcdb6ac885f2008531614669eca77`. 다음 회차에는 최신 원격 HEAD를 내부 확인하되 사용자에게 SHA를 개발 성과처럼 제시하지 말 것.
+
+### ④ 아직 미구현·미검증
+- 실제 사용 권리/참조 WAV와 GPT-SoVITS 설치 모델로 실행한 **실제 한국어 합성**, 공식 Cubism 모델의 RMS/입 파라미터, 실제 동일 발화 OBS 영상+음성 경로 전체 검증 — 사용자/CI에 필요한 실모델·음성 자료 및 승인된 PC 환경이 없어서 **미실증**. 이번 GUI 테스트의 파이프라인 결과는 외부 서비스만 모의하며 합성 성공 주장 금지.
+- YouTube 실제 사용자 활성 라이브 인증 수신, 4개 플랫폼 동시 실시간 전체 FIFO, 지연 1~3초·수백명·24시간 연속 실운용 미검증.
+- 실제 Windows 사용자 PC에서 사람이 한 번 설치한 EXE를 반복 실행하고 공식 Live2D/OBS/실제 모델을 연결하는 사용자 인수 검사 미검증. GitHub-hosted Windows VM의 native Tk test와 엄격히 구분.
+- 기존 CI의 로컬 Ollama 추론·OBS 읽기 전용 및 외부 공개 채팅 성공은 실제 GPT-SoVITS→Live2D 통합 성공과 다르다.
+
+### ⑤ 정확한 저장소/파일/커밋 및 ⑦ 설정 보존
+위 커밋·변경 파일은 `junggyeol4444/AISTING` main. 원본 캐릭터 이름/말투/성격, SQLite 기억/로컬 설정, 공식 모델/OBS 실제 자료와 원본 100단계 완료 상태 변경 없음. 테스트로 만든 고립 Windows 임시 파일만 사용하고 검증 후 삭제. 실제 사용자 데이터는 읽기/수정하지 않았다.
+
+### ⑧ 다음 실행 복수 과제
+1. 실사용 원본 GUI에서 운영자 승인→권리 있는 한국어 GPT-SoVITS→실제 Live2D 오디오/입 움직임→OBS 동일 음성 입력 전체를 실제 모델 환경에서 수행하고 실패 원인 수정. 승인된 모델/PC 환경이 없으면 실증 PASS를 주장하지 않음.
+2. 원래 `original_plan_full_pipeline.py`의 오디오 OBS 미터 관찰 시간과 Live2D RMS 시간의 실제 교차 구간·캡처 증거를 보강. 단순 '두 곳 모두 소리 있음'이 아니라 **같은 발화의 시간상 연결** 확인. 기존 동시 음성 6구간 검사 유지.
+3. 실제 Windows GUI를 1280×768 외 1366×768 등에서 시험하고 닫기/재실행·캐릭터 영속·SQLite 무손실 흐름 보완. EXE selftest 외 실제 GUI 이벤트 증빙 계속.
+4. YouTube 실제 사용자 승인 키 없이는 공식 API 페이징·중복·순서 관련 무손실 구현과 로컬 회귀까지만 하고 실제 인증 수신은 미실증 유지. 전체 플랫폼 장시간 부하/재시작 검사.
+5. 최신 Windows Actions 및 EXE/사용자 실행 결과를 이 문서에 누적 갱신.
+
+### ⑨ 원래 예약 대화 유지 및 불가피한 이동 사유
+현재 사용자가 "계속개발 하고 검증하라고" 요청한 AISTING 대화에서 바로 이어서 작업함. 향후 시간/플랫폼 제한으로 다른 대화로 나타날 경우 원래 대화에 연결하려는 사용자 요청을 그대로 유지하고, 본 GitHub 인수인계와 원본 기획·코드·CI를 먼저 읽고 작업 복원. 다른 예약을 변경/종료하지 말 것.
