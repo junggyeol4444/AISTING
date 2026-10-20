@@ -137,7 +137,9 @@ class LocalChatTab(ttk.Frame):
         # saved character and official project must agree before any send.
         pipeline = ttk.LabelFrame(
             self, text="공식 AI · 실제 Live2D 입 움직임 · OBS 동시 검사", padding=6)
-        pipeline.pack(fill="x", pady=(3, 0))
+        # Put the manual test above the large chat history/voice controls;
+        # at standard 1280x768 it must be reachable without a hidden scroll.
+        pipeline.pack(fill="x", pady=(3, 0), before=model_row)
         pipeline_fields = ttk.Frame(pipeline)
         pipeline_fields.pack(fill="x")
         ttk.Label(pipeline_fields, text="OBS 음성 입력").pack(side="left")
