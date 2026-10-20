@@ -43,6 +43,7 @@ def verify_official_chat_live2d_obs(
     duration: float = 8.0,
     operator_approved: bool = False,
     voice_rights_confirmed: bool = False,
+    cancel_event: threading.Event | None = None,
 ) -> OfficialChatObsEvidence:
     """One operator-approved real AI turn with concurrent OBS read-only monitor.
 
@@ -53,6 +54,14 @@ def verify_official_chat_live2d_obs(
     """
     if operator_approved is not True or voice_rights_confirmed is not True:
         raise PermissionError("실제 질문·음성 사용 권리·OBS 동시 관찰 승인이 필요합니다.")
+    if cancel_event is not None and not isinstance(cancel_event, threading.Event):
+        raise TypeError("검사 중지 이벤트 형식 오류")
+
+    def check_cancelled() -> None:
+        if cancel_event is not None and cancel_event.is_set():
+            raise InterruptedError("검사 중지 요청됨 · 이미 보낸 질문을 자동 재전송하지 않습니다.")
+
+    check_cancelled()
     if not isinstance(text, str) or not 1 <= len(text.strip()) <= 4000:
         raise ValueError("공식 AI 질문은 1~4000글자여야 합니다.")
     if not isinstance(obs_password, str) or not obs_password:
@@ -67,6 +76,7 @@ def verify_official_chat_live2d_obs(
     if type(duration) not in (int, float) or not 1 <= duration <= 8:
         raise ValueError("관찰 시간은 1~8초여야 합니다.")
 
+    check_cancelled()
     obs = OfficialObsWebsocket(obs_password, port=obs_port)
     before = obs.connect()
     # Do not conduct an unproven source/voice experiment on a live stream.
@@ -129,6 +139,8 @@ def verify_official_chat_live2d_obs(
             # GPT-SoVITS speech starts. Observe bounded consecutive windows
             # (up to 6 x 3 seconds) through the actual question response.
             for _ in range(6):
+                if cancel_observation.is_set() or (cancel_event is not None and cancel_event.is_set()):
+                    break
                 if send_finished.is_set() and observation:
                     break
                 capture_started = time.monotonic()
@@ -140,7 +152,8 @@ def verify_official_chat_live2d_obs(
                 observation.append((capture_started, capture_ended, sample))
                 if send_finished.is_set():
                     break
-            if not send_finished.is_set():
+            if not send_finished.is_set() and not cancel_observation.is_set() and not (
+                    cancel_event is not None and cancel_event.is_set()):
                 monitor_ended_before_reply.append(True)
         except Exception as exc:
             errors.append(exc)
@@ -165,6 +178,7 @@ def verify_official_chat_live2d_obs(
     # broadcasting/recording during the read-only monitor setup.
     try:
         ensure_offline()
+        check_cancelled()
     except Exception:
         cancel_observation.set()
         prompt_started.set()
@@ -176,6 +190,7 @@ def verify_official_chat_live2d_obs(
     prompt_finished_at = prompt_started_at
     try:
         prompt_started.set()
+        check_cancelled()
         lip = send_to_native_live2d_session_with_observation(
             text, operator_approved=True, duration=duration
         )
@@ -188,6 +203,9 @@ def verify_official_chat_live2d_obs(
     monitor.join(timeout=duration + 20)
     if monitor.is_alive():
         raise RuntimeError("OBS 읽기 검사 제한 시간을 초과했습니다. 질문을 자동 재전송하지 않습니다.")
+    # A delivered upstream request cannot be undone; never report its late
+    # output as successful after an operator cancelled the observation.
+    check_cancelled()
     if send_failure is not None:
         raise RuntimeError(
             "공식 Live2D 질문·립싱크 확인 실패. 중복 전송 방지를 위해 자동 재시도하지 않습니다."

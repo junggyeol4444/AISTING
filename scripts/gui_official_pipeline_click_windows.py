@@ -137,6 +137,36 @@ def main():
                 assert str(btn.cget("state")) == "normal"
             print("GUI_FAILURE_RECOVERY_PASSWORD_REDACTED_PASS")
 
+            # A slow external model is simulated, but native Windows Tk buttons,
+            # event loop and cancellation handshake are the production ones.
+            import threading
+            tab._input.set("취소된 발화")
+            started = threading.Event()
+            release = threading.Event()
+            def slow_output(text, **kwargs):
+                started.set()
+                assert release.wait(3)
+                return SimpleNamespace(verified_observation=True,
+                    lip=SimpleNamespace(verified_signal=True),
+                    obs=SimpleNamespace(coherent_media_candidate=True))
+            with ExitStack() as st:
+                for p in shared: st.enter_context(p)
+                st.enter_context(patch("ai_broadcaster.desktop_chat_tab.messagebox.askyesno",return_value=True))
+                st.enter_context(patch("ai_broadcaster.original_plan_full_pipeline.verify_official_chat_live2d_obs",side_effect=slow_output))
+                btn.invoke()
+                pump_until(app, started.is_set)
+                stop_btn = tab._pipeline_cancel_button
+                assert str(stop_btn.cget("state")) == "normal"
+                stop_btn.invoke()
+                app.update()
+                assert tab._pipeline_busy
+                assert str(btn.cget("state")) == "disabled"
+                release.set()
+                pump_until(app, lambda: not tab._pipeline_busy)
+                assert tab._input.get() == "취소된 발화"
+                assert "중지됨" in tab._pipeline_status.get()
+            print("GUI_NATIVE_CANCEL_NO_LATE_SUCCESS_PASS (SIMULATED MODEL)")
+
             assert sha256(settings) == before_settings
             assert sha256(database) == before_db
             with closing(sqlite3.connect(database)) as db:

@@ -93,6 +93,35 @@ class FullPipelineContracts(unittest.TestCase):
         self.assertFalse(outcome.verified_observation)
         self.assertFalse(outcome.temporal_overlap_candidate)
 
+    def test_pre_cancel_denies_obs_and_ai_before_any_connection(self):
+        import threading
+        e = threading.Event()
+        e.set()
+        with patch.object(pipeline, "OfficialObsWebsocket") as obs, patch.object(
+            pipeline, "send_to_native_live2d_session_with_observation") as ai:
+            with self.assertRaises(InterruptedError):
+                pipeline.verify_official_chat_live2d_obs("취소", obs_password="local",
+                    obs_input_name="Mic", operator_approved=True,
+                    voice_rights_confirmed=True, cancel_event=e)
+        obs.assert_not_called()
+        ai.assert_not_called()
+
+    def test_cancel_after_ai_dispatch_never_reports_success_or_resends(self):
+        import threading
+        e = threading.Event()
+        obs = make_obs()
+        def sent(*a, **kwargs):
+            e.set()
+            return SimpleNamespace(verified_signal=True)
+        ai = Mock(side_effect=sent)
+        with patch.object(pipeline, "OfficialObsWebsocket", return_value=obs), patch.object(
+            pipeline, "send_to_native_live2d_session_with_observation", ai):
+            with self.assertRaises(InterruptedError):
+                pipeline.verify_official_chat_live2d_obs("질문", obs_password="local",
+                    obs_input_name="Mic", operator_approved=True,
+                    voice_rights_confirmed=True, cancel_event=e)
+        self.assertEqual(ai.call_count, 1)
+
     def test_active_obs_recording_denies_prompt_without_side_effect(self):
         obs = make_obs()
         obs._client.get_record_status = lambda: SimpleNamespace(output_active=True)

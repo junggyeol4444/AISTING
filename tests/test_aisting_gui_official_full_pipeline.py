@@ -151,6 +151,30 @@ class RealOfficialPipelineTkTests(unittest.TestCase):
             warn.assert_called_once()
             confirm.assert_not_called()
 
+    def test_cancel_keeps_busy_until_original_worker_has_finished(self):
+        import threading
+        tab = self.fake_tab()
+        tab._pipeline_busy = True
+        tab._pipeline_cancel = threading.Event()
+        tab._pipeline_cancel_button = Button()
+        LocalChatTab._cancel_official_pipeline(tab)
+        self.assertTrue(tab._pipeline_cancel.is_set())
+        self.assertTrue(tab._pipeline_busy)
+        self.assertEqual(tab._pipeline_cancel_button.states[-1], {"state":"disabled"})
+
+    def test_cancelled_worker_discards_late_success_and_preserves_input(self):
+        import threading
+        event = threading.Event()
+        results = queue.SimpleQueue()
+        tab = SimpleNamespace(_results=results)
+        def fake(*a, **kwargs):
+            event.set()
+            return SimpleNamespace(verified_observation=True)
+        with patch("ai_broadcaster.original_plan_full_pipeline.verify_official_chat_live2d_obs",side_effect=fake) as fn:
+            LocalChatTab._work_official_pipeline(tab, "질문", "secret", "Mic", event)
+        self.assertEqual(results.get_nowait(), ("pipeline_cancelled", None))
+        self.assertIs(fn.call_args.kwargs["cancel_event"], event)
+
     def test_worker_passes_real_approved_path_and_queues_only_safe_evidence(self):
         events = queue.SimpleQueue()
         tab = SimpleNamespace(_results=events)

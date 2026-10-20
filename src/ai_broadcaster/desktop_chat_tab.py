@@ -46,6 +46,7 @@ class LocalChatTab(ttk.Frame):
         self._official_live2d = tk.BooleanVar(value=False)
         self._youtube_api_key = tk.StringVar()
         self._pipeline_busy = False
+        self._pipeline_cancel: threading.Event | None = None
         self._pipeline_audio_input = tk.StringVar()
         self._pipeline_obs_password = tk.StringVar()
         self._pipeline_status = tk.StringVar(value="공식 Live2D·OBS 동시 실측 미실행")
@@ -151,7 +152,11 @@ class LocalChatTab(ttk.Frame):
         self._pipeline_button = ttk.Button(
             pipeline, text="입력한 질문 한 건으로 실제 음성·Live2D·OBS 검사",
             command=self._start_official_pipeline)
-        self._pipeline_button.pack(anchor="w", pady=(5, 0))
+        self._pipeline_button.pack(side="left", pady=(5, 0))
+        self._pipeline_cancel_button = ttk.Button(
+            pipeline, text="실측 중지 요청", command=self._cancel_official_pipeline,
+            state="disabled")
+        self._pipeline_cancel_button.pack(side="left", padx=(8, 0), pady=(5, 0))
         ttk.Label(pipeline, textvariable=self._pipeline_status,
                   wraplength=580).pack(anchor="w")
         self._refresh_memory_count()
@@ -262,28 +267,48 @@ class LocalChatTab(ttk.Frame):
             self._pipeline_status.set("변경 감지 · 실제 전송 취소: " + str(exc))
             return
         self._pipeline_busy = True
+        self._pipeline_cancel = threading.Event()
         self._pipeline_button.configure(state="disabled")
+        if getattr(self, "_pipeline_cancel_button", None) is not None:
+            self._pipeline_cancel_button.configure(state="normal")
         self._send.configure(state="disabled")
         self._pipeline_status.set("공식 AI→Live2D와 OBS 실제 화면·음성 관찰 중…")
         threading.Thread(
             target=self._work_official_pipeline,
-            args=(text, password, selected_input),
+            args=(text, password, selected_input, self._pipeline_cancel),
             daemon=True,
         ).start()
 
-    def _work_official_pipeline(self, text: str, password: str, selected_input: str) -> None:
+    def _cancel_official_pipeline(self) -> None:
+        if not self._pipeline_busy or self._pipeline_cancel is None:
+            return
+        self._pipeline_cancel.set()
+        if getattr(self, "_pipeline_cancel_button", None) is not None:
+            self._pipeline_cancel_button.configure(state="disabled")
+        self._pipeline_status.set(
+            "중지 요청됨 · 이미 전송된 질문은 취소할 수 없습니다. 검사 종료 후 재실행할 수 있습니다.")
+
+    def _work_official_pipeline(self, text: str, password: str, selected_input: str,
+                                cancel_event: threading.Event | None = None) -> None:
         try:
             from .original_plan_full_pipeline import verify_official_chat_live2d_obs
-            outcome = verify_official_chat_live2d_obs(
-                text, obs_password=password, obs_input_name=selected_input,
-                operator_approved=True, voice_rights_confirmed=True
-            )
+            options = dict(obs_password=password, obs_input_name=selected_input,
+                           operator_approved=True, voice_rights_confirmed=True)
+            if cancel_event is not None:
+                options["cancel_event"] = cancel_event
+            outcome = verify_official_chat_live2d_obs(text, **options)
         except Exception as exc:
             # Exceptions may be raised after a server accepted the prompt.
             # Never automatically retry, or print the OBS credential.
-            self._results.put(("pipeline_error", type(exc).__name__))
+            if cancel_event is not None and cancel_event.is_set():
+                self._results.put(("pipeline_cancelled", None))
+            else:
+                self._results.put(("pipeline_error", type(exc).__name__))
         else:
-            self._results.put(("pipeline_ok", (text, outcome)))
+            if cancel_event is not None and cancel_event.is_set():
+                self._results.put(("pipeline_cancelled", None))
+            else:
+                self._results.put(("pipeline_ok", (text, outcome)))
 
     def _start_twitch(self) -> None:
         # Never interleave automatic platform prompts into a one-shot
@@ -451,6 +476,8 @@ class LocalChatTab(ttk.Frame):
 
     def destroy(self) -> None:
         self._closed = True
+        if self._pipeline_cancel is not None:
+            self._pipeline_cancel.set()
         self._queued_voice.clear()
         self._pipeline_obs_password.set("")
         self._stop_twitch()
@@ -589,12 +616,17 @@ class LocalChatTab(ttk.Frame):
                                 + str(self._twitch_replied) + "건 · AI 오류 "
                                 + str(self._twitch_ai_failures) + "건")
                     continue
-                if kind in ("pipeline_ok", "pipeline_error"):
+                if kind in ("pipeline_ok", "pipeline_error", "pipeline_cancelled"):
                     self._pipeline_busy = False
+                    self._pipeline_cancel = None
                     self._pipeline_button.configure(state="normal")
+                    if getattr(self, "_pipeline_cancel_button", None) is not None:
+                        self._pipeline_cancel_button.configure(state="disabled")
                     if not self._busy:
                         self._send.configure(state="normal")
-                    if kind == "pipeline_error":
+                    if kind == "pipeline_cancelled":
+                        self._pipeline_status.set("실측 중지됨 · 이미 전송된 질문은 재전송하지 않았습니다.")
+                    elif kind == "pipeline_error":
                         self._pipeline_status.set(
                             "실제 AI·Live2D·OBS 동시 실측 실패/미확인 (" +
                             str(payload) + "). 중복 질문 방지를 위해 자동 재시도하지 않음.")
