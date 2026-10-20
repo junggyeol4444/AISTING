@@ -428,15 +428,23 @@ class LocalChatTab(ttk.Frame):
         """Back-pressure on the network reader, never on the Tk GUI thread.
 
         No text/content deduplication and no rejected ordinary viewer chat.
-        When the user stops or closes the GUI, release blocked readers. The
-        single reader preserves incoming event order within each session.
+        Bound both the Tk event backlog AND the serial AI work backlog: the
+        latter can grow without limit if viewers arrive faster than the
+        locally installed model can answer. This is reader-side only and
+        never blocks Tk's event handling. On Stop, wake even a full queue.
+        The single reader preserves incoming event order within each session.
         """
         if type(limit) is not int or limit < 1:
             raise ValueError("채팅 이벤트 큐 용량 설정 오류")
         while not getattr(self, "_closed", False):
             if session is None or session._stop.is_set():
                 return
-            if self._results.qsize() < limit:
+            pending_ai = getattr(self, "_twitch_ai_inbox", None)
+            # A pending Tk message can still flow into the AI FIFO. Do not
+            # discard its data: pause reading until the serial AI worker
+            # actually drains committed work.
+            ai_backlog = pending_ai.qsize() if pending_ai is not None else 0
+            if self._results.qsize() < limit and ai_backlog < limit:
                 self._results.put(("twitch_scoped", (session, "twitch_" + kind, item)))
                 return
             session._stop.wait(0.02)

@@ -77,6 +77,17 @@ def main():
             assert top >= 0 and bottom <= app.winfo_height(), (
                 "1280x768 Windows 앱에서 실제 검사 버튼이 화면 아래로 잘렸습니다"
             )
+            # A wider standard Windows desktop must not hide native controls
+            # when the user resizes the EXE. Restore original geometry after.
+            app.geometry("1366x768+0+0")
+            app.update()
+            assert btn.winfo_ismapped()
+            button_top = btn.winfo_rooty() - app.winfo_rooty()
+            button_end = button_top + btn.winfo_height()
+            assert 0 <= button_top < button_end <= app.winfo_height()
+            app.geometry("1280x768+0+0")
+            app.update()
+            print("GUI_NATIVE_1280_1366_WIDTH_BUTTON_VISIBLE_PASS")
 
             tab._input.set("안녕하세요. 실제 음성 검사인가요?")
             tab._pipeline_audio_input.set("AISTING Voice")
@@ -314,6 +325,21 @@ def main():
             print("GUI_NATIVE_RESTART_REAL_PERSONA_SQLITE_PERSISTENCE_PASS")
         finally:
             second._shutdown()
+        # Repeat the real close/reopen cycle. Confirm remembered messages
+        # and character fields are still intact after multiple GUI sessions.
+        third = AistingApp()
+        try:
+            third._goto_page("실제 채팅·AI")
+            third.update()
+            assert third.settings["persona_mode"] == "custom"
+            assert third.settings["persona"] == custom_persona
+            assert [x.user_text for x in ConversationMemory().recent(2)] == [
+                "중복 문장", "중복 문장"]
+            assert [x.reply for x in ConversationMemory().recent(2)] == [
+                "답변 1", "답변 2"]
+            print("GUI_NATIVE_THIRD_SESSION_CHARACTER_MEMORY_PERSISTENCE_PASS")
+        finally:
+            third._shutdown()
 
 
 if __name__ == "__main__":

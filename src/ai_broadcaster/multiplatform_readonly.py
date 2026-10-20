@@ -424,6 +424,12 @@ class YouTubeReadOnlySession(ReadOnlySession):
         recent_message_ids = deque()
         seen_message_ids = set()
         max_seen_ids = 50_000
+        # Some broken API/proxy responses can alternate A->B->A forever.
+        # Track a bounded set of page tokens; fail before dispatching a
+        # replayed page's events or consuming quota in an infinite cycle.
+        recent_page_tokens = deque()
+        seen_page_tokens = set()
+        max_seen_pages = 10_000
         while not self._stop.is_set():
             if max_seconds is not None and time.monotonic() - start >= max_seconds:
                 break
@@ -450,10 +456,16 @@ class YouTubeReadOnlySession(ReadOnlySession):
                 # An empty cursor would silently restart at page one and
                 # repeatedly respond to the same historical chat messages.
                 raise RuntimeError("유튜브 채팅 페이지 응답 토큰이 없습니다.")
-            if not ended and cursor and next_cursor == cursor:
-                # Fail before delivery: server returned an already-requested
-                # page cursor, so further polls could burn API quota and replay.
+            if not ended and next_cursor in seen_page_tokens:
+                # Includes one-page repeats AND longer cyclic sequences.
+                # Check before forwarding, so the repeated page cannot
+                # duplicate an already delivered AI response.
                 raise RuntimeError("유튜브 채팅 페이지 토큰이 반복되어 수신을 중단했습니다.")
+            if not ended:
+                seen_page_tokens.add(next_cursor)
+                recent_page_tokens.append(next_cursor)
+                if len(recent_page_tokens) > max_seen_pages:
+                    seen_page_tokens.discard(recent_page_tokens.popleft())
             # Reject a bad polling interval before forwarding chat. If it is
             # rejected after delivery, reconnecting could replay that page.
             millis = payload.get("pollingIntervalMillis", 1000)

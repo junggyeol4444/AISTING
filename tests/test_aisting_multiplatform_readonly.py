@@ -324,6 +324,38 @@ class MultiplePlatformChatTests(unittest.TestCase):
                          [("첫사람","안녕"),("둘째","응원합니다")])
         self.assertTrue(all(x.platform=="youtube" for x in parsed))
 
+    def test_youtube_multi_page_cursor_cycle_fails_without_replay(self):
+        from urllib.parse import parse_qs, urlsplit
+        messages = []
+        requests = []
+        pages = [
+            {"nextPageToken": "p1", "pollingIntervalMillis": 1,
+             "items":[{"id":"a", "snippet":{"type":"textMessageEvent",
+                         "displayMessage":"같은 내용"},
+                      "authorDetails":{"displayName":"홍길동"}}]},
+            {"nextPageToken": "p2", "pollingIntervalMillis": 1,
+             "items":[{"id":"b", "snippet":{"type":"textMessageEvent",
+                         "displayMessage":"같은 내용"},
+                      "authorDetails":{"displayName":"홍길동"}}]},
+            {"nextPageToken": "p1", "pollingIntervalMillis": 1,
+             "items":[{"id":"c", "snippet":{"type":"textMessageEvent",
+                         "displayMessage":"중복 페이지의 미전달 메시지"},
+                      "authorDetails":{"displayName":"홍길동"}}]},
+        ]
+        def network(url, **_kw):
+            requests.append(parse_qs(urlsplit(url).query).get("pageToken", [""])[0])
+            return pages[len(requests) - 1]
+        live = YouTubeReadOnlySession(
+            "existingChatId", lambda k,v: messages.append((k,v)), "x"*39)
+        with patch("ai_broadcaster.multiplatform_readonly._json_get",
+                   side_effect=network):
+            with self.assertRaisesRegex(RuntimeError, "페이지 토큰이 반복"):
+                live.run(max_seconds=2)
+        self.assertEqual(requests, ["", "p1", "p2"])
+        self.assertEqual([c.text for kind,c in messages if kind=="chat"],
+                         ["같은 내용", "같은 내용"])
+        self.assertEqual([kind for kind,_ in messages], ["chat", "ready", "chat"])
+
     def test_youtube_replayed_id_is_once_but_separate_identical_text_is_fifo(self):
         from unittest.mock import patch
         events, calls = [], []

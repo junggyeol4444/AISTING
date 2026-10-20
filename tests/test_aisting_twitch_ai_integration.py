@@ -76,6 +76,57 @@ class LiveChatReplyOrderTests(unittest.TestCase):
         self.assertEqual([v[1][2].text for v in all_items], list("01234"))
         self.assertTrue(pending.empty())
 
+    def test_public_reader_waits_for_slow_ai_fifo_not_just_gui_events(self):
+        from ai_broadcaster.multiplatform_readonly import PlatformChat
+        pending_gui, slow_model = queue.SimpleQueue(), queue.SimpleQueue()
+        stopped = threading.Event()
+        session = SimpleNamespace(_stop=stopped)
+        tab = SimpleNamespace(_closed=False, _results=pending_gui,
+                              _twitch_ai_inbox=slow_model)
+        for index in range(3):
+            slow_model.put(PlatformChat("room", "viewer", "같은 질문", "soop"))
+        released = threading.Event()
+        def network_reader():
+            LocalChatTab._enqueue_public_event(
+                tab, session, "chat", PlatformChat("room", "viewer", "새 질문", "soop"),
+                limit=3)
+            released.set()
+        thread = threading.Thread(target=network_reader, daemon=True)
+        thread.start()
+        self.assertFalse(released.wait(.04), "slow Ollama must apply backpressure")
+        self.assertEqual(pending_gui.qsize(), 0)
+        oldest = slow_model.get_nowait()
+        self.assertEqual(oldest.text, "같은 질문")
+        self.assertTrue(released.wait(1), "AI FIFO draining should resume network reader")
+        thread.join(1)
+        self.assertEqual(pending_gui.get_nowait()[1][2].text, "새 질문")
+        self.assertTrue(pending_gui.empty())
+        self.assertEqual([slow_model.get_nowait().text for _ in range(2)],
+                         ["같은 질문", "같은 질문"])
+
+    def test_public_reader_stop_while_ai_fifo_full_never_adds_late_chat(self):
+        from ai_broadcaster.multiplatform_readonly import PlatformChat
+        pending_gui, pending_ai = queue.SimpleQueue(), queue.SimpleQueue()
+        stopped = threading.Event()
+        session = SimpleNamespace(_stop=stopped)
+        tab = SimpleNamespace(_closed=False, _results=pending_gui,
+                              _twitch_ai_inbox=pending_ai)
+        pending_ai.put(PlatformChat("room", "viewer", "먼저 받음", "chzzk"))
+        finished = threading.Event()
+        def network_reader():
+            LocalChatTab._enqueue_public_event(
+                tab, session, "chat", PlatformChat("room", "viewer", "중지 후", "chzzk"),
+                limit=1)
+            finished.set()
+        thread = threading.Thread(target=network_reader, daemon=True)
+        thread.start()
+        self.assertFalse(finished.wait(.04))
+        stopped.set()
+        self.assertTrue(finished.wait(1))
+        thread.join(1)
+        self.assertTrue(pending_gui.empty())
+        self.assertEqual(pending_ai.get_nowait().text, "먼저 받음")
+
     def test_public_reader_stop_unblocks_full_queue_without_extra_chat(self):
         import threading
         from ai_broadcaster.multiplatform_readonly import PlatformChat
