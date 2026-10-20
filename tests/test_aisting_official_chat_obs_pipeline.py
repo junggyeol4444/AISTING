@@ -220,6 +220,21 @@ class FullPipelineContracts(unittest.TestCase):
         self.assertEqual(monitor.probe_count, 6)
         self.assertEqual(send.call_count, 1)
 
+    def test_outdated_lipsync_clock_will_not_certify_current_obs_sound(self):
+        obs = make_obs()
+        lip = SimpleNamespace(verified_signal=True,
+                              first_audio_mouth_monotonic=0.001,
+                              last_audio_mouth_monotonic=0.002)
+        with patch.object(pipeline, "OfficialObsWebsocket", return_value=obs), (
+            patch.object(pipeline, "send_to_native_live2d_session_with_observation",
+                         return_value=lip)
+        ):
+            result = pipeline.verify_official_chat_live2d_obs(
+                "과거 입 움직임", obs_password="local", obs_input_name="Mic",
+                operator_approved=True, voice_rights_confirmed=True)
+        self.assertFalse(result.temporal_overlap_candidate)
+        self.assertFalse(result.verified_observation)
+
     def test_failed_obs_observer_setup_prevents_ai_prompt(self):
         safety, monitor = make_obs(), make_obs()
         monitor.connect = Mock(side_effect=OSError("OBS disconnected"))

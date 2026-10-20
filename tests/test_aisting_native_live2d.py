@@ -329,6 +329,28 @@ class NativeLive2DTests(unittest.TestCase):
             operator_approved=True, duration=2.0
         ).verified_signal)
 
+    def test_rejects_untrusted_native_lipsync_nonnumeric_clock(self):
+        import math
+        from ai_broadcaster.original_plan_frontend import _parse_official_lipsync_evidence, FrontendUnavailable
+        good = dict(type='lip-sync-result', samples=5, model_seen=True,
+                    canvas_seen=True, lip_sync_ids=1, peak_rms=.3,
+                    active_rms_samples=2, mouth_range=.5,
+                    changing_mouth_samples=2, renderer_active_samples=2,
+                    overlapping_audio_mouth_samples=2,
+                    first_audio_mouth_monotonic=10.0,
+                    last_audio_mouth_monotonic=11.0)
+        valid = _parse_official_lipsync_evidence(good)
+        self.assertEqual((valid.first_audio_mouth_monotonic,
+                          valid.last_audio_mouth_monotonic), (10., 11.))
+        for value in (float('nan'), float('inf'), -1.0, 'bad', None):
+            with self.subTest(clock=value):
+                bad = dict(good, first_audio_mouth_monotonic=value)
+                with self.assertRaises(FrontendUnavailable):
+                    _parse_official_lipsync_evidence(bad)
+        with self.assertRaises(FrontendUnavailable):
+            _parse_official_lipsync_evidence(dict(good,
+                 last_audio_mouth_monotonic=9.0))
+
     def test_lipsync_probe_samples_real_viewer_values_not_random(self):
         from unittest.mock import MagicMock
         import json
@@ -338,7 +360,7 @@ class NativeLive2DTests(unittest.TestCase):
             json.dumps({'canvas': True,'model': True,'ids': 1,'lipsync':True,'rms': .21,'mouth': .15}),
             json.dumps({'canvas': True,'model': True,'ids': 1,'lipsync':True,'rms': .43,'mouth': .55}),
         ]
-        with patch.object(viewer.time, 'monotonic', side_effect=[0., .1, .2, .3, 1.1]), patch.object(
+        with patch.object(viewer.time, 'monotonic', side_effect=[0., .1, .15, .2, .25, .3, 1.1]), patch.object(
             viewer.time, 'sleep'
         ):
             report = viewer._observe_actual_live2d_model(child, 1)

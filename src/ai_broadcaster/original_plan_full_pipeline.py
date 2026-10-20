@@ -150,8 +150,16 @@ def verify_official_chat_live2d_obs(
                                name="aisting-official-obs-program-observer")
     monitor.start()
     if not started.wait(timeout=3):
+        # No prompt is sent. A late connected read-only worker must not sit
+        # waiting for a request that this session has already rejected.
+        cancel_observation.set()
+        prompt_started.set()
+        monitor.join(timeout=1)
         raise RuntimeError("OBS 영상·음성 관찰을 시작하지 못했습니다.")
     if errors:
+        cancel_observation.set()
+        prompt_started.set()
+        monitor.join(timeout=1)
         raise RuntimeError("OBS 관찰 연결 준비 실패 · AI 질문을 보내지 않았습니다.") from errors[0]
     # No text is handed to the official upstream session if OBS began
     # broadcasting/recording during the read-only monitor setup.
