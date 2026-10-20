@@ -156,3 +156,30 @@
 - 기존 `docs/ORIGINAL_PLAN.txt`, `docs/ROADMAP_100.md`, `config/roadmap.json` 및 본 문서 1~10절의 사용자 필수·금지사항은 계속 유효. 공식 단계 임의 완료 처리 금지.
 - 다음 실행: **main HEAD/CI/진행 중 job 재조회** → 누락된 Twitch 누적 후보와 현재 main 세부 비교(중복 적용 금지) → 공식 GPT-SoVITS/Live2D/OBS 실제 연결 코드의 누락·오류 함께 개선 → 원래 Tk 실행흐름/저장자료 보존 Windows 실행 검증 → 새로운 artifact/해시 및 전체 인수인계 재갱신. 실제 자료·실행 환경 없는 검증은 명시적으로 미실증 유지.
 - 문서 업데이트 자체가 main SHA를 변경한다. 현재 실제 소스 기준 SHA와 문서 커밋 SHA를 구분하여 다음 회차에서 반드시 최신 HEAD 재확인.
+
+## 12. 2026-10-20 사용자 항의 후 핵심 실연결 개발 — 공식 Live2D + OBS 동시 관찰 모듈
+
+**사용자 피드백**: "최신 SHA를 굳이 왜 보며, 남은 실제 개발을 왜 안 하느냐". SHA는 내부 버전 충돌 방지용 식별값이지 기능 개발 성과가 아니다. 앞으로 매 실행 SHA 조회에 시간을 과소비하거나 반복 오프라인 채팅 검사를 핵심 기능 완성으로 포장하지 말 것. 미완료인 한국어 TTS·Live2D·OBS 실제 연결을 최우선으로 할 것.
+
+### 기존 원본 기획/금지사항 그대로 유지
+
+`docs/ORIGINAL_PLAN.txt`, `docs/ROADMAP_100.md`, `config/roadmap.json`, 기존 Tk 네이티브 Windows EXE, 저장된 캐릭터 이름·말투·성격, SQLite·설정 및 다른 사용자 자산 보존. 새 브랜치·강제푸시·원본 원복·대체 웹앱/HTML앱·유료 API·권리 없는 음성·계정 로그인·채팅 게시·사용자 PC 접속·실제 방송/녹화 시작 금지. 모든 채팅 FIFO/중복 보존. 예약 매시간 변경 금지, 원래 대화가 가능하면 원래 대화에서 이어가고 플랫폼이 다른 대화로 표시하면 본 GitHub 문서로 인수인계.
+
+### 이번에 실제 main에 반영된 코드와 검증
+
+- `aa96cf6841bfe4aeca3ed185176857867ac1e1e3`: `src/ai_broadcaster/original_plan_full_pipeline.py` 신규 모듈. 기존 Open-LLM-VTuber Live2D 동일 세션 질문/실제 RMS·입 동기 읽기와 OBS 실제 프로그램 화면/선택된 음성 입력 경로·미터를 **동시에** 검사하는 구현. 호출 시 운영자의 해당 실행 승인 + 음성 사용 권리 확인 필요; 기존 OBS input / 장면 경로를 먼저 읽고, 송출 중이면 실행 거부; 방송 시작/녹화/소스 생성/외부 채팅 전송/음성 훈련 없음. OBS 후보 미터와 립싱크가 확인되어도 실제 방송 인코더/시청자 전송을 증명하는 것은 아니라는 엄격한 판정. 질문 중복 자동 재전송 없음.
+- `c979099b0d18a3ff22e539e19fdf2832d1d320a8`: `tests/test_aisting_official_chat_obs_pipeline.py` 신규 6개 검사. 권리 및 명시 승인 누락 차단, 기존 공식 세션 단일 질문/OBS 읽기 전용 1회, OBS 경로 미확인 시 질문 중단, 립싱크 신호 없을 때 미검증, OBS 미터 경로 불안정 시 미검증, 전송 중 오류 시 중복 재시도 방지.
+- **최신 실행 소스 검증 URL**: https://github.com/junggyeol4444/AISTING/actions/runs/39346093869, 상태 `completed/success`, 실제 로그 `Ran 2355 tests`, `OK (skipped=2)` (실패 0). 이 결과는 단위/오프라인 검사; 실제 모델을 실행한 E2E의 증거가 아님.
+- 같은 소스 Windows 워크플로: https://github.com/junggyeol4444/AISTING/actions/runs/39346094191, `completed/success`. 기존 실제 Windows EXE/GUI, Ollama 로컬 추론, OBS 읽기 전용, Twitch, 한국 플랫폼 공개 채팅 체크 job 5개 모두 성공. **이번 신규 동시 관찰 모듈의 Windows GUI 버튼 실행은 하지 않았다.**
+- 새 빌드 artifact: `AISTING-Windows-EXE-integrated`, artifact ID `12230613210`, size `19,618,995` bytes, Artifact **ZIP** SHA-256 `b7dcd9a5345be996d747d64b4b16fbce76ab22f37e5c659745875b7ebbe33046`. 실행 EXE 자체 해시가 아님.
+- **중요: 미완료**: 기존 `src/ai_broadcaster/original_plan_studio.py`의 실제 Tk GUI 버튼으로 위 동시 관찰 모듈을 연결하려는 파일 수정은 GitHub 안전 검사에서 차단됨. **새 모듈은 main에 존재하지만 기존 프로그램 GUI에서 원클릭으로 실행하는 연결은 아직 반영되지 않았음.** 이 사항을 숨기거나 GUI 실사용 성공으로 표시하면 안 된다. 거대한 소스 파일의 변경 요청이 차단됐으며, 우회·브랜치·강제푸시는 하지 않았음. 작은 GUI 변경을 허용 가능한 정상 도구로 다시 수행할 수 있을 때 실제 클릭→검증 이벤트의 연결을 완성할 것.
+- **여전히 실제 미실증**: 사용자 소유 키를 사용하는 YouTube 실제 라이브 채팅, 권리 확인된 GPT-SoVITS 한국어 실제 모델·음질, 공식 Cubism/오디오 동기 실제 세션, OBS 전체 프로그램 영상·음성의 연속 출력 및 사용자 EXE 버튼, 실방송 전 최종 검수, 24시간 안정성과 100~500명 부하. 외부 모델/승인된 자산을 임의 설치·다운로드·훈련·로그인하지 말 것. 녹화 및 방송 시작 금지.
+
+### 바로 다음 회차에서 해야 할 묶음 작업
+
+1. 원본 GUI `OriginalPlanStudio._open_real_ai_chat`에 **승인 시에만** 동시 관찰을 실행하는 버튼·OBS 기존 입력 이름/비밀번호 RAM 입력·결과 이벤트와 fail-closed 처리 연결. 기존 GUI 크기/화면 동선을 유지하고 승인·캐릭터·SQLite 게이트를 그대로 적용. 이번 회차 GUI 수정 시도가 **차단돼 미완료**였음을 기준으로 이어서 완성할 것.
+2. 실제 GPT-SoVITS TTS 구성/실제 WAV→기존 Live2D 동일 세션→OBS 프로그램 미디어 확인의 기능상 누락/레이스/실패 처리 동시 보강. 필요한 모델/자산/동의 없으면 통과로 주장 금지.
+3. YouTube 실제 인증 연결은 사용자 소유 키 없이 실행 불가로 남기되 페이징, 중복, 종료 및 멤버십 메시지 보존의 기존 main 코드를 감사/수정하고, 네 플랫폼 FIFO 처리 및 캐릭터 재시작 지속성도 함께 확인.
+4. 기존 GUI EXE Windows 빌드·실제 화면/버튼 사용자 경로·회귀 워크플로 검증, 오류 재수정, 원격 `docs/AISTING_HOURLY_FULL_HANDOFF.md`와 결과/아티팩트/남은 일의 누적 갱신. 기존 성공한 공개 읽기 검사만 되풀이하면서 핵심 기능 작업을 뒤로 미루지 말 것.
+
+GitHub repo `junggyeol4444/AISTING` main 고정. 이번 코드 기준 커밋 `c979099b0d18a3ff22e539e19fdf2832d1d320a8`; 인수인계 문서 커밋 이후 실제 HEAD는 다시 달라지므로 다음 실행에서 내부적으로 확인만 하고 개발에 집중. 원래 AISTING 예약 생성 대화를 유지, 대화가 플랫폼 제한으로 불가할 때 반드시 본 문서를 우선 읽을 것.
