@@ -115,7 +115,8 @@ class LocalChatTab(ttk.Frame):
         ttk.Label(audio, textvariable=self._tts_status, wraplength=580).pack(anchor="w", pady=(5, 0))
         public_chat = ttk.LabelFrame(
             self, text="플랫폼 공개 채팅 수신 → 로컬 AI (송신·실방송 없음)", padding=8)
-        public_chat.pack(fill="x", pady=(10, 0))
+        # Keep actual channel selection reachable above the expanding transcript.
+        public_chat.pack(fill="x", pady=(6, 0), before=model_row)
         self._chat_selector = ttk.Combobox(
             public_chat, textvariable=self._chat_platform,
             values=("트위치", "치지직", "SOOP", "유튜브", "전체"),
@@ -134,7 +135,7 @@ class LocalChatTab(ttk.Frame):
             state="disabled")
         self._twitch_end.pack(side="left", padx=3)
         keyline = ttk.Frame(self)
-        keyline.pack(fill="x")
+        keyline.pack(fill="x", before=model_row)
         self._chat_keyline = keyline
         ttk.Label(keyline, text="YouTube API 키 (실행 중 메모리만 사용)").pack(side="left")
         ttk.Entry(keyline, textvariable=self._youtube_api_key, width=46,
@@ -150,9 +151,13 @@ class LocalChatTab(ttk.Frame):
                 ttk.Entry(line, textvariable=self._multi_channels[code],
                           width=width).pack(side="left", padx=(0, 12))
         ttk.Checkbutton(self, text="공식 Open-LLM-VTuber/Live2D 창으로 채팅 전달 (한 세션 · Ollama 중복 호출 없음)",
-                        variable=self._official_live2d).pack(anchor="w", pady=(4, 0))
+                        variable=self._official_live2d).pack(anchor="w", pady=(4, 0), before=model_row)
         ttk.Label(self, textvariable=self._twitch_status, wraplength=600).pack(
-            anchor="w", pady=(2, 5))
+            anchor="w", pady=(2, 5), before=model_row)
+        # Programmatic restoration and mouse selection both update geometry.
+        # A synthetic ComboboxSelected event alone is unreliable on Windows Tk.
+        self._chat_platform.trace_add(
+            "write", lambda *_args: self._toggle_multi_channels())
         # The existing Tk tab can invoke the official viewer and OBS
         # integration. The official viewer must already be running; the
         # saved character and official project must agree before any send.

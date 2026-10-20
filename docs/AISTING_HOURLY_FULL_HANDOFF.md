@@ -863,3 +863,10 @@ GitHub `junggyeol4444/AISTING`, **기존 main에만 빠른전진 반영**:
 2026-10-21 최신 `main`에는 기존 4개 채팅 수신기, Windows Tk `전체` 선택/4채널 연결, 단일 AI FIFO, Stop 공통 시간, 오류 인증정보 비노출 및 원본 캐릭터·기억 보호 기능이 누적 반영됐다. 누락된 **기존 v14까지의 격리 테스트 의도**를 반영하는 다중 플랫폼 2,000건 FIFO/AI 응답 통합 회귀검사를 추가한다. 현재까지 별도 Windows/YouTube 실인증/GPT-SoVITS 실제 음성·Cubism 동기화·OBS 실제 같은 발화·24시간 수백명 실증은 완료가 아니다. 원본 roadmap.json과 010 승인 상태 변경 금지.
 
 소스 누적 변경은 완료한 구간만 완료라고 표시하고, 단계별 SHA/HEAD 자체를 기능 성과로 제시하지 않는다. GitHub HEAD 확인은 충돌·덮어쓰기 방지 목적일 뿐이다.
+
+## 43. 2026-10-21 Windows 실기 Tk GUI 4플랫폼 표시 실패 수정 (기존 코드 누적)
+
+- 기존 Windows Actions #39512652161의 `windows-exe` job은 실제 native Tk GUI 클릭 시험에서 실패했다. `scripts/gui_official_pipeline_click_windows.py`의 `tab._multi_fields.winfo_ismapped()` AssertionError로, 플랫폼 선택칸이 Tk 화면에 실제 표시되지 않았다. 4플랫폼의 API/실방송 연결에 성공한 것이 아니다.
+- 원인은 기존 Tk `_dialog.pack(expand=True)`의 아래에 새 4채널 입력 GUI가 배치되어 1280x768 높이에서 사용 가능한 공간이 없었던 것과 프로그램 내부 `StringVar.set`이 Combobox 이벤트만으로는 화면 표시를 보장하지 않았던 것이다.
+- 기존 Windows `AISTING.exe` 소스 `src/ai_broadcaster/desktop_chat_tab.py`만 보존형 수정하여 공개채팅 채널 선택·API 입력·공식 AI 승인 체크·상태를 확대형 대화창 이전에 배치하고 플랫폼 StringVar의 `trace_add`로 선택 시 실제 네이티브 GUI 표시를 보장한다. 캐릭터·SQLite·로드맵/설정 데이터는 변경하지 않는다.
+- 기능 위조 없이 전체 Windows EXE/GUI Actions와 전체 단위검사 다시 검증, 실패 시 추가 수정할 것.
