@@ -170,6 +170,36 @@ class LiveChatReplyOrderTests(unittest.TestCase):
         self.assertTrue(stop.is_set())
         self.assertIsNone(inbox.get_nowait())
 
+    def test_stop_before_reader_disconnect_restores_gui_and_ignores_late_events(self):
+        from ai_broadcaster.multiplatform_readonly import PlatformChat
+        stopped=threading.Event()
+        session=SimpleNamespace(stop=stopped.set, _stop=stopped)
+        inbox=queue.SimpleQueue()
+        statuses=[]
+        buttons=[]
+        fake=SimpleNamespace(
+            _closed=False, _twitch_session=session, _twitch_ai_inbox=inbox,
+            _twitch_reader_finished=False,
+            _twitch_start=SimpleNamespace(configure=lambda **kw:buttons.append(("start",kw))),
+            _twitch_end=SimpleNamespace(configure=lambda **kw:buttons.append(("end",kw))),
+            _twitch_status=SimpleNamespace(set=statuses.append),
+            _results=queue.SimpleQueue(),_poll=lambda:None,after=lambda *args:None,
+            _twitch_received=0,_twitch_replied=0,_twitch_ai_failures=0)
+        LocalChatTab._stop_twitch(fake)
+        self.assertTrue(stopped.is_set())
+        self.assertIsNone(fake._twitch_session)
+        self.assertIsNone(fake._twitch_ai_inbox)
+        self.assertEqual(buttons,[("start",{"state":"normal"}),("end",{"state":"disabled"})])
+        new_session=SimpleNamespace(_stop=threading.Event())
+        fake._twitch_session=new_session
+        fake._results.put(("twitch_scoped",(session,"twitch_chat",
+             PlatformChat("room","viewer","늦은 채팅","soop"))))
+        fake._results.put(("twitch_scoped",(session,"twitch_finished",session)))
+        LocalChatTab._poll(fake)
+        self.assertIs(fake._twitch_session,new_session)
+        self.assertEqual(fake._twitch_received,0)
+        self.assertEqual(fake._twitch_replied,0)
+
     def test_stop_discards_buffered_scoped_events_except_finish(self):
         import threading
         from ai_broadcaster.multiplatform_readonly import PlatformChat

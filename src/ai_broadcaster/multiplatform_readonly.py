@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import math
+from collections import deque
 import re
 import ssl
 import threading
@@ -408,6 +409,12 @@ class YouTubeReadOnlySession(ReadOnlySession):
                 raise RuntimeError("현재 생방송 중이거나 활성화된 유튜브 채팅방이 없습니다.")
         cursor = ""
         first = True
+        # Deduplicate only YouTube's *same message ID* repeated across API
+        # pages, never two independently posted identical texts. Bounded to
+        # keep a 24-hour live reader from growing without limit.
+        recent_message_ids = deque()
+        seen_message_ids = set()
+        max_seen_ids = 50_000
         while not self._stop.is_set():
             if max_seconds is not None and time.monotonic() - start >= max_seconds:
                 break
@@ -434,12 +441,34 @@ class YouTubeReadOnlySession(ReadOnlySession):
             millis = payload.get("pollingIntervalMillis", 1000)
             if type(millis) is not int or not 0 < millis <= 120000:
                 raise ValueError("유튜브 채팅 폴링 간격 형식 오류")
-            for item in parse_youtube_page(payload, self.channel):
-                # An initial page can contain real history; do not filter by
-                # content or sender, and preserve repeated text.
+            # Resolve identities before forwarding any page items so a replay
+            # of the same API event does not cause a second AI request. Events
+            # with absent/invalid IDs are still delivered (no silent loss).
+            raw_items = payload.get("items", [])
+            if not isinstance(raw_items, list):
+                raise ValueError("유튜브 채팅 페이지 메시지 목록 형식 오류")
+            for raw_item in raw_items:
                 if self._stop.is_set():
                     break
-                self.emit("chat", item)
+                chats = parse_youtube_page({"items": [raw_item]}, self.channel)
+                if not chats:
+                    continue
+                raw_id = raw_item.get("id") if isinstance(raw_item, dict) else None
+                message_id = (raw_id if isinstance(raw_id, str)
+                              and 1 <= len(raw_id) <= 256 else None)
+                if message_id is not None and message_id in seen_message_ids:
+                    continue
+                for item in chats:
+                    if self._stop.is_set():
+                        break
+                    self.emit("chat", item)
+                if self._stop.is_set():
+                    break
+                if message_id is not None:
+                    seen_message_ids.add(message_id)
+                    recent_message_ids.append(message_id)
+                    if len(recent_message_ids) > max_seen_ids:
+                        seen_message_ids.discard(recent_message_ids.popleft())
             if self._stop.is_set():
                 break
             if first:

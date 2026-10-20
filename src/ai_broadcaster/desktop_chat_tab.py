@@ -428,20 +428,26 @@ class LocalChatTab(ttk.Frame):
             report("twitch_ai_finished", session)
 
     def _stop_twitch(self) -> None:
-        if self._twitch_session is not None:
-            self._twitch_session.stop()
-            if self._twitch_ai_inbox is not None:
-                # Wake the idle AI worker. Queued messages will not be sent.
-                self._twitch_ai_inbox.put(None)
-            if getattr(self, "_twitch_reader_finished", False):
-                # The reader's finish event has already arrived. Stop during
-                # its remaining AI drain must restore the GUI immediately.
-                self._twitch_session = None
-                self._twitch_ai_inbox = None
-                self._twitch_reader_finished = False
-                self._twitch_start.configure(state="normal")
-                self._twitch_end.configure(state="disabled")
-                self._twitch_status.set("운영자가 남아 있는 AI 응답을 중지했습니다.")
+        session = self._twitch_session
+        if session is None:
+            return
+        session.stop()
+        if self._twitch_ai_inbox is not None:
+            # Wake worker, but never submit further queued AI requests.
+            self._twitch_ai_inbox.put(None)
+        # Do not keep the UI locked waiting for a stalled socket/HTTP reader.
+        # Each late reader/AI event carries this original session identity;
+        # _poll discards it after a restart instead of contaminating the new
+        # connection's FIFO, counts or persona.
+        self._twitch_session = None
+        self._twitch_ai_inbox = None
+        self._twitch_reader_finished = False
+        if getattr(self, "_twitch_start", None) is not None:
+            self._twitch_start.configure(state="normal")
+        if getattr(self, "_twitch_end", None) is not None:
+            self._twitch_end.configure(state="disabled")
+        if getattr(self, "_twitch_status", None) is not None:
+            self._twitch_status.set("운영자가 공개 채팅 연결을 중지했습니다. 남은 AI 작업은 폐기합니다.")
 
     def destroy(self) -> None:
         self._closed = True

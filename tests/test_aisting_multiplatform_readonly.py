@@ -293,6 +293,42 @@ class MultiplePlatformChatTests(unittest.TestCase):
                          [("첫사람","안녕"),("둘째","응원합니다")])
         self.assertTrue(all(x.platform=="youtube" for x in parsed))
 
+    def test_youtube_replayed_id_is_once_but_separate_identical_text_is_fifo(self):
+        from unittest.mock import patch
+        events, calls = [], []
+        p1 = { "nextPageToken":"p2", "pollingIntervalMillis":1,
+               "items":[
+                   {"id":"A", "snippet":{"type":"textMessageEvent","displayMessage":"같은 말"},
+                    "authorDetails":{"displayName":"시청자"}},
+                   {"id":"B", "snippet":{"type":"textMessageEvent","displayMessage":"같은 말"},
+                    "authorDetails":{"displayName":"시청자"}},
+               ] }
+        p2 = { "nextPageToken":"p3", "pollingIntervalMillis":1,
+               "offlineAt":"2026-10-20T01:00:00Z",
+               "items":[p1["items"][0],
+                   {"id":"C", "snippet":{"type":"textMessageEvent","displayMessage":"같은 말"},
+                    "authorDetails":{"displayName":"시청자"}}] }
+        def api(url, **kwargs):
+            calls.append(url)
+            return p1 if len(calls) == 1 else p2
+        reader = YouTubeReadOnlySession("existingChatId", lambda *args:events.append(args), "x"*39)
+        with patch("ai_broadcaster.multiplatform_readonly._json_get",side_effect=api):
+            reader.run(max_seconds=2)
+        self.assertEqual(len(calls),2)
+        self.assertEqual([kind for kind,_ in events],["chat","chat","ready","chat","stopped"])
+        self.assertEqual([item.text for kind,item in events if kind=="chat"],["같은 말"]*3)
+
+    def test_youtube_no_id_events_are_not_silently_discarded(self):
+        items=[{"snippet":{"type":"textMessageEvent","displayMessage":"확인"},
+                "authorDetails":{"displayName":"사람"}}]*2
+        session=YouTubeReadOnlySession("existingChatId",lambda *args:observed.append(args),"x"*39)
+        observed=[]
+        with patch("ai_broadcaster.multiplatform_readonly._json_get",return_value={
+            "nextPageToken":"end", "offlineAt":"2026-10-20T01:00:00Z",
+            "items":items, "pollingIntervalMillis":10}):
+            session.run(max_seconds=2)
+        self.assertEqual([x[1].text for x in observed if x[0]=="chat"],["확인","확인"])
+
     def test_youtube_video_address_resolves_actual_chat_id_and_preserves_messages(self):
         from urllib.parse import parse_qs, urlsplit
         calls, observed = [], []
