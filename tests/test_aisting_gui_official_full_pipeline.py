@@ -118,6 +118,11 @@ class RealOfficialPipelineTkTests(unittest.TestCase):
             confirm.assert_not_called()
         self.assertEqual(self.calls, [])
 
+    def test_platform_reader_does_not_interrupt_approved_full_probe(self):
+        # The callback must return before touching model/network UI state.
+        stub = SimpleNamespace(_pipeline_busy=True, _twitch_session=None)
+        LocalChatTab._start_twitch(stub)
+
     def test_worker_passes_real_approved_path_and_queues_only_safe_evidence(self):
         events = queue.SimpleQueue()
         tab = SimpleNamespace(_results=events)
