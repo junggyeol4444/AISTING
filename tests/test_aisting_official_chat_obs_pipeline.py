@@ -24,6 +24,10 @@ def make_obs(*, confirmed=True, stable=True):
         def read_program_audio_route(self, **kwargs):
             return SimpleNamespace(confirmed=confirmed)
         def inspect_program_media(self, **kwargs):
+            # The real meter API blocks for 1-3 seconds; the mock must yield
+            # enough for the official-turn thread to finish (not instant-loop).
+            import time
+            time.sleep(0.004)
             self.probe_count += 1
             return SimpleNamespace(coherent_media_candidate=stable)
         def status(self):
@@ -116,16 +120,21 @@ class FullPipelineContracts(unittest.TestCase):
 
         safety, monitor = make_obs(), make_obs(stable=False)
         second_window = threading.Event()
+        prompt_started = threading.Event()
         send = Mock()
 
         def monitor_window(**kwargs):
+            self.assertTrue(prompt_started.wait(2))
             monitor.probe_count += 1
             if monitor.probe_count == 1:
                 return SimpleNamespace(coherent_media_candidate=False)
             second_window.set()
+            import time
+            time.sleep(0.01)
             return SimpleNamespace(coherent_media_candidate=True)
 
         def slow_official_turn(*args, **kwargs):
+            prompt_started.set()
             self.assertTrue(
                 second_window.wait(2),
                 "The OBS monitor stopped before delayed Korean TTS started",
@@ -151,7 +160,7 @@ class FullPipelineContracts(unittest.TestCase):
     def test_obs_window_exhausted_before_ai_reply_is_not_success(self):
         import time
 
-        safety, monitor = make_obs(stable=True)
+        safety, monitor = make_obs(), make_obs(stable=True)
         send = Mock(side_effect=lambda *a, **kw: (
             time.sleep(0.15), SimpleNamespace(verified_signal=True)
         )[1])
