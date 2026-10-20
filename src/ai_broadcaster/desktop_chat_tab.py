@@ -280,7 +280,9 @@ class LocalChatTab(ttk.Frame):
             self._results.put(("pipeline_ok", (text, outcome)))
 
     def _start_twitch(self) -> None:
-        if self._twitch_session is not None:
+        # Never interleave automatic platform prompts into a one-shot
+        # operator-approved official Live2D/OBS session probe.
+        if self._twitch_session is not None or self._pipeline_busy:
             return
         # Do not silently receive chats that cannot reach the selected AI.
         model = self._model_name.get().strip()
