@@ -751,3 +751,33 @@ GitHub `junggyeol4444/AISTING`, **기존 main에만 빠른전진 반영**:
 3. 묶음 코드 변경 후 **최신 전체 코드 한 번에 검증**: 전량 unit + Windows EXE 설치/실행·네이티브 Tk 조작·동일 코드 OBS/Ollama/4플랫폼 가능한 검증. 오류가 나면 바로 수정 후 **최신 전체를 다시 전량 검증**.
 4. 완료/미완료/기기·모델 없어 미실증 구분, 정확한 변경 파일/commit 및 Actions job/status/Windows artifact/digest 보고. 기존 본 문서에 모든 누적 내용 추가하고 기존 내용/사용자 금지 절대 삭제하지 말 것.
 5. 원래 대화·새 예약 매시간 진행, 다른 프로젝트 예약/드라이브 무단 조작 금지.
+
+## 26. 2026-10-20 새 17:30 매시간 인수인계 예약 생성 이후 실제 개발·검증 결과 (차기 회차 필독)
+
+### ① 이번 사용자 최신 강제 지시 및 실제 예약
+사용자의 2026-10-20 16:37 KST 전체 인계/새 대화 예약 지시를 25절에 원문에 가깝게 보존했다. 새로운 매시간 예약 `AISTING 17:30 통합 개발`이 **2026-10-20 17:30 Asia/Seoul 시작**, 18:30 이후 매 정각 + 30분마다 계속 실행되도록 실제 ACTIVE 생성 확인. 새 대화로 배치되더라도 이 26절 포함 **인수인계 원문 전부와 docs/ORIGINAL_PLAN.txt, docs/ROADMAP_100.md, config/roadmap.json**을 처음부터 읽고 이번까지의 진행 결과를 이어받으라. 사용자가 요구한 모델 최고 수준 활용은 자동화 지시에 명시했지만 실제 모델 변경을 확인하지 않았으므로 완료 확언 금지. Drive 연결 요구 금지. GitHub 한 경로 막히면 권한 내 모든 합법 대체 접근 경로 검토·실제 시도/이유 기록; 안전·권한 거부 무단 우회 금지.
+
+### ② 새 예약을 만든 **같은 현재 응답에서 계속 실행한** 실제 구현
+- GitHub `junggyeol4444/AISTING` 기존 `main`, 보존형 빠른전진 코드 커밋 **`a5c074f3c5ef1ce3e955c80d0dd8b9929a6fe2ed`**, 실제 변경 2파일을 하나의 묶음으로 구현:
+  1. `src/ai_broadcaster/official_tts_readiness.py`: 기존 공식 Open-LLM-VTuber 설정에서 `gpt_sovits_tts`, 한국어, 로컬 API 주소, 참조 음성 경로/녹음 대사 문자열만 확인하던 취약점을 보강. **실제 참조 음성 WAV/FLAC 일반 파일의 존재·절대 경로·실제 파일 컨테이너 헤더 검증**을 기존 `original_plan_tts.inspect_reference_audio_container`에 연결해 공식 AI 메시지 보내기 전에 잘못된 설정을 거부. 삭제/손상/형식 오류 참조 음성은 fail-closed. 공백/길이 초과/제어문자 포함 녹음 대사도 거부. 네트워크, 음성 출력/생성/훈련, OBS 녹화나 사용자 설정 변경 없음. 이는 **파일 구조의 read-only 검사이지 사용권리나 진짜 음질·실제 합성 성공을 증명하지 않는다**.
+  2. `tests/test_aisting_official_korean_tts_readiness.py`: 기존 하드코딩 `C:/licensed.wav`이라는 **존재하지 않는 가짜 파일**로 준비 검사를 통과시키던 fixture를 실제 테스트 격리 폴더에서 생성한 WAV 파일로 변경. 정상 WAV 승인, 삭제된 파일/손상된 헤더/상대 경로/제어문자 대사 거부 등 실제 회귀 4개 추가. 원본 사용자 WAV·권리 있는 모델·GPU 접근/합성은 없음.
+- 기존 character/SQLite/원본 100단계/방송 계정/OBS 프로젝트/정당한 참조 음성 실데이터 파일은 읽거나 수정하지 않았다. 신규 브랜치·강제푸시·롤백/재개발 없음.
+
+### ③ 최신 전체 회귀→Windows EXE·GUI→가능한 연동 통합 검사
+- **전체 회귀** https://github.com/junggyeol4444/AISTING/actions/runs/39388635212 : `completed/success`, **2,421 tests, 2 skipped, 0 failed**, 실제 워크플로 로그에서 확인.
+- **동일 실제 새 소스 기준 Windows 통합** https://github.com/junggyeol4444/AISTING/actions/runs/39388635145 : `completed/success`. jobs `windows-exe`, `ollama-real-local-e2e`, `korean-public-chat-readonly`, `obs-real-readonly`, `twitch-public-readonly` **5개 모두 completed/success**. Windows GUI 실행/독립 Ollama 추론/OBS 읽기/공개 채팅 검사일 뿐, 실제 사용자 GPT-SoVITS→Live2D→OBS 동일 발화 **E2E 실증 아님**.
+- 실제 새 GitHub Actions EXE artifact `AISTING-Windows-EXE-integrated`, ID **12248437439**, GitHub ZIP bytes **19,685,767**, **산출물 ZIP SHA-256** `8dfae3480593e34d489f61fd4e11faf38312824074ecdebc964cd9ec3fe91f97`. 이 값은 Windows `AISTING.exe` 단독 파일 SHA가 아님.
+- 처음부터 전체 회귀·Windows 통합검사 성공, 이번 신규 코드에서 FAIL 후 추가 수정은 발생하지 않았음. 상기 코드 커밋 다음 문서 전용 commit의 CI는 구분해야 한다.
+
+### ④ 사용자 최우선 미완료 기능 (절대 PASS로 포장하지 말 것)
+- 실제 사용자 권리 확보 GPT-SoVITS 모델 + 참조 WAV/FLAC에서 **한국어 음성 직접 합성 → 공식 Cubism/Live2D 해당 발화 입 움직임 → OBS 같은 발화 프로그램 오디오·영상** 실제 Windows 사용자 조작 전체 경로, 모델/장비/권한 부재로 **실증 미완료**.
+- 사용자의 실제 YouTube 활성 라이브 인증 채팅/API 키 수신, 치지직·SOOP·Twitch·YouTube 4개 플랫폼 동시 100~500명·24시간·1~3초 실제 안정성/응답 실증 **미완료**.
+- 원본 100단계 계획 중 아직 승인/구현/실사 완료하지 못한 항목들; 임의 완료 처리 금지.
+- 새 17:30 KST 매시간 예약이 어느 대화에 결과를 올리는지는 플랫폼에서 정하므로 특정 대화 라우팅 성공을 허위 확약하지 말고 본 GitHub 파일로 계속 복원. 이 회차의 이후 추가 코드는 다음 절로 누적.
+
+### ⑤ 다음 자동화는 실제로 이렇게 실행
+1. 인수인계 1~26절, 사용자 명령/하지말라는 것, 원본 기획 전부를 읽은 후 최신 `main`/필요 CI를 재확인.
+2. **여러 실질적인 미완료 기능을 먼저 묶음으로 코드 개발**(중간 1건씩 CI 검사·보고 금지), 기존 원본 소스에만 누적 반영.
+3. 묶음 개발 완료 이후 **전체** 회귀 + Windows EXE 빌드/기존 native Tk 클릭·가능한 실제 Ollama/OBS/공개 플랫폼 검사. 오류가 나면 수정하고 **최신 전체 전량 재검증**. 모델 접근 없어 미실증이면 그대로 미실증 명시, 우회용 더미 PASS 금지.
+4. 실제 GitHub 차단 시 모든 **허용된** 접근 경로를 점검하여 원본 코드 보호. Google Drive 불필요. 새 브랜치/강제푸시/무단 방송·녹화·계정 로그인·유료 API/개인 음성 학습/원본 캐릭터·SQLite 삭제 금지.
+5. 실행 종료 시 이 문서 **1~26절 원문을 모두 보존하며 추가 절 append**, commit/files/검증 수/Windows 아티팩트/실증 미완료/다음 작업 기재. 다른 프로젝트 예약 변경 금지.
