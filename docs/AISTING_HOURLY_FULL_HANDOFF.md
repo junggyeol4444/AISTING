@@ -220,3 +220,28 @@ GitHub repo `junggyeol4444/AISTING` main 고정. 이번 코드 기준 커밋 `c9
 5. 현 회차 최신 코드/원본 기획/각 Windows CI·Artifact 등 본 GitHub 인수인계에 누적 갱신. 예약 주기는 그대로 유지.
 
 문서 갱신 시 GitHub HEAD는 다시 이동하므로 다음 회차에서 반드시 원격 최신 소스로 작업하되 사용자에게 SHA 자체를 성과로 강조하지 말 것.
+
+## 14. 2026-10-20 — Windows 실제 OBS 화면 재검증 성공 및 최신 완성 경계
+
+### 기존 명령과 작업 기준
+이 대화에서 사용자는 "계속하라고" 지시했고, 최신 SHA·해시 중심 반복 보고를 지양하고 **남은 핵심 코드/실사용 검증에 집중**하도록 요구했다. 기존 원본 100단계, 저장 캐릭터/설정·SQLite 보존, 네 플랫폼 중복 포함 FIFO, Windows Tk/EXE, 공식 Open-LLM-VTuber·Live2D, GPT-SoVITS 한국어 음성, OBS 출력 목표는 그대로다. 새 브랜치/강제푸시/재개발/웹·HTML 앱·사용자 PC 접속/로그인/방송/녹화/채팅 게시/권리 없는 음성 훈련·유료 API 금지. 원래 AISTING 예약 생성 대화를 최우선으로 이용하고, 불가피하게 다른 대화에 표시될 경우 본 문서와 GitHub 소스/이력을 읽어 전체 인계하며 다른 프로젝트 예약이나 매시간 주기는 변경하지 말 것.
+
+### 이번 회차의 뒤이은 수정과 원인
+- 해당 원격 코드 변경: `5584c15851f11cffb32e673c5c50ad327ed998c6`, 파일 `.github/workflows/build-windows.yml`. 실제 Windows OBS 통합검사에서 OBS websocket 연결·입력 생성·현재 장면 PNG 수신은 성공했으나, 임시 색상 소스 설정 직후 OBS 렌더 PNG 차이 검사 `Real OBS source changed but OBS-rendered pixels did not`로 실패한 job 확인. **검사 PASS를 조작/무시하지 않고**, 최대 10회 1초 간격으로 다시 실제 OBS PNG를 관찰하도록 조정. 10초 내 픽셀이 바뀌지 않으면 동일하게 실패한다. 소스는 disposable CI OBS에서만 조작, 사용자 OBS/라이브 송출은 변경하지 않음.
+- 최신 주요 코드/테스트 (위 13절에서 자세히 기록) `3f9145ae3e921c01ccf80f101ad8faaf7dce0664`, 기존 AISTING `desktop_chat_tab.py` 실제 native Tk 승인형 공식 AI·Live2D·OBS 동시 검사, 저장 캐릭터/공식 설정 확인, OBS 녹화/송출 상태 검증, OBS 안전 상태와 실제 미터 연결 분리 및 공개 채팅 중복 개시 차단. 이 코드는 main에 누적 반영된 것이지 실제 사용자 모델에서 전 기능을 통과한 것은 아니다.
+
+### 최종 확인한 CI와 실행파일
+- 기존 코드를 포함한 **최종 회귀검사**: https://github.com/junggyeol4444/AISTING/actions/runs/39348949679 — `completed/success`, 실제 로그 **2,368개 검사, 2개 건너뜀, 실패 0**. 소스/Tk 버튼·OBS 안전 경합 관련 모의·오프라인 검증을 포함.
+- **최종 Windows 워크플로**: https://github.com/junggyeol4444/AISTING/actions/runs/39348949700 — `completed/success`. `windows-exe`, `korean-public-chat-readonly`, `twitch-public-readonly`, `obs-real-readonly`, `ollama-real-local-e2e` 5개 job **모두 success**. OBS 임시 색상 소스의 실제 픽셀 변화도 최종 PASS.
+- 새 Windows Actions artifact: `AISTING-Windows-EXE-integrated`, id **12232700558**, 크기 **19,634,834 bytes**, GitHub artifact **ZIP** SHA-256 **0fc60e04a6d1e9e5ce63975a523ff3ec6592632764b25fb70f87abf3ec793e60**. 개별 EXE 해시 아님. 워크플로 Artifacts에서 확인.
+- 문서 저장으로 추가 git commit가 발생하므로 다음 실행 시 `main`은 새 HEAD를 가진다. 위 검증은 실제 기능 수정/워크플로 코드에 대해 완료된 최종 소스 기준이다.
+
+### 반드시 미완료로 유지할 항목
+실사용 Windows PC의 버튼을 눌러 **권리 확보된 GPT-SoVITS 한국어 모델과 실제 음성→공식 Live2D 음성 동기→OBS 영상+음성 한 경로**가 입증됐다는 것은 아니다. 실제 YouTube 라이브 인증 수신, 장시간 실운용, 여러 플랫폼 동시 연결, 수백명 채팅의 실제 1~3초 처리도 미실증. GitHub CI에서는 승인되지 않은 계정·음성 모델·사용자 PC를 사용하지 않았고, 음성/렌더/OBS 완전체 E2E 성공으로 주장하지 않는다. 사용자의 원본 캐릭터/SQLite 데이터는 코드 수정 대상이 아니었다.
+
+### 다음 실행에서 병행할 실질 작업
+1. 사용자가 기존에 승인한 공식 Live2D/GPT-SoVITS/OBS 실행 환경이 접근 가능하면 Tk 수동 버튼→합성/립싱크/프로그램 프레임+입력미터까지 실제 측정해 실패 원인 수정. 접근 불가면 모의 테스트 결과를 실증으로 승격하지 않는다.
+2. 원본 `original_plan_full_pipeline.py`의 공식 AI 응답 시간과 OBS 미터 실제 관찰 시간 중복 조건을 엄격하게 교차검증해 조기 관찰 종료가 발생하는 문제 개선.
+3. 1366×768 원본 GUI에서 입력·승인 버튼·상태 표시가 실제로 보이는지와 중단/재진입·캐릭터 재시작 지속성·SQLite 데이터 보존 사용자 흐름 점검.
+4. YouTube 실제 인증 데이터가 없을 때는 API 정책·커서/중복 유지에 대한 보존형 개발만 수행. 네 플랫폼 공개 읽기 및 실채팅 FIFO 오류를 다중 작업으로 수정.
+5. 다음 CI 작업/새 EXE artifact 및 오류를 본 GitHub 문서에 계속 누적. 예약 시간·대화 유지 기준 불변.
