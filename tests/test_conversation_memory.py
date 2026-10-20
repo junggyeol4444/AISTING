@@ -1,5 +1,6 @@
 """GitHub CI에서 외부 AI나 실제 방송 없이 대화 기억을 검증."""
 import json
+import sqlite3
 import sys
 import tempfile
 import threading
