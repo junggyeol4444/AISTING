@@ -96,7 +96,10 @@ class RealOfficialPipelineTkTests(unittest.TestCase):
                  "ai_broadcaster.desktop_chat_tab.messagebox.askyesno", return_value=True
             ), patch("ai_broadcaster.desktop_chat_tab.threading.Thread", Thread):
                 LocalChatTab._start_official_pipeline(tab)
-        self.assertEqual(self.calls, [("안녕하세요", "test-secret", "AISTING-Voice")])
+        self.assertEqual(len(self.calls), 1)
+        self.assertEqual(self.calls[0][:3], ("안녕하세요", "test-secret", "AISTING-Voice"))
+        self.assertTrue(hasattr(self.calls[0][3], "is_set"))
+        self.assertFalse(self.calls[0][3].is_set())
         self.assertTrue(tab._pipeline_busy)
         self.assertIn({"state":"disabled"}, tab._pipeline_button.states)
         self.assertEqual(tab._input.get(), "안녕하세요")
