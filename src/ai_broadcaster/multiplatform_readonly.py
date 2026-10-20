@@ -481,6 +481,8 @@ class YouTubeReadOnlySession(ReadOnlySession):
                 raise ValueError("유튜브 채팅 페이지 메시지 목록 형식 오류")
             next_cursor = payload.get("nextPageToken")
             ended = isinstance(payload.get("offlineAt"), str) and bool(payload["offlineAt"])
+            if isinstance(next_cursor, str) and len(next_cursor) > 2048:
+                raise ValueError("유튜브 채팅 페이지 토큰 길이가 올바르지 않습니다.")
             if (not isinstance(next_cursor, str) or not next_cursor) and not ended:
                 # An empty cursor would silently restart at page one and
                 # repeatedly respond to the same historical chat messages.
