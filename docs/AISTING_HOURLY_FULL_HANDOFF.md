@@ -686,3 +686,41 @@ GitHub `junggyeol4444/AISTING`, **기존 main에만 빠른전진 반영**:
 - 24시간/수백 명 공개 채팅·느린 로컬 AI 응답으로 인한 큐 지연/GUI 표시창 CPU·메모리/응답시간, 캐릭터/SQLite 실기기 재시작 및 OS 비정상 종료 데이터 복구를 구분 검증.
 - 기능 여러 개 먼저 개발한 뒤 **전량 회귀+Windows EXE·네이티브 GUI+가능한 Ollama/OBS/공개 채팅 검사**, 실패 발견 시 고쳐서 전량 재검증. 이 문서에 변경 파일/CI/Artifact ID/미실증을 누적 업데이트.
 - 기존 시간당 AISTING 예약과 타 프로젝트 예약은 이번 실행에서 변경/생성/종료하지 않음. 원래 예약 생성 대화에서 이어가라는 사용자 요청 유지. 플랫폼이 불가피하게 별도 채팅으로 연결하면 이전 기획·본 문서 1~25절·최신 main/CI 우선 읽어 사용자 설명 반복 없이 인수인계.
+
+## 26. 2026-10-20 이번 연속 실행 — SQLite 외부 파일 보호, 구형 설정 4플랫폼 지원, YouTube 일시 장애 자동복구 묶음 개발·Windows 재검증
+
+### ① 사용자 원지시/금지·기획 재확인
+사용자 지시 "계속": 사용자 지정대로 **실질적으로 남은 기능을 여러 개 한꺼번에 개발한 다음 전체 회귀/Windows EXE·실제 Tk·OBS/Ollama·공개 채팅 검사를 통째로 실행, 오류 발견 시 고쳐서 전량 재검증**. 기존 `docs/ORIGINAL_PLAN.txt`, `docs/ROADMAP_100.md`, `config/roadmap.json`, 본 문서 1~25절, 기존 Windows 10/11 x64 네이티브 EXE/Tk, 확정 캐릭터 이름·말투·성격과 SQLite 기억, 공식 Open-LLM-VTuber/Live2D·권리 있는 GPT-SoVITS 한국어 음성·OBS, 네 플랫폼(치지직/SOOP/Twitch/YouTube) 모든 채팅/중복 포함 FIFO 목표를 계속 유지. 신규 브랜치 생성/삭제·강제푸시·웹/HTML로 바꿈·코드 재개발·원본 롤백·유료 API/계정 로그인·사용자 PC 무단 접속·실방송/녹화·채팅 게시/사용자 데이터 변경 및 권리 없는 음성 훈련 금지. 기존 AISTING 매시간 예약·타 프로젝트 예약 변경하지 않음. SHA 숫자 검사가 개발 성과는 아님.
+
+### ② 실제 코드·테스트 변경/⑤ main 커밋
+- GitHub `junggyeol4444/AISTING` 기존 `main`에 **6파일을 단일 묶음 기능 커밋** `d23d5ee57761781c49913f2f71361410e5e6b61b`로 반영:
+  1. `src/ai_broadcaster/conversation_memory.py`: 기존 SQLite 경로가 이미 있을 경우 **읽기 전용 URI 접근으로 application_id, 유일한 exchanges 테이블, 열 이름·선언 타입·PK·NOT NULL 스키마 확인 후에만 실제 기록용으로 열기**. 다른 프로그램 테이블/손상된 파일/링크 경로는 읽기 전용 확인에서 거절하여 새 exchanges 테이블을 만들지 않음. 기존 정상 AISTING 기억은 그대로 다시 열기/쓰기. 실제 사용자 DB를 수정하지 않고 CI 임시 DB로 시험.
+  2. `src/ai_broadcaster/operator_settings.py`: 구형 운영 설정 `PLATFORMS`에 누락된 **soop** 추가, 현재 GUI의 `offline_settings.py`가 제공하는 치지직·SOOP·유튜브·트위치 네 플랫폼과 일치. 기존 JSON 스키마/저장 캐릭터 값을 초기화하지 않음.
+  3. `src/ai_broadcaster/multiplatform_readonly.py`: 소유 API 키로 승인된 경우에만 실행되는 YouTube read-only 수신에서 일시적 OS/네트워크 실패를 **같은 URL/페이지 토큰으로 최대 3회 제한적 재시도**(0.5/1초 역압 및 Stop 확인)하여 이미 성공 수신한 메시지의 순서/중복 ID 정책을 보존. HTTP 인증·쿼터 상태 오류는 자동 재시도하지 않음, API 키가 포함된 예외 URL은 외부 GUI에 공개하지 않음, Stop 도중 다시 연결하지 않음. 이번 CI는 소유 API 키 없이 모의 오류로만 검증.
+  4. `tests/test_conversation_memory.py`: 외부 프로그램 DB·손상 DB의 **파일 바이트 무변경**, 정상 DB 재열기/기억 유지, 심볼릭 링크 대상 무변경 회귀 검사.
+  5. `tests/test_operator_settings.py`: SOOP 포함 4개 플랫폼 선택값의 저장·재조회 검사.
+  6. `tests/test_aisting_multiplatform_readonly.py`: YouTube 일시 timeout 2회 후 같은 페이지 복구/개별 ID의 동일 문장 2건 FIFO, HTTP 403 오류 비재시도·API 키 은닉, Stop 중 재시도 없는 종료 검증.
+- **중간 오류·수리, 숨기지 않기**: 최초 Linux 전체 회귀 https://github.com/junggyeol4444/AISTING/actions/runs/39383100691 `failure`, `Ran 2417 tests`, 오류 1건 — 신규 심볼릭 링크 DB 테스트에 `sqlite3` import 누락. `0747d961097f38f5bc0839ebe655bfbd54c459c5`에서 해당 누락 수정. 이어서 실제 Windows https://github.com/junggyeol4444/AISTING/actions/runs/39383250572 `failure`: Python SQLite 컨텍스트 매니저만으로 연결을 닫지 않아 임시 테스트 파일에 WinError 32 파일 잠금 오류 2건. **기존 사용자 SQLite 오류/손실 증거가 아니라 새 테스트의 Windows 핸들 누수**. `783f8280acb4106a248f8bb8829a11e764a0939d`에서 `tests/test_conversation_memory.py`의 모든 신규 sqlite3 테스트 연결을 `closing(...), db`로 명시적으로 닫도록 수정. 기존 사용자 DB나 기능을 되돌리지 않았음.
+- 기능 변경은 기존 main만 fast-forward; 원래 사용자 자료·캐릭터·기획 문서·로드맵 단계 pending 및 OBS/Live2D 설정 변경 없음.
+
+### ③ 전체 오류 수정/검증 및 ⑥ Windows EXE artifact
+- **수정 후 전체 회귀 최종 성공** https://github.com/junggyeol4444/AISTING/actions/runs/39383624912 : `completed/success`, 실제 로그 `Ran 2417 tests`, `OK (skipped=2)`, 실패·오류 0.
+- **동일한 실제 최신 코드 기준 Windows 통합 최종 성공** https://github.com/junggyeol4444/AISTING/actions/runs/39383624898 : `completed/success`. `windows-exe` (실제 Windows x64 EXE 빌드·자체 실행 및 기존 Tk GUI 버튼/캐릭터·SQLite 보존 검사), `ollama-real-local-e2e` (실제 격리 로컬 Ollama 추론), `obs-real-readonly` (실제 격리 OBS 프로그램/입력 관찰), `twitch-public-readonly`, `korean-public-chat-readonly` (치지직·SOOP 공개 읽기) 5개 작업 **모두 `completed/success`**. Windows job에서도 `Ran 2417 tests`, Tk GUI의 `GUI_REAL_WINDOWS_PROFILE_PATH_ISOLATED_PASS`, `GUI_NATIVE_CANCEL_NO_LATE_SUCCESS_PASS (SIMULATED MODEL)`, `GUI_MANUAL_OFFICIAL_PUBLIC_AI_CROSSMODE_SQLITE_GUARD_PASS`, `CHARACTER_SETTINGS_SQLITE_BYTES_UNCHANGED_PASS`, `GUI_NATIVE_RESTART_REAL_PERSONA_SQLITE_PERSISTENCE_PASS`, `GUI_NATIVE_THIRD_SESSION_CHARACTER_MEMORY_PERSISTENCE_PASS` 확인.
+- 실제 Windows EXE artifact `AISTING-Windows-EXE-integrated`, ID **12246093779**, size **19,679,530 bytes**, GitHub artifact **ZIP SHA-256** `634649cf7ffa3970d925c7194bd75b8e524640f3c0d6227d46f4edb4511d38ac`. ZIP 해시이며 개별 AISTING.exe SHA 아님. GitHub Actions 해당 run의 Artifacts에서 받기.
+- 기능·전체 검사 기준 실제 `main` 마지막 소스 커밋 `783f8280acb4106a248f8bb8829a11e764a0939d`; 문서 저장으로 main HEAD가 한 번 더 전진할 수 있어 후속 실행에서 원격 재확인 필요. 문서-only 후속 CI는 위 실제 기능 검증 run과 구별.
+
+### ④ 남은 핵심 기능·실사용 검증 한계
+1. 권리를 확인한 한국어 **GPT-SoVITS 실모델·참조 WAV**로 실제 합성→**같은 발화**에 대한 공식 Live2D/Cubism 입 움직임→OBS 프로그램 실제 오디오·영상이 Windows 사용자 환경에서 이어지는 전체 종단 경로는 여전히 **미완료/미실증**. Windows CI의 실제 Tk 이벤트와 독립 Ollama/OBS 각각 성공, 외부 GPT-SoVITS·Live2D/OBS 동일 발화는 mock 또는 실행 불가. 성공으로 포장 금지.
+2. 실제 소유 YouTube Data API 키·활성 라이브 방송의 인증 수신과 cursor 및 quota·재연결 실측, 네 플랫폼 수백 명 동시 실제 채팅·1~3초 응답·24시간 무중단 운영은 미실증. 이번 YouTube HTTP 복구 테스트는 모의, 실제 API 호출 없음.
+3. SQLite 기존 파일 읽기 전용 스키마 확인은 AISTING 형식과 다른 사용자의 파일을 보호하기 위한 선제 조치이며, 검사 후 외부 프로세스가 **같은 경로 파일을 교체하는 TOCTOU 위험까지 완전 해결된 것은 아님**. 실제 Windows 사용자 PC의 비정상 종료·강제 종료/복구·DB 잠금 장기 동작도 미실증.
+4. 원래 100단계 pending / 실제 운영자 승인 없이 외부 방송·녹화/음성 복제 금지. CI 수치로 원래 프로젝트 완료를 주장하지 않음.
+
+### ⑦ 사용자 데이터/설정 보존
+모든 테스트 SQLite/JSON/음성 입력은 격리 CI 파일·모의 페이지·별도 실제 Windows runner에서만 처리. 실제 사용자 Windows PC나 사용자 GitHub 이외 다른 원본 파일/클라우드 모델/유료 API/실제 방송/녹화/채팅 발신·권리 없는 음성 학습 없음. 원래 캐릭터 이름·성격·말투 및 확정 SQLite 기억, 선택 플랫폼, OBS 프로젝트/모델 설정은 변경하지 않음.
+
+### ⑧ 다음 실행 시 복수 실제 개발/검증 목표
+- 승인된 한국어 GPT-SoVITS 모델·참조 음성/공식 Live2D/OBS를 가진 실제 Windows 사용 환경이면 동일 한 발화의 전체 TTS→RMS/Cubism→OBS 입력 및 프로그램 영상·오디오 **실제** end-to-end를 수행·오류 수정. 접근/권리 없는 환경이면 미완료를 명시하고 mock로 대체 성공 주장 금지.
+- 읽기 전용 SQLite 검사와 열린 연결 사이 외부 파일 변경/교체 감지, Windows crash/safe recovery 및 캐릭터/대화 기록 누락 없는 재시작 테스트. 이전 파일 손상/기존 캐릭터 수정 금지.
+- 네 플랫폼 실제 다중 수신, YouTube quota/HTTP 상태별 정확한 복구·메시지 ID FIFO, 느린 AI FIFO의 24시간 지속/수백명·1~3초 지연 목표를 시뮬레이션과 실환경으로 구분해 개선.
+- **복수 실제 기능을 묶어 먼저 개발 → 모든 CI 회귀+Windows EXE/Tk GUI·실제 Ollama/OBS/공개 채팅 함께 검증 → 실패 수정 후 동일 최신 코드 기준 전량 재검사**. 코드 단일 함수만 고치고 완료 주장하지 말 것.
+- 원래 예약 생성 대화에서 계속 진행. 플랫폼이 제한해 다른 대화가 나타나면 이 전체 GitHub 문서 1~26절/원본 기획 및 최신 main 소스·CI를 전부 읽고 사용자에게 재입력 요구 없이 이어감. 기존 AISTING 시간당 예약 및 다른 프로젝트 예약 변경·생성·종료 금지.
