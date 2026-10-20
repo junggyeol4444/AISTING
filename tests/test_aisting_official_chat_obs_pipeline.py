@@ -16,6 +16,9 @@ def make_obs(*, confirmed=True, stable=True):
     class Obs:
         def __init__(self):
             self.probe_count = 0
+            self._client = SimpleNamespace(
+                get_record_status=lambda: SimpleNamespace(output_active=False)
+            )
         def connect(self):
             return SimpleNamespace(streaming=False, scene="Scene")
         def read_program_audio_route(self, **kwargs):
@@ -50,6 +53,46 @@ class FullPipelineContracts(unittest.TestCase):
         self.assertEqual(obs.probe_count, 1)
         send.assert_called_once_with(
             "한국어 테스트", operator_approved=True, duration=8.0)
+
+    def test_active_obs_recording_denies_prompt_without_side_effect(self):
+        obs = make_obs()
+        obs._client.get_record_status = lambda: SimpleNamespace(output_active=True)
+        with patch.object(pipeline, "OfficialObsWebsocket", return_value=obs), (
+            patch.object(pipeline, "send_to_native_live2d_session_with_observation")
+        ) as sender:
+            with self.assertRaisesRegex(RuntimeError, "녹화 중"):
+                pipeline.verify_official_chat_live2d_obs(
+                    "테스트", obs_password="local", obs_input_name="Mic",
+                    operator_approved=True, voice_rights_confirmed=True)
+            sender.assert_not_called()
+        self.assertEqual(obs.probe_count, 0)
+
+    def test_recording_status_unavailable_fails_closed(self):
+        obs = make_obs()
+        obs._client.get_record_status = Mock(side_effect=OSError("OBS unreachable"))
+        with patch.object(pipeline, "OfficialObsWebsocket", return_value=obs), (
+            patch.object(pipeline, "send_to_native_live2d_session_with_observation")
+        ) as sender:
+            with self.assertRaisesRegex(RuntimeError, "녹화 상태"):
+                pipeline.verify_official_chat_live2d_obs(
+                    "테스트", obs_password="local", obs_input_name="Mic",
+                    operator_approved=True, voice_rights_confirmed=True)
+            sender.assert_not_called()
+
+    def test_recording_starts_after_preflight_still_blocks_ai_turn(self):
+        obs = make_obs()
+        visits = iter((False, True, True))
+        obs._client.get_record_status = lambda: SimpleNamespace(
+            output_active=next(visits)
+        )
+        with patch.object(pipeline, "OfficialObsWebsocket", return_value=obs), (
+            patch.object(pipeline, "send_to_native_live2d_session_with_observation")
+        ) as sender:
+            with self.assertRaisesRegex(RuntimeError, "녹화 중"):
+                pipeline.verify_official_chat_live2d_obs(
+                    "테스트", obs_password="local", obs_input_name="Mic",
+                    operator_approved=True, voice_rights_confirmed=True)
+            sender.assert_not_called()
 
     def test_unconfirmed_obs_route_does_not_send_ai_prompt(self):
         obs = make_obs(confirmed=False)
