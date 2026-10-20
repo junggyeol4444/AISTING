@@ -288,3 +288,11 @@ GitHub repo `junggyeol4444/AISTING` main 고정. 이번 코드 기준 커밋 `c9
 
 ### ⑨ 원래 예약 생성 대화 지속·이전 사유
 원래 AISTING 예약을 생성한 대화에서 매시간 결과를 이어가는 것이 사용자의 최우선 요구. 기술적으로 다른 대화에 결과가 출력된다면 기존 데이터를 초기화하거나 사용자에게 다시 요청하지 말고, **이 GitHub 전체 문서**와 원본 기획/코드·CI를 먼저 읽고 다른 대화에 나온 사유를 사실대로 기록. 현재 작업에서 예약 시간/다른 프로젝트 예약은 변경·생성·종료하지 않았음.
+
+### 15절 최종 실제 Windows 검증 확정 (뒤늦은 완료 상태 반영)
+
+- **같은 실제 기능 코드 기준 Windows 통합검사** https://github.com/junggyeol4444/AISTING/actions/runs/39352840989: `completed/success`. 정확히 `windows-exe`, `korean-public-chat-readonly`, `twitch-public-readonly`, `obs-real-readonly`, `ollama-real-local-e2e` 5개 job 모두 `completed/success`.
+- 실제 Windows EXE artifact: `AISTING-Windows-EXE-integrated`, id `12234051349`, 크기 `19,643,098` bytes, GitHub artifact **ZIP** SHA-256 `0f719857a796d22711974f64b6cb704ec6ebb2800a8aafa14a10519d0fdc9e29`; EXE 파일 단독 해시 아님.
+- 전체 회귀 https://github.com/junggyeol4444/AISTING/actions/runs/39352557815 : 2,376개 실행, 건너뜀 2개, 실패 0, `completed/success`.
+- 본 내용은 코드 성공 범위인 GUI 생성/빌드, 공개 읽기 전용 플랫폼, 실제 로컬 Ollama/OBS CI를 뜻함. **사용자 승인 음성 모델에서 GPT-SoVITS 한국어 실제 음성·공식 Live2D/OBS 전체 출력 실사용 증명이 아니다.**
+- 인수인계 문서만 추가 저장해 새 CI가 자동 시작할 수 있음. 앞서 확인한 위 5개 job의 실제 성공 증거는 사라지지 않는다.
