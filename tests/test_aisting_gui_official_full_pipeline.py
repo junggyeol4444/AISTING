@@ -156,6 +156,7 @@ class RealOfficialPipelineTkTests(unittest.TestCase):
         )))
         tab._append = lambda *_args: self.fail("Unproven output reported as success")
         tab.after = lambda *_args: None
+        tab._poll = lambda: None
         LocalChatTab._poll(tab)
         self.assertIn("OBS 화면·음성 경로 미확인", tab._pipeline_status.get())
         self.assertEqual(tab._input.get(), "안녕하세요")
