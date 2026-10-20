@@ -45,6 +45,10 @@ class LocalChatTab(ttk.Frame):
         self._chat_platform = tk.StringVar(value='트위치')
         self._official_live2d = tk.BooleanVar(value=False)
         self._youtube_api_key = tk.StringVar()
+        self._pipeline_busy = False
+        self._pipeline_audio_input = tk.StringVar()
+        self._pipeline_obs_password = tk.StringVar()
+        self._pipeline_status = tk.StringVar(value="공식 Live2D·OBS 동시 실측 미실행")
         self._twitch_status = tk.StringVar(value="읽기 전용 미연결 · 로그인·채팅 송신 없음")
         self._twitch_received = 0
         self._twitch_replied = 0
@@ -128,6 +132,26 @@ class LocalChatTab(ttk.Frame):
                         variable=self._official_live2d).pack(anchor="w", pady=(4, 0))
         ttk.Label(self, textvariable=self._twitch_status, wraplength=600).pack(
             anchor="w", pady=(2, 5))
+        # The existing Tk tab can invoke the official viewer and OBS
+        # integration. The official viewer must already be running; the
+        # saved character and official project must agree before any send.
+        pipeline = ttk.LabelFrame(
+            self, text="공식 AI · 실제 Live2D 입 움직임 · OBS 동시 검사", padding=6)
+        pipeline.pack(fill="x", pady=(3, 0))
+        pipeline_fields = ttk.Frame(pipeline)
+        pipeline_fields.pack(fill="x")
+        ttk.Label(pipeline_fields, text="OBS 음성 입력").pack(side="left")
+        ttk.Entry(pipeline_fields, textvariable=self._pipeline_audio_input,
+                  width=21).pack(side="left", padx=(4, 10))
+        ttk.Label(pipeline_fields, text="OBS 암호").pack(side="left")
+        ttk.Entry(pipeline_fields, textvariable=self._pipeline_obs_password,
+                  show="*", width=20).pack(side="left", padx=(4, 0))
+        self._pipeline_button = ttk.Button(
+            pipeline, text="입력한 질문 한 건으로 실제 음성·Live2D·OBS 검사",
+            command=self._start_official_pipeline)
+        self._pipeline_button.pack(anchor="w", pady=(5, 0))
+        ttk.Label(pipeline, textvariable=self._pipeline_status,
+                  wraplength=580).pack(anchor="w")
         self._refresh_memory_count()
         self.after(150, self._poll)
 
@@ -148,7 +172,7 @@ class LocalChatTab(ttk.Frame):
             self._memory_count.set("대화 기억 확인 실패")
 
     def _submit(self) -> None:
-        if self._busy:
+        if self._busy or self._pipeline_busy:
             return
         model = self._model_name.get().strip()
         text = self._input.get().strip()
@@ -172,6 +196,88 @@ class LocalChatTab(ttk.Frame):
             self._results.put(("error", str(exc)))
         else:
             self._results.put(("ok",result))
+
+    def _start_official_pipeline(self) -> None:
+        """Explicitly approved existing native Live2D + OBS observation."""
+        if self._closed or self._pipeline_busy or self._busy:
+            return
+        if self._twitch_session is not None:
+            self._pipeline_status.set("공개 채팅 수신 중에는 수동 실측을 중복 실행하지 않습니다.")
+            return
+        text = self._input.get().strip()
+        selected_input = self._pipeline_audio_input.get().strip()
+        password = self._pipeline_obs_password.get()
+        if not 1 <= len(text) <= 4000 or not selected_input or not password:
+            self._pipeline_status.set("질문(1~4000자)·OBS 음성 입력 이름·OBS 암호를 입력하세요.")
+            return
+        try:
+            from .offline_settings import settings_file, active_persona
+            from . import original_plan_frontend as frontend
+            from .original_plan_studio import inspect_saved_persona_alignment
+            saved = settings_file()
+            if (not saved.is_file() or saved.is_symlink()
+                    or saved.parent.is_symlink()):
+                raise ValueError("먼저 캐릭터 이름·말투·성격을 확정 저장하세요.")
+            fields = active_persona(load_settings(saved))
+            project = frontend._native_viewer_project
+            if project is None or not inspect_saved_persona_alignment(project, fields):
+                raise ValueError("저장된 캐릭터·공식 설정·실행 중인 Live2D 창을 확인하세요.")
+        except (ValueError, OSError, KeyError, RuntimeError) as exc:
+            self._pipeline_status.set("공식 캐릭터 실측 준비 실패: " + str(exc))
+            return
+        if not messagebox.askyesno(
+            "실제 공식 AI·한국어 음성·Live2D·OBS 동시 검사 승인",
+            "기존 공식 Live2D 창의 실제 AI에 질문 한 건을 전달합니다. "
+            "공식 설정에 따라 기록이나 외부 API 요청이 발생할 수 있으므로 "
+            "무료·로컬 모델 설정을 먼저 확인하세요. "
+            "참조 음성의 소유·동의·라이선스 권리를 확보했습니까? "
+            "이번 검사 동안 OBS 프로그램 화면과 선택 음성 입력의 실제 미터 "
+            "및 공식 Live2D RMS/입 움직임을 읽기 전용으로 관찰합니다. "
+            "방송/녹화 시작, 채팅 게시, 모델 학습은 수행하지 않습니다. "
+            "관찰 성공도 실제 시청자 송출 증거는 아닙니다. "
+            "이 한 번만 실행하시겠습니까?",
+            parent=self,
+        ):
+            self._pipeline_status.set("승인 취소 · 실제 질문을 전송하지 않았습니다.")
+            return
+        try:
+            # Re-evaluate the committed persona, not unsaved local GUI fields.
+            from .offline_settings import settings_file, active_persona
+            from . import original_plan_frontend as frontend
+            from .original_plan_studio import inspect_saved_persona_alignment
+            saved = settings_file()
+            if (not saved.is_file() or saved.is_symlink()
+                    or saved.parent.is_symlink()
+                    or active_persona(load_settings(saved)) != fields
+                    or frontend._native_viewer_project != project
+                    or not inspect_saved_persona_alignment(project, fields)):
+                raise ValueError("승인 중 캐릭터/공식 Live2D 설정이 변경됐습니다.")
+        except (ValueError, OSError, KeyError, RuntimeError) as exc:
+            self._pipeline_status.set("변경 감지 · 실제 전송 취소: " + str(exc))
+            return
+        self._pipeline_busy = True
+        self._pipeline_button.configure(state="disabled")
+        self._send.configure(state="disabled")
+        self._pipeline_status.set("공식 AI→Live2D와 OBS 실제 화면·음성 관찰 중…")
+        threading.Thread(
+            target=self._work_official_pipeline,
+            args=(text, password, selected_input),
+            daemon=True,
+        ).start()
+
+    def _work_official_pipeline(self, text: str, password: str, selected_input: str) -> None:
+        try:
+            from .original_plan_full_pipeline import verify_official_chat_live2d_obs
+            outcome = verify_official_chat_live2d_obs(
+                text, obs_password=password, obs_input_name=selected_input,
+                operator_approved=True, voice_rights_confirmed=True
+            )
+        except Exception as exc:
+            # Exceptions may be raised after a server accepted the prompt.
+            # Never automatically retry, or print the OBS credential.
+            self._results.put(("pipeline_error", type(exc).__name__))
+        else:
+            self._results.put(("pipeline_ok", (text, outcome)))
 
     def _start_twitch(self) -> None:
         if self._twitch_session is not None:
@@ -311,6 +417,7 @@ class LocalChatTab(ttk.Frame):
     def destroy(self) -> None:
         self._closed = True
         self._queued_voice.clear()
+        self._pipeline_obs_password.set("")
         self._stop_twitch()
         if self._twitch_ai_inbox is not None:
             self._twitch_ai_inbox.put(None)
@@ -446,6 +553,29 @@ class LocalChatTab(ttk.Frame):
                                 "대기 AI 응답 처리 완료 "
                                 + str(self._twitch_replied) + "건 · AI 오류 "
                                 + str(self._twitch_ai_failures) + "건")
+                    continue
+                if kind in ("pipeline_ok", "pipeline_error"):
+                    self._pipeline_busy = False
+                    self._pipeline_button.configure(state="normal")
+                    if not self._busy:
+                        self._send.configure(state="normal")
+                    if kind == "pipeline_error":
+                        self._pipeline_status.set(
+                            "실제 AI·Live2D·OBS 동시 실측 실패/미확인 (" +
+                            str(payload) + "). 중복 질문 방지를 위해 자동 재시도하지 않음.")
+                    else:
+                        sent, evidence = payload
+                        lip_ok = bool(evidence.lip.verified_signal)
+                        obs_ok = bool(evidence.obs.coherent_media_candidate)
+                        self._pipeline_status.set(
+                            ("실제 입 움직임 확인" if lip_ok else "립싱크 미확인") +
+                            " / " + ("OBS 영상·음성 후보 확인" if obs_ok
+                                      else "OBS 화면·음성 경로 미확인") +
+                            " · 실제 방송/시청자 출력은 별도 실증 필요")
+                        if evidence.verified_observation:
+                            self._append("공식 AI·Live2D·OBS 동시 읽기 검사 통과: " + sent)
+                            if self._input.get().strip() == sent:
+                                self._input.set("")
                     continue
                 if kind in ("ok", "error"):
                     self._busy = False
