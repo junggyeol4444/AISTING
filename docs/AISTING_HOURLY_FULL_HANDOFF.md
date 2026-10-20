@@ -569,3 +569,47 @@ GitHub `junggyeol4444/AISTING`, **기존 main에만 빠른전진 반영**:
 - 사용자 캐릭터 이름/성격/말투·원본 설정·SQLite 기억·OBS/Live2D 프로젝트를 건드리지 않고 GitHub 소스/테스트만 변경. Windows 실버튼 검사는 `LOCALAPPDATA`를 일회용 VM 폴더에 먼저 격리해 원본 설정과 DB 경로를 보호. 계정 로그인·실방송/녹화·채팅 발신·권리 없는 모델 훈련 없음.
 - 다음 묶음: (i) 종료·재진입 중 확정 캐릭터·SQLite 실제 persistence round-trip과 Windows Tk 입력·버튼 사용자 흐름 실검증, (ii) 공식 GPT-SoVITS/Live2D/OBS 동일 발화 실제 입력 자료가 접근 가능한 승인 환경에서는 직접 통합 실증·오류 수정, 없으면 미검증 구간 구분, (iii) YouTube API cursor/중복 ID·중지/재연결, 치지직/SOOP/Twitch 공개 수신과 24시간 긴 큐/worker hang 동시성·1~3초 실응답 개선, (iv) 묶음 변경 전부 끝나면 전체 회귀 2396+, Windows EXE/Tk 실버튼/OBS/Ollama/공개채팅 job 실행·실패 수정 후 전량 재검증, (v) 모든 실제 코드·테스트·CI·Artifact·남은 실증 결과를 GitHub 누적 문서에 유지.
 - 예약 주기/원래 대화 및 다른 프로젝트 예약은 이번 회차 변경하지 않았다.
+
+## 23. 2026-10-20 같은 대화 최신 실행 — 여러 핵심 기능을 먼저 묶음 개발한 뒤 전체 검사·수정·Windows 재검증
+
+### ① 사용자 원문 지시·기획 및 금지
+사용자의 이번 지시: "계속. 내가 개발하고 검증하라고 했지 전부 개발하고 왜 하나 개발하고 검증하고 … 내말 무시하니?" **기능 하나씩 만들어 매번 검사하다가 끝내는 방식 금지**. 현존 실사용 코드를 기준으로 여러 남은 기능을 묶어 구현하고, 묶음 전체가 끝난 뒤 회귀/Windows GUI/EXE/실제 가능한 OBS·Ollama·공개채팅 검사를 일괄 실행. 중간 오류 발견 시 수정 후 전량 재검증. `docs/ORIGINAL_PLAN.txt`, `docs/ROADMAP_100.md`, `config/roadmap.json`, 이전 인수인계 전체·사용자 기획이 기준이다. Windows 10/11 x64 기존 `AISTING.exe` 네이티브 Tk만 사용. 기존 확정 캐릭터 이름/말투/성격 1회 저장 및 SQLite 기억, GPT-SoVITS 한국어 TTS/공식 Live2D/OBS, 치지직·SOOP·YouTube·Twitch 모든 채팅/중복 포함 FIFO 유지. 브랜치 생성/삭제·강제푸시·재개발/웹·HTML 대체·유료 API/사용자 계정 무단 로그인·사용자 PC 무단 접속/방송/녹화·채팅 발신/무권리 음성 훈련 및 저장된 사용자 데이터 변경 금지. 원래 매시간 AISTING 예약 및 다른 프로젝트 예약 변경 금지. 사용자에게 SHA만 보고하면서 작업하지 않는 척하는 행위 금지.
+
+### ② 실제 완료한 묶음 개발·⑤ 소스/커밋
+- 기존 GitHub `junggyeol4444/AISTING` **main** 하나에 **7개 파일을 1개 원자적 기능 묶음 커밋** `c9163210526ad0553d8787984281a667876b150a`로 빠른전진:
+  1. `src/ai_broadcaster/multiplatform_readonly.py`: 읽기 전용 YouTube videos/liveChat/messages HTTP 요청마다 유효한 사용자 `max_seconds`의 남은 기간을 고려한 로컬 timeout 한도 적용(기본 최대 10초; 짧은 제한의 최솟값 0.1초), 제한이 지나서 뒤늦게 도착한 페이지의 구식 채팅을 새 메시지로 표시하지 않음. 이미 요청한 `pageToken`을 서버가 다음 토큰으로 그대로 반환하는 비정상 상태는 채팅을 전달하기 전 명확히 실패하고 무한 재조회/중복 API 사용을 방지. 별개 ID의 동일 텍스트는 FIFO로 각각 보존, 기존 50,000 ID 순환 dedup 유지. 실제 사용자 인증/API 키를 이용한 라이브 방송 접속은 하지 않았음.
+  2. `src/ai_broadcaster/desktop_chat_tab.py`: 실제 플랫폼 네트워크 리더 쪽에 `_enqueue_public_event` 도입. Tk 메인 스레드가 읽는 결과 큐가 4096개 이상일 때 네트워크 **수신 스레드만** 역압 대기, 주기적으로 Stop 확인 후 깨어나므로 GUI 멈춤/무한 대기 없이 정상 실행 시 모든 수신 메시지/중복/FIFO 보존. Stop 또는 앱 닫기는 이미 정의된 정책에 따라 종료. 기존 작업자·SQLite 보호 및 원본 Tk 화면 유지.
+  3. `src/ai_broadcaster/original_plan_full_pipeline.py`: 공식 음성·Cubism↔OBS 동시 검사 마지막 `ensure_offline()` 후에도 운영자 Stop Event를 다시 검사. 마지막 OBS status 요청 중 취소하면 실제 출력 후보를 GUI에 성공으로 되돌리지 않음. 음성 질문 이미 송신된 경우 재전송 없음, 실제 녹화/송출 명령 없음.
+  4. `tests/test_aisting_twitch_ai_integration.py`: 작게 제한한 읽기 큐에서 네트워크 스레드 역압 후 이벤트 5건 정확한 FIFO·무누락 처리, 대기 중 Stop이면 추가 채팅이 큐에 들어가지 않는 회귀 2개.
+  5. `tests/test_aisting_multiplatform_readonly.py`: YouTube 반복 페이지 토큰 안전 종료·단일 ID 무중복, 매우 짧은 운영자 검사 제한에서 HTTP 요청 timeout 상한 및 Stop 정상 종료 회귀 2개.
+  6. `tests/test_aisting_official_chat_obs_pipeline.py`: 마지막 OBS status 읽기 중 운영자가 Stop 요청하면 이미 전송된 질문 1회는 그대로 두면서 전체 동시 관찰 성공으로 분류하지 않는 검사 추가.
+  7. `scripts/gui_official_pipeline_click_windows.py`: 기존 Windows 실제 AistingApp/Tk 버튼 이벤트·외부 모델만 mock하는 안전 검사 흐름 끝에 **실제 격리된 사용자 Windows LOCALAPPDATA 경로**로 신규 확정 custom 캐릭터를 `commit_character_identity`로 디스크에 저장, 실제 `ConversationMemory` SQLite에 중복 채팅 텍스트 2건을 기록, 별도 연결로 재조회, Windows Tk 앱 완전 종료 후 **동일 프로필에서 AistingApp 창을 실제 다시 생성하고 저장 캐릭터 모드·이름·성격·말투·SQLite 2건 및 Chat 탭을 확인**하는 실사용 영속 검사 추가. 테스트는 임시 Windows 전용 폴더만 읽고 쓰며 원래 사용자 PC/캐릭터 파일에 접근하지 않음. 앞서 만든 기존 격리 테스트 설정/SQLite 해시는 변경하지 않음.
+- **중간 오류 수정 커밋** `bbded9f96321fe45cb21dab51932a643279d23b0`: `tests/test_aisting_multiplatform_readonly.py`의 YouTube Stop 테스트가 기존 정상 `stopped` lifecycle event를 오류로 가정한 새 테스트 기대값을 정정. 실제 프로덕션 Stop 동작을 제거하지 않음. 이 수정까지 포함한 동일 코드 전체를 다시 검증.
+- 원래 main 코드를 지우거나 브랜치를 교체하거나 로드맵 승인 상태를 수정하지 않았다.
+
+### ③ 실제 전체 검증/실패 수정/⑥ Windows 산출물
+- 첫 묶음 전체 회귀 https://github.com/junggyeol4444/AISTING/actions/runs/39371944536 : `completed/failure`; `Ran 2401 tests`, 1 failure, 2 skipped. `test_youtube_small_operator_budget_bounds_http_timeout`의 모의 채팅 Stop 이벤트 `('stopped','existingChatId')` 발생을 예상하지 못한 테스트 오류. 첫 Windows https://github.com/junggyeol4444/AISTING/actions/runs/39371944502 역시 같은 변경의 예전 단위검사가 실패해 전체 PASS 아님. 즉시 기존 테스트 기대값을 정정하여 **전체 검사 재수행**.
+- **최신 수정 코드 전체 회귀 PASS** https://github.com/junggyeol4444/AISTING/actions/runs/39372153240 : `completed/success`, 로그 `Ran 2401 tests`, `OK (skipped=2)`, 오류·실패 0.
+- **같은 실제 수정 코드 Windows 전체 PASS** https://github.com/junggyeol4444/AISTING/actions/runs/39372153245 : `completed/success`이며 5개 job 모두 `completed/success`: `windows-exe`(Windows x64 EXE 실제 빌드·실행/원본 Tk 창 버튼·재시작·보존), `obs-real-readonly`(별도 격리 실제 OBS 확인), `ollama-real-local-e2e`(별도 실제 로컬 Ollama 한국어 추론), `twitch-public-readonly`, `korean-public-chat-readonly`(치지직·SOOP 실제 공개 수신).
+- Windows job 로그에서 `GUI_NATIVE_CHARACTER_SQLITE_REOPEN_PERSISTENCE_PASS` 및 **`GUI_NATIVE_RESTART_REAL_PERSONA_SQLITE_PERSISTENCE_PASS`** 실제 확인. 기존 `GUI_NATIVE_CANCEL_NO_LATE_SUCCESS_PASS (SIMULATED MODEL)`, `GUI_MANUAL_OFFICIAL_PUBLIC_AI_CROSSMODE_SQLITE_GUARD_PASS`, `CHARACTER_SETTINGS_SQLITE_BYTES_UNCHANGED_PASS` 확인. GPT-SoVITS/Live2D/OBS 동일 실제 발화가 아님.
+- 신규 Windows Actions Artifact `AISTING-Windows-EXE-integrated`, ID **12242386195**, size **19,668,124 bytes**, 산출물 ZIP digest SHA-256 `d7fd6ceadafb55de83c62f1d22adc3c5c6c404d16ffeb89f21f938d9bd3b8b9d`. EXE 단독 해시로 표시 금지.
+- 마지막 기능 검증 원본 커밋 `bbded9f96321fe45cb21dab51932a643279d23b0`. 이 문서 갱신 후 main은 새 documentation commit으로 앞서 나가고 CI가 다시 발생할 수 있음. 다음 회차는 실제 HEAD와 해당 커밋의 테스트·artifact 구분.
+
+### ④ 여전히 남은 기능·실증 한계 (완료 표기 금지)
+1. 사용자 소유·음성 권리 확보된 **실제 GPT-SoVITS 모델과 참고 WAV**로 생성한 한국어 음성 → 실제 공식 Cubism/Live2D 립싱크 → 동일 발화가 흐르는 OBS 실제 프로그램 오디오·영상 및 EXE에서 사용자 버튼 전체 흐름은 **실기기 모델/권리/환경 접근이 없어서 미완료**. 코드는 연결·검사 준비, Windows 실제 Tk 버튼은 테스트했지만 외부 음성 모델/OBS 동일 발화는 모의/독립 CI임. 실제 음질·지연·동일 음원 여부 PASS 아님.
+2. 실제 사용자 소유 YouTube API 키/활성 라이브 채팅 조회·인증 수신, 네 플랫폼 수백 명 실제 부하·응답 1~3초·24시간 운영 실측 미실증. 이번 YouTube 커서와 API 시간 제한은 **모의 응답 단위 검사** 통과다.
+3. 사용자 Windows PC에 설치된 실제 GPT-SoVITS·WebView2·Live2D 에셋·OBS가 함께 작동하고 며칠 연속 재실행/실방송 품질을 유지하는 전 경로 미검증. 운영자 미승인 상태에서 방송 시작·녹화·채팅 게시·음성 학습/사용자 데이터 외부 송신하지 않는다.
+4. `config/roadmap.json`의 원본 100단계 중 사용자 승인 pending 상태를 임의 완료 처리하지 않음. 실제 사용자 설치/전 기능 동작 검증에 아직 인적 장비·외부 인증 의존성 있음.
+
+### ⑦ 사용자 원자료 보존
+모든 코드/테스트는 기존 GitHub main에서 빠른전진 변경, 원본 기획·roadmap·user 캐릭터/기억/OBS 자료 미변경. Windows CI의 persist 시나리오는 일회용 LOCALAPPDATA에서만 완전 격리 실행, 기존 사용자 PC 원격 접속 없음. 음성/OBS 실제 방송·녹화/채팅 송신 없음. 기존 시간당 예약·타 프로젝트 예약 변경하지 않음.
+
+### ⑧ 후속 실행 시 해야 할 실제 복수 기능 묶음
+1. 합법적 음성·Live2D/OBS 장비가 제공되는 운영자 승인 Windows 환경에서는 **GPT-SoVITS 실제 한국어 TTS 출력 → 원래 Live2D/Cubism 입 움직임 → OBS 실제 오디오/영상 동일 발화**를 종단 간 실측·문제 수정. 이런 환경에 접근 불가하면 미실증 유지.
+2. 장시간 플랫폼 읽기와 AI 모델 응답 시간 사이의 이벤트 큐·FIFO·역압 정책에서 24h·100~500명 실제 동시 유입, UI/메모리/CPU·발화 1~3초 지연을 실제 부하와 CI 성능 테스트로 구분 검증. YouTube 키가 없으면 합법 공개 모의 API cursor/Stop/재연결 테스트만 수행, 실인증 성공으로 포장 금지.
+3. 기존 Tk GUI의 캐릭터 확정·방송설정 원자 저장/재실행·SQLite 중복 기억 2건 이상의 여러 번 재부팅·Windows 파일 잠금/종료 시 스레드 청소/사용자 버튼 결과 직접 확인을 추가 검증.
+4. 여러 기능 개발·오류 수정부터 먼저 **한 묶음으로** 완료한 뒤 전체 회귀 + Windows EXE·Tk GUI + 실제 가능한 Ollama/OBS/공개 채팅 통합 검사. 발견된 오류 수정 후 해당 **최신 코드 전체 재검증**. 단일 코드마다 검사 반복·CI 통과로 핵심 미완료 부분 완료 주장 금지.
+5. 실제 변경 소스·실패·수정·테스트 합계/Actions 링크/Windows artifact ID/digest/미실증을 이 동일한 전체 인수인계 문서에 누적 유지.
+
+### ⑨ 대화·예약 유지
+가능하면 이 원래 AISTING 사용자/예약 대화에서 매시간 개발·검증·결과 보고. 기술적으로 다른 대화에 출력되면 원래 대화를 참조한 척하지 않고 본 GitHub 전체 인수인계, 원본 기획·로드맵·main과 마지막 CI를 먼저 확인하여 맥락 손실 없이 이어감. 이번 회차 기존 예약 및 다른 프로젝트 예약을 생성·변경·중지하지 않았음.
