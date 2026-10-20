@@ -183,3 +183,40 @@
 4. 기존 GUI EXE Windows 빌드·실제 화면/버튼 사용자 경로·회귀 워크플로 검증, 오류 재수정, 원격 `docs/AISTING_HOURLY_FULL_HANDOFF.md`와 결과/아티팩트/남은 일의 누적 갱신. 기존 성공한 공개 읽기 검사만 되풀이하면서 핵심 기능 작업을 뒤로 미루지 말 것.
 
 GitHub repo `junggyeol4444/AISTING` main 고정. 이번 코드 기준 커밋 `c979099b0d18a3ff22e539e19fdf2832d1d320a8`; 인수인계 문서 커밋 이후 실제 HEAD는 다시 달라지므로 다음 실행에서 내부적으로 확인만 하고 개발에 집중. 원래 AISTING 예약 생성 대화를 유지, 대화가 플랫폼 제한으로 불가할 때 반드시 본 문서를 우선 읽을 것.
+
+## 13. 2026-10-20 현 회차 — 실제 네이티브 Tk 버튼 연결 및 OBS 상태 경합 수정
+
+### 사용자가 지시한 우선순위 및 준수사항
+- SHA 조회·해시 반복·Twitch 단위검사만으로 시간을 쓰지 않고 **남은 실사용 기능 개발**을 진행하라는 지시. SHA는 기존 main/문서 원복과 중복 수정을 막기 위해 내부에서만 확인한다.
+- 기존 Windows 10/11 x64 AISTING.exe / Tk GUI / 원본 100단계 설계 / 기존 Live2D + GPT-SoVITS + OBS 연결 코드 / 네 플랫폼 모든 채팅 중복 포함 FIFO / 저장 캐릭터 / SQLite / 설정 무손실 보존.
+- 브랜치 생성/삭제·강제 푸시·새 앱/웹/HTML 대체·실제 방송/녹화 시작·채팅 게시·사용자 PC 연결·계정 로그인·유료 API·권리 없는 음성 훈련 금지. 실제 Live2D·음성·OBS 전체 사용 확인 없으면 통과라고 주장 금지.
+- 원래 예약 생성 대화에서 가능한 한 계속 작업하고, 불가피한 대화 이동 시 본 문서와 GitHub main, 원본 `docs/ORIGINAL_PLAN.txt`, `docs/ROADMAP_100.md`, `config/roadmap.json`를 먼저 읽고 모든 정보를 넘길 것. 기존 매시간 예약·다른 프로젝트 예약은 변경·종료하지 않음.
+
+### 실제 반영된 이번 코드/테스트 커밋 (원본 보존)
+1. `8bbe07cc39d17b4d57ea67b619d4719fd7262a8c`: `src/ai_broadcaster/desktop_chat_tab.py`. AISTING 기존 네이티브 로컬 채팅 탭에 **승인 후 실제 공식 AI·Live2D·OBS 동시 검사 버튼**, OBS 음성 입력/암호 메모리 입력 및 실측 결과 UI 연결. 원래 공식 Live2D 창/실제 캐릭터 설정 정합성·디스크 확정 캐릭터 재확인 후에만 한 번의 질문을 기존 공식 세션에 보냄. 기존 앱의 대화·목소리·설정 보존.
+2. `b0b462b1ccad1bd583de5809e43f91a97cd0122c`: `tests/test_aisting_gui_official_full_pipeline.py` 신규 7개 네이티브 UI callback 검사. 운영자 승인 취소/저장된 캐릭터 미확정/실제 모니터링 실행/오류 후 암호 비노출/증거 부족 시 성공 금지 등.
+3. `6a5cd2ceb2d1f70a1651b0dced42b6b793c55140`: 위 GUI mock 회귀 fixture의 결함(가짜 Tk 객체에 `_poll` 없음) 수정. 그 전 run https://github.com/junggyeol4444/AISTING/actions/runs/39347778512 에서 이 fixture 오류 1건 발생, 후속 run https://github.com/junggyeol4444/AISTING/actions/runs/39347868199 `completed/success`로 해결. 오류를 숨기지 않는다.
+4. `3e4f9167ee74a9db1523b433669661d9d35bea79` 및 `ad73f74719ee5c01691d2cbfea1033dcd3649718`: `src/ai_broadcaster/original_plan_full_pipeline.py`, `tests/test_aisting_official_chat_obs_pipeline.py`. OBS에서 방송/녹화가 진행 중이면 공식 AI 음성 요청 전 단계적으로 거부, 녹화 상태 확인 실패 시 fail-closed, 검증 전후 장면/녹화 상태 재확인. 신규 세 테스트.
+5. `e9fc0cb913c3ddc1afab8cb45cf61e62d8fe0f5a`, `38f2e2e0128e57ff63c35009f9a52567c6480d83`, `4e57b8ecc166129278098d496e52e812b64c6252`: 위 동시 모니터링 연결은 OBS 별도 read-only WebSocket 사용(OBS 요청/응답 클라이언트 쓰레드 충돌 방지), 모니터 독립 연결 실패 시 prompt 차단, 2개 테스트 추가.
+6. `59513623d77bc817b1915a96098b84ff8a9410f1`, `3f9145ae3e921c01ccf80f101ad8faaf7dce0664`: `src/ai_broadcaster/desktop_chat_tab.py`, `tests/test_aisting_gui_official_full_pipeline.py`. 수동 AI·Live2D·OBS 승인 검사 도중 다른 네 플랫폼 공개 채팅 수신이 자동 시작돼 동일 세션에 끼어들지 않도록 차단하고 테스트 추가.
+
+### 검증·CI·윈도우 EXE
+- 최신 회귀검사 (마지막 코드 커밋 기준): https://github.com/junggyeol4444/AISTING/actions/runs/39348615210 — `completed/success`. 실제 실행 `Ran 2368 tests`, `OK (skipped=2)`, 실패 0.
+- 같은 코드 Windows EXE 통합 빌드·실 GUI/읽기 전용 실제 공개 채팅·로컬 Ollama/OBS 검사: https://github.com/junggyeol4444/AISTING/actions/runs/39348615319 — **본 문서 작성 전 마지막 조회는 pending**. 반드시 최종 상태·잡·Artifact ID/ZIP 해시를 다시 읽고 완료로 기록할 것. 이전 성공 artifact와 혼동 금지.
+- 직전 원본 Tk 연결/녹화 검사 전 검증은 https://github.com/junggyeol4444/AISTING/actions/runs/39348178031 (성공). 최신 코드 Windows 성공 증거로 대체 금지.
+- 신규 코드가 빌드 성공해도 실제 사용자 설치 Windows에서 권리 확인된 GPT-SoVITS 합성 WAV·공식 Cubism 동기 렌더/OBS 프로그램 영상·음성 전체 관찰을 직접 했다는 뜻은 아님.
+
+### 그대로 남은 실증·기능
+- 실제 운영자 YouTube Data API 키/활성 라이브 채팅 인증 수신, 플랫폼 실시간 복수 채널·100~500명 지연·장시간 운용.
+- 권리 확보된 한국어 GPT-SoVITS 모델/참조 음성으로 합성 실제 재생, 공식 Live2D Cubism 실제 RMS·입 변화의 음성 동기화, OBS 프로그램 화면과 동일 입력 음성의 실행 환경 실측. **이번 회차는 운영자의 설치 모델/마이크/OBS에 접근하지 않았음**. GUI 버튼에 연결된 Python 코드는 실제 모델이 없으면 fail로 표시하며 가짜 PASS 없음.
+- 신규 승인형 Tk GUI 버튼의 Windows CI는 GUI 생성/종료 검증 중심. 사용자가 버튼→모델→출력까지 동작하는 실기기 E2E **미검증**. OBS output encoder/시청자 전달을 증명하지 않음.
+- 공식 server 설정이 외부/유료 AI로 향하지 않는지 사용자 확인 필요. 별도 계정 로그인을 시도하거나 모델을 무단 다운받지 말 것.
+
+### 다음 회차 구체적 복수 작업
+1. 신규 `main`의 Windows run `39348615319` 최종 jobs/실제 EXE artifact/해시 검증, 실패면 원인 코드 수정·전량 회귀.
+2. Tk 연동 화면 1366x768 레이아웃/실제 버튼 클릭에 따른 상태 확인·닫기/중단/재진입, 확정 캐릭터→공식 설정 및 SQLite 무손실 지속성 검증.
+3. 공식 AI 세션의 느린 GPT-SoVITS 음성/립싱크에 비해 OBS 미터 관찰이 너무 일찍 끝날 수 있는 타이밍 결함을 개선하고 실제 샘플 구간이 겹친 경우만 검증 표시. GPU/모델 없는 검사로 실음성 통과 주장 금지.
+4. YouTube 활성 실채팅 키가 확보되지 않으면 미실증 유지, 페이징·중복·시스템 이벤트를 실제 공식 API 문서에 맞춰 점검. 네 플랫폼 FIFO 실제 수신 경로 및 긴 시간 큐·중단/재시작 검증.
+5. 현 회차 최신 코드/원본 기획/각 Windows CI·Artifact 등 본 GitHub 인수인계에 누적 갱신. 예약 주기는 그대로 유지.
+
+문서 갱신 시 GitHub HEAD는 다시 이동하므로 다음 회차에서 반드시 원격 최신 소스로 작업하되 사용자에게 SHA 자체를 성과로 강조하지 말 것.
