@@ -47,8 +47,9 @@ def main():
         settings.write_text('{"preserve":"캐릭터/설정은 변경하지 않습니다"}', encoding="utf-8")
         database = root / "user_memory.sqlite3"
         with closing(sqlite3.connect(database)) as db:
-            db.execute("CREATE TABLE identity_preserve(id INTEGER PRIMARY KEY, note TEXT)")
-            db.execute("INSERT INTO identity_preserve(note) VALUES (?)", ("기억 보존",))
+            with db:
+                db.execute("CREATE TABLE identity_preserve(id INTEGER PRIMARY KEY, note TEXT)")
+                db.execute("INSERT INTO identity_preserve(note) VALUES (?)", ("기억 보존",))
         before_settings, before_db = sha256(settings), sha256(database)
 
         app = AistingApp()
