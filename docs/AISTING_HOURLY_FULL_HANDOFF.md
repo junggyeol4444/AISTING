@@ -807,3 +807,26 @@ GitHub `junggyeol4444/AISTING`, **기존 main에만 빠른전진 반영**:
 - 2026-10-21 07:30 이전 준비된 v14 GUI 통합 수정안(5파일 묶음)은 아직 원격 main에 반영되지 않음. 이전 ZIP `AISTING_20261021_0730_v14_통합패치_격리22검사_인수인계.zip`에 로컬 보존되어 있음. 기존 원격 GUI의 '전체' 선택과 실제 4플랫폼 AI FIFO 연결은 아직 완료 표기 금지.
 - 실제 Windows EXE 수동 GUI 전 흐름, 소유 YouTube API 실인증, 실제 GPT-SoVITS→공식 Cubism 립싱크→OBS 동일 발화 출력, 수백명 1~3초 및 24시간 장기 부하, 로드맵 010/100 최종 승인 모두 **미실증**.
 - 후속 회차에는 누적 v14 GUI/FIFO/비밀값 보호까지 기존 소스에 묶어 개발한 후 전체 회귀·Windows EXE/GUI/가능한 연동을 한 번에 검증, 실패 시 수정 후 전체 재검증한다. 현재 단위검사가 곧 제품 완성이 아님.
+
+## 40. 2026-10-21 08시 KST — 기존 Windows 네이티브 GUI의 4플랫폼 동시 채팅 실제 코드 통합
+
+### 개발 전제 및 사용자 원지시
+- 원본 인수인계 1~27절과 39절 전체 원문 보존(기존 28~38절 로컬 ZIP 추가 기록은 원격 병합 전이므로 이력에 남김).
+- 기존 `main`의 `multi_platform_session.py`와 단일 Tk `desktop_chat_tab.py`만 누적 수정. 신생 브랜치/새 앱/HTML 대체/기존 캐릭터·SQLite·사용자 설정 변경 없음.
+- 사용자 승인 없는 방송 시작·녹화·채팅 게시·계정 로그인·유료 API·모델 학습·드라이브 연결 없음.
+
+### 여러 실제 기능 묶음
+1. 기존 네이티브 Tk GUI 채팅 플랫폼 선택에 `전체` 선택을 표시하고 플랫폼별 Twitch/CHZZK/SOOP/YouTube 채널 입력란을 두 줄로 표시/숨김. 기존 공식 Live2D·OBS 수동 검사 버튼 보존.
+2. 저장된 플랫폼 목록의 비정상 자료형·중복·미지원 플랫폼 및 채널 누락을 검증하여 외부 네트워크 접속 전 차단. 누락값을 임의 기본값으로 대체하거나 사용자 설정을 변경하지 않음.
+3. 사용자 `읽기 전용 연결` 버튼 누름 시에만 `MultiPlatformReadOnlySession`을 생성하고 기존 단일 AI FIFO 및 세션 격리 로직에 연결. 동일 문장 자동 dedup 금지.
+4. 기존 단일 플랫폼·AI·공식 Live2D/OBS 준비 중 Python 예외 원문에 들어 있을 수 있는 인증정보/URL/로컬 경로를 사용자 오류 표시에서 숨김.
+5. 신규 격리 테스트 `tests/test_aisting_multiplatform_gui_routing.py`와 기존 Windows 네이티브 Tk 클릭 검사 `scripts/gui_official_pipeline_click_windows.py` 확장: 전체 선택 실제 표시·입력 전 연결 차단·완성된 4채널 인자 전달·기존 검사 버튼 노출/원본 설정 보존 확인.
+
+### 반드시 실제 Actions에서 검사·결과 기록
+- 기존 39절 main 개발 기준 커밋 `ce05fac9110248aa8400298e7fa327909d5c8b5b`. CI run `39511924163` 성공, Windows run `39511924212`는 이 절 작성 시 아직 최종 완료 확인 전.
+- 이번 Tk GUI 반영분은 **코드 commit과 해당 HEAD Windows Actions가 성공하기 전까지 전체 완료로 표시 금지**. 신규 단위/모의 테스트 성공은 실제 소유 YouTube 키, GPT-SoVITS 모델, Cubism 공식 입·OBS 동일 발화 출력, 수백명/24시간 운영 실증이 아님.
+- 누적 인수인계 28~38절의 완전한 원문은 마지막 v14 ZIP에서 별도 보존되어 있으며 원격 handoff로 이전해야 함(원문 손실·축약 금지).
+
+### 다음 회차 복수 실질 과제
+- 정확한 새 HEAD/Actions Windows 5개 jobs/EXE artifact를 확인하고 실패하면 전체 코드 수정 후 전체 재검증.
+- 승인받은 실제 모델/Windows PC/YouTube API 정보 없이는 현장 실증 완료를 주장하지 않는다. 공식 GPT-SoVITS 한국어 실제 합성→공식 Live2D Cubism 발화 립싱크→OBS 영상/오디오 한 발화 동기화, 실제 소유 YouTube API 활성 채팅 및 수백명 1~3초/24시간 운영은 여전히 미실증.

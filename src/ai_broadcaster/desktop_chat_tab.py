@@ -19,6 +19,7 @@ from .windows_tts import Voice
 from .avatar_animation import SpeechActivity
 from .twitch_readonly import TwitchReadOnlySession, TwitchReadError
 from .multiplatform_readonly import ChzzkReadOnlySession, SoopReadOnlySession, YouTubeReadOnlySession
+from .multi_platform_session import MultiPlatformReadOnlySession
 from .offline_settings import load_settings
 
 
@@ -46,6 +47,7 @@ class LocalChatTab(ttk.Frame):
         self._twitch_active_workers: set[object] = set()
         self._twitch_channel = tk.StringVar()
         self._chat_platform = tk.StringVar(value='트위치')
+        self._multi_channels = {name: tk.StringVar() for name in ('twitch','chzzk','soop','youtube')}
         self._official_live2d = tk.BooleanVar(value=False)
         self._youtube_api_key = tk.StringVar()
         self._pipeline_busy = False
@@ -114,9 +116,13 @@ class LocalChatTab(ttk.Frame):
         public_chat = ttk.LabelFrame(
             self, text="플랫폼 공개 채팅 수신 → 로컬 AI (송신·실방송 없음)", padding=8)
         public_chat.pack(fill="x", pady=(10, 0))
-        ttk.Combobox(public_chat, textvariable=self._chat_platform,
-                     values=("트위치", "치지직", "SOOP", "유튜브"),
-                     width=8, state="readonly").pack(side="left", padx=4)
+        self._chat_selector = ttk.Combobox(
+            public_chat, textvariable=self._chat_platform,
+            values=("트위치", "치지직", "SOOP", "유튜브", "전체"),
+            width=8, state="readonly")
+        self._chat_selector.pack(side="left", padx=4)
+        self._chat_selector.bind("<<ComboboxSelected>>",
+                                 lambda _event: self._toggle_multi_channels())
         ttk.Label(public_chat, text="채널 ID / SOOP ID/번호 / YouTube 영상 ID·URL·liveChatId").pack(side="left")
         ttk.Entry(public_chat, textvariable=self._twitch_channel, width=20).pack(
             side="left", padx=5)
@@ -129,9 +135,20 @@ class LocalChatTab(ttk.Frame):
         self._twitch_end.pack(side="left", padx=3)
         keyline = ttk.Frame(self)
         keyline.pack(fill="x")
+        self._chat_keyline = keyline
         ttk.Label(keyline, text="YouTube API 키 (실행 중 메모리만 사용)").pack(side="left")
         ttk.Entry(keyline, textvariable=self._youtube_api_key, width=46,
                   show="*").pack(side="left", padx=5)
+        self._multi_fields = ttk.Frame(self)
+        for entries in (
+                (("twitch", "트위치 채널", 22), ("chzzk", "치지직 ID", 37)),
+                (("soop", "SOOP ID/번호", 22), ("youtube", "유튜브 ID/URL", 37))):
+            line = ttk.Frame(self._multi_fields)
+            line.pack(fill="x", pady=1)
+            for code, label, width in entries:
+                ttk.Label(line, text=label).pack(side="left", padx=(4, 3))
+                ttk.Entry(line, textvariable=self._multi_channels[code],
+                          width=width).pack(side="left", padx=(0, 12))
         ttk.Checkbutton(self, text="공식 Open-LLM-VTuber/Live2D 창으로 채팅 전달 (한 세션 · Ollama 중복 호출 없음)",
                         variable=self._official_live2d).pack(anchor="w", pady=(4, 0))
         ttk.Label(self, textvariable=self._twitch_status, wraplength=600).pack(
@@ -164,6 +181,12 @@ class LocalChatTab(ttk.Frame):
                   wraplength=580).pack(anchor="w")
         self._refresh_memory_count()
         self.after(150, self._poll)
+
+    def _toggle_multi_channels(self) -> None:
+        if self._chat_platform.get() == "전체":
+            self._multi_fields.pack(fill="x", before=self._chat_keyline, pady=(2, 0))
+        else:
+            self._multi_fields.pack_forget()
 
     def _append(self, line: str) -> None:
         # Keep the *visible* native Tk transcript bounded during long shows.
@@ -219,7 +242,7 @@ class LocalChatTab(ttk.Frame):
         try:
             result = run_local_chat(model, text, use_committed_gui_character=True)
         except Exception as exc:
-            self._results.put(("error", str(exc)))
+            self._results.put(("error", type(exc).__name__))
         else:
             self._results.put(("ok",result))
 
@@ -253,7 +276,7 @@ class LocalChatTab(ttk.Frame):
                 raise ValueError("저장된 캐릭터·공식 설정·실행 중인 Live2D 창을 확인하세요.")
             require_saved_korean_gpt_sovits(project)
         except (ValueError, OSError, KeyError, RuntimeError) as exc:
-            self._pipeline_status.set("공식 캐릭터 실측 준비 실패: " + str(exc))
+            self._pipeline_status.set("공식 캐릭터 실측 준비 실패 (" + type(exc).__name__ + ")")
             return
         if not messagebox.askyesno(
             "실제 공식 AI·한국어 음성·Live2D·OBS 동시 검사 승인",
@@ -285,7 +308,7 @@ class LocalChatTab(ttk.Frame):
                 raise ValueError("승인 중 캐릭터/공식 Live2D 설정이 변경됐습니다.")
             require_saved_korean_gpt_sovits(project)
         except (ValueError, OSError, KeyError, RuntimeError) as exc:
-            self._pipeline_status.set("변경 감지 · 실제 전송 취소: " + str(exc))
+            self._pipeline_status.set("변경 감지 · 실제 전송 취소 (" + type(exc).__name__ + ")")
             return
         self._pipeline_busy = True
         self._pipeline_cancel = threading.Event()
@@ -374,7 +397,9 @@ class LocalChatTab(ttk.Frame):
                     raise ValueError("저장한 캐릭터와 실행 중인 공식 Live2D 설정이 다릅니다.")
                 require_saved_korean_gpt_sovits(project)
             except (ValueError, OSError, KeyError, RuntimeError) as exc:
-                messagebox.showwarning("공식 AI 연결 준비", str(exc), parent=self)
+                messagebox.showwarning("공식 AI 연결 준비",
+                                       "저장한 캐릭터·음성 설정을 확인하세요 (" +
+                                       type(exc).__name__ + ")", parent=self)
                 return
         if official and not messagebox.askyesno(
                 "공식 AI·Live2D 채팅 연결 승인",
@@ -388,7 +413,31 @@ class LocalChatTab(ttk.Frame):
         types = {"트위치": "twitch", "치지직": "chzzk",
                  "SOOP": "soop", "유튜브": "youtube"}
         code = types.get(choice)
-        if code not in load_settings()["platforms"]:
+        try:
+            saved_platforms = load_settings()["platforms"]
+        except (ValueError, OSError, KeyError, TypeError, RuntimeError) as exc:
+            messagebox.showinfo("플랫폼 설정",
+                                "저장된 플랫폼 설정을 확인하세요 (" + type(exc).__name__ + ")",
+                                parent=self)
+            return
+        if (not isinstance(saved_platforms, (list, tuple)) or not saved_platforms
+                or any(type(name) is not str for name in saved_platforms)):
+            messagebox.showinfo("플랫폼 설정", "저장된 플랫폼 선택을 확인하세요.", parent=self)
+            return
+        if (len(set(saved_platforms)) != len(saved_platforms)
+                or any(name not in ("twitch","chzzk","soop","youtube")
+                       for name in saved_platforms)):
+            messagebox.showinfo("플랫폼 설정", "저장된 플랫폼 선택을 확인하세요.", parent=self)
+            return
+        if choice == "전체":
+            missing = [name for name in saved_platforms
+                       if not self._multi_channels[name].get().strip()]
+            if missing:
+                messagebox.showinfo("채널 입력",
+                                    "선택한 플랫폼의 채널을 모두 입력하세요: " +
+                                    ", ".join(missing), parent=self)
+                return
+        elif code not in saved_platforms:
             messagebox.showinfo("플랫폼 선택",
                                 "방송 설정에서 선택한 플랫폼을 저장해 주세요.", parent=self)
             return
@@ -400,7 +449,12 @@ class LocalChatTab(ttk.Frame):
             session = None
             emit = lambda kind, item: LocalChatTab._enqueue_public_event(
                 self, session, kind, item)
-            if code == "twitch":
+            if choice == "전체":
+                session = MultiPlatformReadOnlySession(
+                    {name: self._multi_channels[name].get().strip()
+                     for name in saved_platforms}, emit,
+                    youtube_api_key=self._youtube_api_key.get())
+            elif code == "twitch":
                 session = TwitchReadOnlySession(channel, emit)
             elif code == "chzzk":
                 session = ChzzkReadOnlySession(channel, emit)
@@ -410,8 +464,10 @@ class LocalChatTab(ttk.Frame):
                 session = YouTubeReadOnlySession(
                     channel, emit, self._youtube_api_key.get())
         
-        except (ValueError, TypeError) as exc:
-            messagebox.showinfo("트위치 채널", str(exc), parent=self)
+        except (ValueError, TypeError, OSError, RuntimeError) as exc:
+            messagebox.showinfo("채팅 채널",
+                                "채널·API 설정을 확인하세요 (" + type(exc).__name__ + ")",
+                                parent=self)
             return
         self._twitch_session = session
         self._twitch_received = 0
@@ -462,7 +518,7 @@ class LocalChatTab(ttk.Frame):
         try:
             session.run()
         except Exception as exc:
-            self._results.put(("twitch_scoped", (session, "twitch_error", str(exc))))
+            self._results.put(("twitch_scoped", (session, "twitch_error", type(exc).__name__)))
         finally:
             self._results.put(("twitch_scoped", (session, "twitch_finished", session)))
 
@@ -492,7 +548,7 @@ class LocalChatTab(ttk.Frame):
                         evidence = send_to_native_live2d_session_with_observation(
                             chat.text, operator_approved=True, duration=8)
                     except Exception as exc:
-                        report("twitch_ai_error", (chat, str(exc)))
+                        report("twitch_ai_error", (chat, type(exc).__name__))
                     else:
                         report("twitch_live2d_ok", (chat, evidence))
                     continue
@@ -503,7 +559,7 @@ class LocalChatTab(ttk.Frame):
                                 getattr(chat, "platform", "twitch"), "트위치") + "] " + chat.sender,
                         use_committed_gui_character=True)
                 except Exception as exc:
-                    report("twitch_ai_error", (chat, str(exc)))
+                    report("twitch_ai_error", (chat, type(exc).__name__))
                 else:
                     report("twitch_ai_ok", (chat, result))
             # The reader can reach EOF while the serial model is still replying.

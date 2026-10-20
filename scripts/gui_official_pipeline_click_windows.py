@@ -67,6 +67,48 @@ def main():
             app.update()
             tab = app._real_chat_tab
             assert tab.winfo_ismapped(), "실제 채팅 Tk 페이지가 화면에 열리지 않았습니다"
+            assert "전체" in tab._chat_selector.cget("values")
+            tab._chat_platform.set("전체")
+            tab._chat_selector.event_generate("<<ComboboxSelected>>")
+            app.update()
+            assert tab._multi_fields.winfo_ismapped()
+            assert len(tab._multi_channels) == 4
+            assert tab._pipeline_button.winfo_ismapped()
+            assert (tab._pipeline_button.winfo_rooty() - app.winfo_rooty()
+                    + tab._pipeline_button.winfo_height()) <= app.winfo_height()
+            # Isolated GUI runner settings only. No user account or platform I/O.
+            previous_model = tab._model_name.get()
+            tab._model_name.set("existing-local-model")
+            from ai_broadcaster.offline_settings import load_settings as original_load
+            def selected_platforms(*args, **kwargs):
+                cfg = original_load(*args, **kwargs)
+                cfg["platforms"] = ["twitch", "chzzk", "soop", "youtube"]
+                return cfg
+            with patch("ai_broadcaster.desktop_chat_tab.load_settings",
+                       side_effect=selected_platforms), patch(
+                "ai_broadcaster.desktop_chat_tab.MultiPlatformReadOnlySession") as factory, patch(
+                "ai_broadcaster.desktop_chat_tab.messagebox.showinfo") as info:
+                tab._twitch_start.invoke()
+                app.update()
+                assert info.call_count == 1
+                factory.assert_not_called()
+                for code, name in (("twitch","tester"),("chzzk","a"*32),
+                                   ("soop","tester/123"),("youtube","livechat")):
+                    tab._multi_channels[code].set(name)
+                factory.side_effect = ValueError("offline-only")
+                tab._twitch_start.invoke()
+                app.update()
+                assert factory.call_count == 1
+                assert factory.call_args.args[0] == {
+                    "twitch":"tester", "chzzk":"a"*32,
+                    "soop":"tester/123", "youtube":"livechat"}
+                assert tab._twitch_session is None
+            tab._model_name.set(previous_model)
+            tab._chat_platform.set("트위치")
+            tab._chat_selector.event_generate("<<ComboboxSelected>>")
+            app.update()
+            assert not tab._multi_fields.winfo_ismapped()
+            print("GUI_NATIVE_MULTI_PLATFORM_FIELDS_ROUTE_NO_NETWORK_PASS")
             btn = tab._pipeline_button
             assert btn.winfo_ismapped(), "공식 AI·Live2D·OBS 버튼이 실제 표시되지 않았습니다"
             # A live operator has to be able to see/click the control, not
