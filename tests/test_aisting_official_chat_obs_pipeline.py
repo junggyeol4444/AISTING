@@ -111,6 +111,64 @@ class FullPipelineContracts(unittest.TestCase):
         self.assertEqual(safety.probe_count, 0)
         self.assertEqual(monitor.probe_count, 1)
 
+    def test_slow_korean_voice_uses_later_obs_meter_window(self):
+        import threading
+
+        safety, monitor = make_obs(), make_obs(stable=False)
+        second_window = threading.Event()
+        send = Mock()
+
+        def monitor_window(**kwargs):
+            monitor.probe_count += 1
+            if monitor.probe_count == 1:
+                return SimpleNamespace(coherent_media_candidate=False)
+            second_window.set()
+            return SimpleNamespace(coherent_media_candidate=True)
+
+        def slow_official_turn(*args, **kwargs):
+            self.assertTrue(
+                second_window.wait(2),
+                "The OBS monitor stopped before delayed Korean TTS started",
+            )
+            return SimpleNamespace(verified_signal=True)
+
+        monitor.inspect_program_media = monitor_window
+        send.side_effect = slow_official_turn
+        with patch.object(
+            pipeline, "OfficialObsWebsocket", side_effect=[safety, monitor]
+        ), patch.object(
+            pipeline, "send_to_native_live2d_session_with_observation", send
+        ):
+            result = pipeline.verify_official_chat_live2d_obs(
+                "늦게 시작한 한국어 음성", obs_password="local",
+                obs_input_name="Mic", operator_approved=True,
+                voice_rights_confirmed=True,
+            )
+        self.assertTrue(result.verified_observation)
+        self.assertGreaterEqual(monitor.probe_count, 2)
+        self.assertEqual(send.call_count, 1)
+
+    def test_obs_window_exhausted_before_ai_reply_is_not_success(self):
+        import time
+
+        safety, monitor = make_obs(stable=True)
+        send = Mock(side_effect=lambda *a, **kw: (
+            time.sleep(0.15), SimpleNamespace(verified_signal=True)
+        )[1])
+        with patch.object(
+            pipeline, "OfficialObsWebsocket", side_effect=[safety, monitor]
+        ), patch.object(
+            pipeline, "send_to_native_live2d_session_with_observation", send
+        ):
+            with self.assertRaisesRegex(RuntimeError, "먼저 끝났습니다"):
+                pipeline.verify_official_chat_live2d_obs(
+                    "합성 지연 확인", obs_password="local",
+                    obs_input_name="Mic", operator_approved=True,
+                    voice_rights_confirmed=True,
+                )
+        self.assertEqual(monitor.probe_count, 6)
+        self.assertEqual(send.call_count, 1)
+
     def test_failed_obs_observer_setup_prevents_ai_prompt(self):
         safety, monitor = make_obs(), make_obs()
         monitor.connect = Mock(side_effect=OSError("OBS disconnected"))
