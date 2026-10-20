@@ -96,6 +96,11 @@ def verify_official_chat_live2d_obs(
     observation: list = []
     errors: list[Exception] = []
     started = threading.Event()
+    # The official server may take seconds to synthesize Korean audio. Keep
+    # sampling real OBS meters while the single official prompt is pending.
+    # No additional prompt is issued for subsequent meter observations.
+    send_finished = threading.Event()
+    monitor_ended_before_reply = []
 
     def obs_worker() -> None:
         # OBS WebSocket request/reply clients are not assumed thread-safe.
@@ -109,10 +114,20 @@ def verify_official_chat_live2d_obs(
             # No approved AI prompt is sent until the separate OBS monitor
             # has actually connected to the correct stopped scene.
             started.set()
-            observation.append(observer.inspect_program_media(
-                operator_approved=True, input_name=obs_input_name,
-                duration=duration
-            ))
+            # A single 8-second OBS probe can finish before the official
+            # GPT-SoVITS speech starts. Observe bounded consecutive windows
+            # (up to 6 x 3 seconds) through the actual question response.
+            for _ in range(6):
+                if send_finished.is_set() and observation:
+                    break
+                observation.append(observer.inspect_program_media(
+                    operator_approved=True, input_name=obs_input_name,
+                    duration=min(float(duration), 3.0),
+                ))
+                if send_finished.is_set():
+                    break
+            if not send_finished.is_set():
+                monitor_ended_before_reply.append(True)
         except Exception as exc:
             errors.append(exc)
             started.set()
@@ -136,6 +151,8 @@ def verify_official_chat_live2d_obs(
     except Exception as exc:
         # Sending may have succeeded before a lost IPC response. NO retry.
         send_failure = exc
+    finally:
+        send_finished.set()
     monitor.join(timeout=duration + 20)
     if monitor.is_alive():
         raise RuntimeError("OBS 읽기 검사 제한 시간을 초과했습니다. 질문을 자동 재전송하지 않습니다.")
@@ -145,7 +162,18 @@ def verify_official_chat_live2d_obs(
         ) from send_failure
     if errors:
         raise RuntimeError("OBS 화면·음성 동시 관찰 실패") from errors[0]
-    if len(observation) != 1 or lip is None:
+    if not observation or lip is None:
         raise RuntimeError("공식 Live2D 또는 OBS 관찰 결과가 없습니다.")
+    if monitor_ended_before_reply:
+        raise RuntimeError(
+            "OBS 관찰 시간이 실제 AI 응답보다 먼저 끝났습니다. "
+            "음성·OBS의 동시 검증을 완료하지 못했습니다."
+        )
     ensure_offline()
-    return OfficialChatObsEvidence(lip=lip, obs=observation[0])
+    # Prefer an actually observed, coherent media route; never treat an
+    # earlier silent frame as proof that speech did not reach the OBS input.
+    selected = next(
+        (sample for sample in observation if sample.coherent_media_candidate),
+        observation[-1],
+    )
+    return OfficialChatObsEvidence(lip=lip, obs=selected)
