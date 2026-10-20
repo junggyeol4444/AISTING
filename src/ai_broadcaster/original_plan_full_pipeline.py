@@ -100,6 +100,7 @@ def verify_official_chat_live2d_obs(
     # sampling real OBS meters while the single official prompt is pending.
     # No additional prompt is issued for subsequent meter observations.
     send_finished = threading.Event()
+    prompt_started = threading.Event()
     monitor_ended_before_reply = []
 
     def obs_worker() -> None:
@@ -114,6 +115,10 @@ def verify_official_chat_live2d_obs(
             # No approved AI prompt is sent until the separate OBS monitor
             # has actually connected to the correct stopped scene.
             started.set()
+            # Do not let fast callbacks (or a slow OBS safety preflight) use
+            # up the audio observation budget BEFORE the actual user turn.
+            if not prompt_started.wait(timeout=8):
+                return
             # A single 8-second OBS probe can finish before the official
             # GPT-SoVITS speech starts. Observe bounded consecutive windows
             # (up to 6 x 3 seconds) through the actual question response.
@@ -145,6 +150,7 @@ def verify_official_chat_live2d_obs(
     lip = None
     send_failure = None
     try:
+        prompt_started.set()
         lip = send_to_native_live2d_session_with_observation(
             text, operator_approved=True, duration=duration
         )
