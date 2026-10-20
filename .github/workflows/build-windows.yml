@@ -217,12 +217,23 @@ jobs:
           time.sleep(1)
           before = client.read_current_scene_frame(operator_approved=True)
           active.set_input_settings(ci_input, {"color": 0xFF00FF00}, True)
-          time.sleep(1)
-          after = client.read_current_scene_frame(operator_approved=True)
-          assert before.width == after.width == 640
-          assert before.height == after.height == 360
-          assert before.png_data != after.png_data, (
-              "Real OBS source changed but OBS-rendered pixels did not"
+          # On a disposable Windows VM, OBS's real GPU/Qt frame renderer
+          # may update asynchronously after the settings RPC returns.
+          # Keep the *same strict pixel-change assertion*, but poll actual
+          # OBS-rendered frames for a bounded 10 seconds instead of sampling
+          # one potentially stale image after a fixed one-second sleep.
+          rendered_change = False
+          for attempt in range(10):
+              time.sleep(1)
+              after = client.read_current_scene_frame(operator_approved=True)
+              assert before.width == after.width == 640
+              assert before.height == after.height == 360
+              if before.png_data != after.png_data:
+                  rendered_change = True
+                  break
+          assert rendered_change, (
+              "Real OBS source changed but OBS-rendered pixels did not "
+              "within 10 actual frame reads"
           )
           print("REAL_OBS_LIVE_VIDEO_CHANGE:",
                 hashlib.sha256(before.png_data).hexdigest()[:16],
