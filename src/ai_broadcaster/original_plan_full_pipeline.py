@@ -98,9 +98,16 @@ def verify_official_chat_live2d_obs(
     started = threading.Event()
 
     def obs_worker() -> None:
+        # OBS WebSocket request/reply clients are not assumed thread-safe.
+        # The monitor owns a different read-only localhost connection from
+        # the main-thread stream/recording safety preflight.
         started.set()
         try:
-            observation.append(obs.inspect_program_media(
+            observer = OfficialObsWebsocket(obs_password, port=obs_port)
+            state = observer.connect()
+            if state.streaming or state.scene != before.scene:
+                raise RuntimeError("OBS 관찰 연결 중 프로그램 장면·송출이 변경됐습니다.")
+            observation.append(observer.inspect_program_media(
                 operator_approved=True, input_name=obs_input_name,
                 duration=duration
             ))
