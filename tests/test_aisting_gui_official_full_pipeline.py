@@ -48,6 +48,42 @@ class RealOfficialPipelineTkTests(unittest.TestCase):
         )
         return tab
 
+    def test_manual_question_cannot_race_live_or_stopped_worker_sqlite_writes(self):
+        for still_listening in (False, True):
+            with self.subTest(still_listening=still_listening):
+                tab = SimpleNamespace(
+                    _closed=False, _busy=False, _pipeline_busy=False,
+                    _twitch_session=object() if still_listening else None,
+                    _twitch_active_workers={object()},
+                    _input=Value("사용자 입력 유지"),
+                    _input_info=Value("준비"),
+                    _model_name=Value("real-model"),
+                )
+                with patch("ai_broadcaster.desktop_chat_tab.run_local_chat") as run:
+                    LocalChatTab._submit(tab)
+                    run.assert_not_called()
+                self.assertFalse(tab._busy)
+                self.assertEqual(tab._input.get(), "사용자 입력 유지")
+                self.assertIn("기억 저장", tab._input_info.get())
+
+    def test_official_probe_denies_during_stopped_chat_worker_memory_write(self):
+        tab = self.fake_tab()
+        tab._twitch_active_workers = {object()}
+        with patch("ai_broadcaster.desktop_chat_tab.messagebox.askyesno") as consent:
+            LocalChatTab._start_official_pipeline(tab)
+        consent.assert_not_called()
+        self.assertFalse(tab._pipeline_busy)
+        self.assertEqual(self.calls, [])
+        self.assertIn("기억 저장", tab._pipeline_status.get())
+
+    def test_public_chat_waits_for_manual_ai_sqlite_write(self):
+        tab = SimpleNamespace(_closed=False, _twitch_session=None,
+            _pipeline_busy=False, _busy=True, _twitch_active_workers=set())
+        with patch("ai_broadcaster.desktop_chat_tab.messagebox.showwarning") as warn:
+            LocalChatTab._start_twitch(tab)
+        warn.assert_called_once()
+        self.assertIn("수동 AI", warn.call_args.args[0])
+
     def test_user_refusal_keeps_input_and_does_not_send(self):
         tab = self.fake_tab()
         with tempfile.TemporaryDirectory() as root:

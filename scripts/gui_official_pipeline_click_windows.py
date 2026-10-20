@@ -240,6 +240,33 @@ def main():
                 assert str(tab._twitch_end.cget("state")) == "disabled"
                 print("GUI_STOP_INFLIGHT_WORKER_DRAIN_RECONNECT_READY_PASS")
 
+            # Cross-mode race regression on the *actual Windows Tk widgets*:
+            # a previous public-chat AI worker may have stopped reading but
+            # can still own an in-flight SQLite commit. All three paths share
+            # one committed character and must not overlap.
+            tab._input.set("중복 금지 사용자 입력")
+            tab._model_name.set("existing-local-model")
+            orphan = object()
+            tab._twitch_active_workers.add(orphan)
+            with patch("ai_broadcaster.desktop_chat_tab.messagebox.askyesno") as confirm, patch(
+                "ai_broadcaster.desktop_chat_tab.messagebox.showwarning"
+            ) as warning, patch(
+                "ai_broadcaster.desktop_chat_tab.run_local_chat",
+                side_effect=AssertionError("raced with old session")
+            ) as llm:
+                tab._send.invoke()
+                btn.invoke()
+                tab._twitch_start.invoke()
+                app.update()
+                assert not tab._busy and not tab._pipeline_busy
+                assert tab._input.get() == "중복 금지 사용자 입력"
+                assert "기억 저장" in tab._pipeline_status.get()
+                assert warning.call_count == 1
+                confirm.assert_not_called()
+                llm.assert_not_called()
+            tab._twitch_active_workers.discard(orphan)
+            print("GUI_MANUAL_OFFICIAL_PUBLIC_AI_CROSSMODE_SQLITE_GUARD_PASS")
+
             assert sha256(settings) == before_settings
             assert sha256(database) == before_db
             with closing(sqlite3.connect(database)) as db:

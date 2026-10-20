@@ -182,7 +182,14 @@ class LocalChatTab(ttk.Frame):
             self._memory_count.set("대화 기억 확인 실패")
 
     def _submit(self) -> None:
-        if self._busy or self._pipeline_busy:
+        if self._closed or self._busy or self._pipeline_busy:
+            return
+        # A stopped public reader can still have an LLM turn writing SQLite.
+        # Do not start a separate Ollama conversation against that same
+        # committed character or memory until every prior AI worker exits.
+        if self._twitch_session is not None or getattr(self, "_twitch_active_workers", None):
+            self._input_info.set(
+                "공개 채팅 AI/이전 응답의 기억 저장이 종료된 뒤 수동 질문을 보낼 수 있습니다.")
             return
         model = self._model_name.get().strip()
         text = self._input.get().strip()
@@ -211,8 +218,10 @@ class LocalChatTab(ttk.Frame):
         """Explicitly approved existing native Live2D + OBS observation."""
         if self._closed or self._pipeline_busy or self._busy:
             return
-        if self._twitch_session is not None:
-            self._pipeline_status.set("공개 채팅 수신 중에는 수동 실측을 중복 실행하지 않습니다.")
+        if (self._twitch_session is not None
+                or getattr(self, "_twitch_active_workers", None)):
+            self._pipeline_status.set(
+                "공개 채팅 AI 및 이전 응답의 기억 저장이 완전히 끝난 뒤 실측을 시작하세요.")
             return
         text = self._input.get().strip()
         selected_input = self._pipeline_audio_input.get().strip()
@@ -316,7 +325,12 @@ class LocalChatTab(ttk.Frame):
     def _start_twitch(self) -> None:
         # Never interleave automatic platform prompts into a one-shot
         # operator-approved official Live2D/OBS session probe.
-        if self._twitch_session is not None or self._pipeline_busy:
+        if self._closed or self._twitch_session is not None or self._pipeline_busy:
+            return
+        if self._busy:
+            messagebox.showwarning(
+                "수동 AI 작업 중", "진행 중인 수동 AI 질문과 기억 저장이 끝난 뒤 공개 채팅을 연결하세요.",
+                parent=self)
             return
         if getattr(self, "_twitch_active_workers", None):
             messagebox.showwarning(
