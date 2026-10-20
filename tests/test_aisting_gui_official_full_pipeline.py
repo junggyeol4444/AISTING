@@ -178,6 +178,27 @@ class RealOfficialPipelineTkTests(unittest.TestCase):
         self.assertEqual(results.get_nowait(), ("pipeline_cancelled", None))
         self.assertIs(fn.call_args.kwargs["cancel_event"], event)
 
+    def test_queued_success_before_stop_is_discarded_when_gui_receives_it(self):
+        import threading
+        tab = self.fake_tab()
+        tab._pipeline_busy = True
+        tab._pipeline_cancel = threading.Event()
+        tab._pipeline_cancel.set()
+        tab._results = queue.SimpleQueue()
+        tab._results.put(("pipeline_ok", (
+            "안녕하세요", SimpleNamespace(
+                verified_observation=True,
+                lip=SimpleNamespace(verified_signal=True),
+                obs=SimpleNamespace(coherent_media_candidate=True))))
+        tab._append = lambda *_args: self.fail("Cancelled result claimed success")
+        tab.after = lambda *_args: None
+        tab._poll = lambda: None
+        LocalChatTab._poll(tab)
+        self.assertFalse(tab._pipeline_busy)
+        self.assertIsNone(tab._pipeline_cancel)
+        self.assertIn("중지됨", tab._pipeline_status.get())
+        self.assertEqual(tab._input.get(), "안녕하세요")
+
     def test_worker_passes_real_approved_path_and_queues_only_safe_evidence(self):
         events = queue.SimpleQueue()
         tab = SimpleNamespace(_results=events)

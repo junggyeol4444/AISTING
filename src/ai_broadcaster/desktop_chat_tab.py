@@ -617,6 +617,11 @@ class LocalChatTab(ttk.Frame):
                                 + str(self._twitch_ai_failures) + "건")
                     continue
                 if kind in ("pipeline_ok", "pipeline_error", "pipeline_cancelled"):
+                    # A worker can queue success immediately before the GUI
+                    # handles Stop. Check cancellation at the UI boundary too;
+                    # a late success must never erase the operator stop request.
+                    pending_cancel = getattr(self, "_pipeline_cancel", None)
+                    user_cancelled = pending_cancel is not None and pending_cancel.is_set()
                     self._pipeline_busy = False
                     self._pipeline_cancel = None
                     self._pipeline_button.configure(state="normal")
@@ -624,7 +629,7 @@ class LocalChatTab(ttk.Frame):
                         self._pipeline_cancel_button.configure(state="disabled")
                     if not self._busy:
                         self._send.configure(state="normal")
-                    if kind == "pipeline_cancelled":
+                    if kind == "pipeline_cancelled" or user_cancelled:
                         self._pipeline_status.set("실측 중지됨 · 이미 전송된 질문은 재전송하지 않았습니다.")
                     elif kind == "pipeline_error":
                         self._pipeline_status.set(
