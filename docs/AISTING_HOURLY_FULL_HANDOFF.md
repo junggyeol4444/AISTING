@@ -535,3 +535,37 @@ GitHub repo `junggyeol4444/AISTING` main 고정. 이번 코드 기준 커밋 `c9
 
 ### ⑨ 대화 유지/예약
 이번 실행은 기존 AISTING 사용자 대화 안에서 계속 진행. 예약 실행 주기 변경/생성/종료, 타 프로젝트 예약 변경·삭제 없음. 플랫폼 제약으로 새 대화에 출력 시 본 문서를 먼저 읽고 해당 변경 사유를 확인 가능한 범위에서 기록, 사용자가 다시 설명하도록 요구하지 않음.
+
+## 22. 2026-10-20 AISTING 연속 작업 — 수동 Ollama/공식 Live2D/공개 채팅 간 SQLite 작업 충돌 차단
+
+### ① 사용자 원본 요청/금지사항 및 기준
+사용자가 "계속"으로 원래 AISTING 대화 안에서 기존 main 코드 개발·수정·실질 검증을 지시. 사용자가 반복 강조한 **복수 기능 묶음 개발 → 전체 회귀 및 Windows EXE/실제 Tk 버튼·OBS/Ollama/공개 채팅 통합검사 → 오류 수정 → 동일 전체 재검증**을 따름. 기존 `docs/ORIGINAL_PLAN.txt`, `docs/ROADMAP_100.md`, `config/roadmap.json` 및 본 문서 앞 절을 반드시 유지. Windows 10/11 x64 기존 Tk `AISTING.exe`, 생성 후 확정 캐릭터 이름·말투·성격 1회 저장·계속 유지, SQLite 기억/설정, 공식 Open-LLM-VTuber/Live2D+권리 있는 한국어 GPT-SoVITS, OBS 음성·영상, YouTube·치지직·SOOP·Twitch 중복 채팅 FIFO와 플랫폼 선택 목표 불변. 새 브랜치/강제푸시/원본 재개발·웹/HTML 대체/유료 API·무단 로그인/사용자 PC 접속/방송·녹화·채팅 발신/권리 없는 모델 학습·캐릭터·SQLite 수정 금지. 예약 시간 변경·타 프로젝트 예약 수정/종료 금지. 가능하면 원래 AISTING 예약 생성 대화에서 계속하고, 불가피한 대화 이전 시 본 GitHub 전체 문서·원본 기획·latest main을 확인하여 사용자 재설명 없이 이어감.
+
+### ② 실제 구현 변경 ⑤ 파일 및 커밋
+GitHub `junggyeol4444/AISTING`, **기존 main에만 빠른전진 반영**:
+- `6691268008d13a55e3f2e4ba85ee3d7928e4763f`: 파일 3개를 묶음 원자적 커밋:
+  1. `src/ai_broadcaster/desktop_chat_tab.py`: `_submit`에서 진행 중 공개 채팅 세션과 Stop 후 아직 SQLite 기억 저장 중인 `_twitch_active_workers`를 검사해 **수동 Ollama 질문/동시 기억 쓰기 차단**. `_start_official_pipeline`도 이전 공개 채팅 AI worker가 완전히 종료되기 전에는 별도 공식 AI/Live2D/OBS 실측 시작 차단. `_start_twitch`에서 수동 Ollama AI 작업 `_busy` 중에는 공개 채팅 AI 연결 차단. 앱 종료 상태 `_closed`도 확인. 같은 확정 캐릭터/기억 데이터가 이전 모델 응답과 새 모델 응답으로 동시에 수정될 수 있는 실사용 경합 차단. 정상 독립 입력은 기존 방식 그대로 실행.
+  2. `tests/test_aisting_gui_official_full_pipeline.py`: 위 수동/공개/공식 세 실행 경로의 Stop 이후 교차 경합, 버튼·입력 내용 유지, 거부 시 외부 AI 미호출 회귀 3개 추가.
+  3. `scripts/gui_official_pipeline_click_windows.py`: disposable Windows VM에서 실제 `AistingApp`/Tk UI를 열고 앞서 구현된 Stop→SQLite worker 종료 차단 검사에 더하여 **수동 텍스트 전송, 공식 OBS 실측, 공개 채팅 연결 실제 각 Tk 버튼을 눌렀을 때 이전 worker가 남아 있으면 모두 시작되지 않음**을 확인. 외부 모델 서비스 응답만 격리하여 대체; 실제 GPT-SoVITS/Live2D/OBS 동일 발화 통합 증거는 아니다.
+- `8f3402ecb5683b416d397fc91563d22336bdbb3e`: `tests/test_aisting_gui_official_full_pipeline.py`의 두 오래된 가짜 GUI fixture에 production 코드가 사용하는 `_closed=False` 상태를 정확히 추가. **실제 코드의 프로그램 종료 차단 기능을 제거/완화하지 않고 기존 테스트를 수정**. 이전의 세 사용자 작업 충돌 차단 유지.
+- 후속 사용자 기획/기억·SQLite 실데이터/공식 모델/OBS 소스 파일 미변경.
+
+### ③ 실제 오류·검증·수정 ⑥ Windows EXE/Actions
+- 초기 전체 회귀검사 https://github.com/junggyeol4444/AISTING/actions/runs/39369086799 `completed/failure`, `Ran 2396 tests`, **2 errors**, `skipped=2`; 오류 `test_official_public_chat_requires_committed_character_before_consent`, `test_platform_reader_does_not_interrupt_approved_full_probe`의 오래된 `SimpleNamespace` 모의 Tk 객체에 `_closed` 누락. 실제 AistingApp 생성자는 해당 플래그를 가지고 있음. 위 테스트 fixture에 실제 상태 추가 후 전량 재검사.
+- **최종 전체 회귀** https://github.com/junggyeol4444/AISTING/actions/runs/39369181912 `completed/success`: `Ran 2396 tests`, `OK (skipped=2)`, **실패 0**.
+- **최종 동일 코드 Windows 통합검사** https://github.com/junggyeol4444/AISTING/actions/runs/39369181862 `completed/success`: `windows-exe` (네이티브 Windows EXE 빌드/자체 실행, 실제 Tk GUI 버튼 시나리오), `ollama-real-local-e2e` (CI 격리 환경 실제 로컬 Ollama 한국어 추론), `obs-real-readonly` (별도의 실제 OBS 장면/미터 읽기), `twitch-public-readonly` (Twitch 공개 수신), `korean-public-chat-readonly` (치지직·SOOP 공개 수신) **5개 job 모두 PASS**.
+- 실제 Windows GUI job log 필수 증거 `GUI_MANUAL_OFFICIAL_PUBLIC_AI_CROSSMODE_SQLITE_GUARD_PASS`, `GUI_STOP_INFLIGHT_SQLITE_DELETE_RECONNECT_BLOCKED_PASS`, `GUI_STOP_INFLIGHT_WORKER_DRAIN_RECONNECT_READY_PASS`, `CHARACTER_SETTINGS_SQLITE_BYTES_UNCHANGED_PASS`, `GUI_REAL_WINDOWS_PROFILE_PATH_ISOLATED_PASS`.
+- 실제 새 GitHub Windows EXE Artifact `AISTING-Windows-EXE-integrated`, ID **12241021086**, size **19,664,646 bytes**, **artifact ZIP** SHA-256 `e14bf08a30cd0c3c570040e8ab35956f0efca99adbddb5700afca24a1224c192`. 이 해시는 ZIP의 digest로 개별 AISTING.exe hash 아님.
+- 이번 기능 코드 확인 커밋 `8f3402ecb5683b416d397fc91563d22336bdbb3e`. 본 문서만 수정해도 git main HEAD와 새 CI가 이동할 수 있으므로 다음 실행에서는 최신 main 다시 확인하고 **문서 추가 CI와 기존 실제 코드 성공 run을 구분**.
+- 사용자의 기존 100단계 승인/진행 상태를 CI 통과만으로 변경하지 않음.
+
+### ④ 계속 남은 실제 미완료 기능
+1. 실제 운영자 승인/권리 확보된 **GPT-SoVITS 한국어 음성 모델·참조 WAV**에서 발화 합성→공식 Live2D/Cubism의 해당 실제 RMS·입 움직임→OBS 프로그램 오디오·영상의 **동일 발화 전체 실기기 E2E**는 아직 실행·검증하지 못함. Windows CI에서 Tk 실제 버튼은 실행했지만 음성 모델/OBS 동시 서비스는 **모의/독립 검사**였으므로 "최종 완료" 주장 금지.
+2. **실제 YouTube 활성 라이브 채팅의 소유 키/인증 수신**, 네 플랫폼 동시 실제 100~500명·1~3초 응답·24시간 무중단 부하 실증 미완료. 시뮬레이션 FIFO·YouTube API page/id 테스트 성공을 실제 인증 연결로 주장하지 말 것.
+3. 운영자 PC에서 실제 `AISTING.exe` 사람의 실행→캐릭터 생성/재진입·영속 SQLite 기억→공식 Live2D/GPT-SoVITS→OBS 출력, 외부 서비스 안전한 Stop/이상 종료/권한/장시간 GPU/메모리 실증 미완료. 사용자 PC 접근 권한·권리 있는 모델 미제공 시 실제 사용자 테스트 수행 불가.
+4. 앞절의 pending original roadmap 항목을 임의 완료 처리하지 않음. 이번 묶음은 서로 다른 AI 작업이 동시에 SQLite에 쓰는 것을 차단했지, 모든 남은 실기기 음성·라이브 연결을 구현했다고 주장하지 않는다.
+
+### ⑦ 사용자 데이터 보존/⑧ 다음 회차 복수 기능
+- 사용자 캐릭터 이름/성격/말투·원본 설정·SQLite 기억·OBS/Live2D 프로젝트를 건드리지 않고 GitHub 소스/테스트만 변경. Windows 실버튼 검사는 `LOCALAPPDATA`를 일회용 VM 폴더에 먼저 격리해 원본 설정과 DB 경로를 보호. 계정 로그인·실방송/녹화·채팅 발신·권리 없는 모델 훈련 없음.
+- 다음 묶음: (i) 종료·재진입 중 확정 캐릭터·SQLite 실제 persistence round-trip과 Windows Tk 입력·버튼 사용자 흐름 실검증, (ii) 공식 GPT-SoVITS/Live2D/OBS 동일 발화 실제 입력 자료가 접근 가능한 승인 환경에서는 직접 통합 실증·오류 수정, 없으면 미검증 구간 구분, (iii) YouTube API cursor/중복 ID·중지/재연결, 치지직/SOOP/Twitch 공개 수신과 24시간 긴 큐/worker hang 동시성·1~3초 실응답 개선, (iv) 묶음 변경 전부 끝나면 전체 회귀 2396+, Windows EXE/Tk 실버튼/OBS/Ollama/공개채팅 job 실행·실패 수정 후 전량 재검증, (v) 모든 실제 코드·테스트·CI·Artifact·남은 실증 결과를 GitHub 누적 문서에 유지.
+- 예약 주기/원래 대화 및 다른 프로젝트 예약은 이번 회차 변경하지 않았다.
