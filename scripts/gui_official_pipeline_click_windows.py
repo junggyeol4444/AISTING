@@ -267,6 +267,30 @@ def main():
             tab._twitch_active_workers.discard(orphan)
             print("GUI_MANUAL_OFFICIAL_PUBLIC_AI_CROSSMODE_SQLITE_GUARD_PASS")
 
+            # Real app's actual durable SQLite location survives close/reopen,
+            # and the explicitly confirmed character survives full GUI restart.
+            # Only the disposable Windows LOCALAPPDATA is written.
+            from ai_broadcaster.conversation_memory import ConversationMemory
+            from ai_broadcaster.session import ChatMessage
+            from ai_broadcaster.offline_settings import (
+                load_settings as read_prefs, settings_file as prefs_path)
+            from ai_broadcaster.original_plan_persona_store import commit_character_identity
+            first_prefs = read_prefs()
+            custom_persona = {
+                "name": "Windows 실제 재시작 캐릭터", "style": "한국어 자연스러운 말투",
+                "character": "기억을 보존하는 사람",
+            }
+            commit_character_identity(
+                first_prefs, "custom", custom_persona, path=prefs_path())
+            mem = ConversationMemory()
+            mem.append(ChatMessage("persistent-001", "시청자", "중복 문장"), "답변 1")
+            mem.append(ChatMessage("persistent-002", "시청자", "중복 문장"), "답변 2")
+            assert ConversationMemory().count() == 2
+            assert [x.reply for x in ConversationMemory().recent(2)] == [
+                "답변 1", "답변 2"]
+            assert read_prefs()["persona"] == custom_persona
+            print("GUI_NATIVE_CHARACTER_SQLITE_REOPEN_PERSISTENCE_PASS")
+
             assert sha256(settings) == before_settings
             assert sha256(database) == before_db
             with closing(sqlite3.connect(database)) as db:
@@ -274,6 +298,22 @@ def main():
             print("CHARACTER_SETTINGS_SQLITE_BYTES_UNCHANGED_PASS")
         finally:
             app._shutdown()
+
+        # Recreate the same production Windows Tk app in the same isolated
+        # user profile, not merely a mock settings loader.
+        second = AistingApp()
+        try:
+            second._goto_page("실제 채팅·AI")
+            second.update()
+            assert second.settings["persona"] == custom_persona
+            assert second.settings["persona_mode"] == "custom"
+            assert ConversationMemory().count() == 2
+            assert [x.reply for x in ConversationMemory().recent(2)] == [
+                "답변 1", "답변 2"]
+            assert second._real_chat_tab.winfo_ismapped()
+            print("GUI_NATIVE_RESTART_REAL_PERSONA_SQLITE_PERSISTENCE_PASS")
+        finally:
+            second._shutdown()
 
 
 if __name__ == "__main__":

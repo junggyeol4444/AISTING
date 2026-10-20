@@ -389,8 +389,8 @@ class LocalChatTab(ttk.Frame):
             # connection can finish after a new one starts; never let that
             # previous listener's late messages enter the new AI queue.
             session = None
-            emit = lambda kind, item: self._results.put((
-                "twitch_scoped", (session, "twitch_" + kind, item)))
+            emit = lambda kind, item: LocalChatTab._enqueue_public_event(
+                self, session, kind, item)
             if code == "twitch":
                 session = TwitchReadOnlySession(channel, emit)
             elif code == "chzzk":
@@ -423,6 +423,23 @@ class LocalChatTab(ttk.Frame):
         self._twitch_end.configure(state="normal")
         self._twitch_status.set(choice + " 채팅 연결 요청 중 · 실제 수신 대기")
         threading.Thread(target=self._work_twitch, args=(session,), daemon=True).start()
+
+    def _enqueue_public_event(self, session, kind, item, *, limit: int = 4096) -> None:
+        """Back-pressure on the network reader, never on the Tk GUI thread.
+
+        No text/content deduplication and no rejected ordinary viewer chat.
+        When the user stops or closes the GUI, release blocked readers. The
+        single reader preserves incoming event order within each session.
+        """
+        if type(limit) is not int or limit < 1:
+            raise ValueError("채팅 이벤트 큐 용량 설정 오류")
+        while not getattr(self, "_closed", False):
+            if session is None or session._stop.is_set():
+                return
+            if self._results.qsize() < limit:
+                self._results.put(("twitch_scoped", (session, "twitch_" + kind, item)))
+                return
+            session._stop.wait(0.02)
 
     def _work_twitch(self, session: TwitchReadOnlySession) -> None:
         try:

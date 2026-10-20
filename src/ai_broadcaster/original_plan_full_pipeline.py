@@ -220,6 +220,9 @@ def verify_official_chat_live2d_obs(
             "음성·OBS의 동시 검증을 완료하지 못했습니다."
         )
     ensure_offline()
+    # A Stop click may arrive during the final OBS read-only status query.
+    # Check it once more before any success-shaped evidence is returned.
+    check_cancelled()
     # Prefer an actually observed, coherent media route; never treat an
     # earlier silent frame as proof that speech did not reach the OBS input.
     # Compare an OBS positive meter window with the *real measured*

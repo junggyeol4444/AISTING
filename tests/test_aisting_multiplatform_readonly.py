@@ -280,6 +280,37 @@ class MultiplePlatformChatTests(unittest.TestCase):
                         lambda raw, channel: self.fail("Parsed after Stop"))
                 self.assertEqual(events, [])
 
+    def test_youtube_repeated_page_token_fails_without_resending_same_id(self):
+        events = []
+        session = YouTubeReadOnlySession(
+            "existingChatId", lambda kind, item: events.append((kind, item)), "x" * 39)
+        message = {"id": "same", "snippet": {
+            "type": "textMessageEvent", "displayMessage": "한 번"},
+            "authorDetails": {"displayName": "시청자"}}
+        response = {"nextPageToken": "same-cursor",
+                    "pollingIntervalMillis": 1, "items": [message]}
+        with patch("ai_broadcaster.multiplatform_readonly._json_get",
+                   return_value=response) as api:
+            with self.assertRaisesRegex(RuntimeError, "페이지 토큰이 반복"):
+                session.run(max_seconds=2)
+        self.assertEqual(api.call_count, 2)
+        self.assertEqual([k for k, _ in events], ["chat", "ready"])
+
+    def test_youtube_small_operator_budget_bounds_http_timeout(self):
+        observed = []
+        session = YouTubeReadOnlySession(
+            "existingChatId", lambda *x: observed.append(x), "x" * 39)
+        def respond(_url, *, timeout=10):
+            self.assertLess(timeout, 1)
+            session.stop()
+            return {"nextPageToken": "end", "items": [],
+                    "pollingIntervalMillis": 1000}
+        with patch("ai_broadcaster.multiplatform_readonly._json_get",
+                   side_effect=respond) as api:
+            session.run(max_seconds=0.3)
+        self.assertEqual(api.call_count, 1)
+        self.assertEqual(observed, [])
+
     def test_youtube_page_chat_and_superchat(self):
         items = [
             {"snippet":{"type":"textMessageEvent","displayMessage":"안녕"},

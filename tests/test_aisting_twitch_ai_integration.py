@@ -49,6 +49,56 @@ class LiveChatReplyOrderTests(unittest.TestCase):
         self.assertEqual([payload[1].reply for _, payload in results],
                          ["한국어 답변 안녕", "한국어 답변 하이 😀", "한국어 답변 안녕"])
 
+    def test_public_reader_backpressure_preserves_event_fifo_without_loss(self):
+        import threading
+        from ai_broadcaster.multiplatform_readonly import PlatformChat
+        pending = queue.SimpleQueue()
+        stopped = threading.Event()
+        session = SimpleNamespace(_stop=stopped)
+        tab = SimpleNamespace(_closed=False, _results=pending)
+        for n in range(4):
+            LocalChatTab._enqueue_public_event(
+                tab, session, "chat", PlatformChat("room", "시청자", str(n), "chzzk"),
+                limit=4)
+        emitted = threading.Event()
+        def producer():
+            LocalChatTab._enqueue_public_event(
+                tab, session, "chat", PlatformChat("room", "시청자", "4", "chzzk"),
+                limit=4)
+            emitted.set()
+        thread = threading.Thread(target=producer, daemon=True)
+        thread.start()
+        self.assertFalse(emitted.wait(0.04))
+        first = pending.get_nowait()
+        self.assertTrue(emitted.wait(1))
+        thread.join(1)
+        all_items = [first] + [pending.get_nowait() for _ in range(4)]
+        self.assertEqual([v[1][2].text for v in all_items], list("01234"))
+        self.assertTrue(pending.empty())
+
+    def test_public_reader_stop_unblocks_full_queue_without_extra_chat(self):
+        import threading
+        from ai_broadcaster.multiplatform_readonly import PlatformChat
+        pending = queue.SimpleQueue()
+        stopped = threading.Event()
+        session = SimpleNamespace(_stop=stopped)
+        tab = SimpleNamespace(_closed=False, _results=pending)
+        pending.put(("another", "payload"))
+        completed = threading.Event()
+        def producer():
+            LocalChatTab._enqueue_public_event(
+                tab, session, "chat", PlatformChat("room", "user", "not sent", "soop"),
+                limit=1)
+            completed.set()
+        task = threading.Thread(target=producer, daemon=True)
+        task.start()
+        self.assertFalse(completed.wait(0.04))
+        stopped.set()
+        self.assertTrue(completed.wait(1))
+        task.join(1)
+        self.assertEqual(pending.qsize(), 1)
+        self.assertEqual(pending.get_nowait(), ("another", "payload"))
+
     def test_two_thousand_repeated_chats_preserve_fifo_without_drops(self):
         from ai_broadcaster.multiplatform_readonly import PlatformChat
         inbox, outbox = queue.SimpleQueue(), queue.SimpleQueue()

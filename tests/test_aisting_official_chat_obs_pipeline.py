@@ -122,6 +122,30 @@ class FullPipelineContracts(unittest.TestCase):
                     voice_rights_confirmed=True, cancel_event=e)
         self.assertEqual(ai.call_count, 1)
 
+    def test_stop_during_final_obs_safety_check_cannot_report_success(self):
+        import threading
+        stopped = threading.Event()
+        obs = make_obs()
+        visits = [0]
+        original_status = obs.status
+        def last_status():
+            visits[0] += 1
+            # Two early checks, one just before the request, then final.
+            if visits[0] >= 4:
+                stopped.set()
+            return original_status()
+        obs.status = last_status
+        with patch.object(pipeline, "OfficialObsWebsocket", return_value=obs), (
+            patch.object(pipeline, "send_to_native_live2d_session_with_observation",
+                         return_value=SimpleNamespace(verified_signal=True))
+        ) as send:
+            with self.assertRaises(InterruptedError):
+                pipeline.verify_official_chat_live2d_obs(
+                    "마지막 OBS 검사 중단", obs_password="local",
+                    obs_input_name="Mic", operator_approved=True,
+                    voice_rights_confirmed=True, cancel_event=stopped)
+        self.assertEqual(send.call_count, 1)
+
     def test_active_obs_recording_denies_prompt_without_side_effect(self):
         obs = make_obs()
         obs._client.get_record_status = lambda: SimpleNamespace(output_active=True)

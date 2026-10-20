@@ -386,6 +386,14 @@ class YouTubeReadOnlySession(ReadOnlySession):
                 self.emit("stopped", self.channel)
                 return
         start = time.monotonic()
+
+        def remaining_timeout() -> float:
+            # The user-supplied short probe must not unexpectedly spend the
+            # full 10-second default HTTP timeout for each API page.
+            if max_seconds is None:
+                return 10.0
+            return max(0.1, min(10.0, max_seconds - (time.monotonic() - start)))
+
         live_chat_id = self.channel
         if self._video_id is not None:
             # Public videos.list only. Do not access an account, perform OAuth,
@@ -394,7 +402,8 @@ class YouTubeReadOnlySession(ReadOnlySession):
                       "id":self._video_id, "key":self._key}
             try:
                 details = _json_get("https://www.googleapis.com/youtube/v3/"
-                                    "videos?" + urlencode(lookup))
+                                    "videos?" + urlencode(lookup),
+                                    timeout=remaining_timeout())
             except Exception:
                 # An HTTP exception may contain the API key-bearing URL.
                 raise RuntimeError("유튜브 영상의 실시간 채팅 조회 또는 권한 오류") from None
@@ -424,11 +433,16 @@ class YouTubeReadOnlySession(ReadOnlySession):
                 params["pageToken"] = cursor
             try:
                 payload = _json_get("https://www.googleapis.com/youtube/v3/"
-                                    "liveChat/messages?" + urlencode(params))
+                                    "liveChat/messages?" + urlencode(params),
+                                    timeout=remaining_timeout())
             except Exception:
                 # Never leak operator-entered API credentials into GUI or logs.
                 raise RuntimeError("유튜브 채팅 API 연결 또는 권한 오류") from None
             if self._stop.is_set():
+                break
+            # Do not expose late responses after a bounded operator probe.
+            if (max_seconds is not None
+                    and time.monotonic() - start >= max_seconds):
                 break
             next_cursor = payload.get("nextPageToken")
             ended = isinstance(payload.get("offlineAt"), str) and bool(payload["offlineAt"])
@@ -436,6 +450,10 @@ class YouTubeReadOnlySession(ReadOnlySession):
                 # An empty cursor would silently restart at page one and
                 # repeatedly respond to the same historical chat messages.
                 raise RuntimeError("유튜브 채팅 페이지 응답 토큰이 없습니다.")
+            if not ended and cursor and next_cursor == cursor:
+                # Fail before delivery: server returned an already-requested
+                # page cursor, so further polls could burn API quota and replay.
+                raise RuntimeError("유튜브 채팅 페이지 토큰이 반복되어 수신을 중단했습니다.")
             # Reject a bad polling interval before forwarding chat. If it is
             # rejected after delivery, reconnecting could replay that page.
             millis = payload.get("pollingIntervalMillis", 1000)
