@@ -369,3 +369,42 @@ GitHub repo `junggyeol4444/AISTING` main 고정. 이번 코드 기준 커밋 `c9
 
 ### ⑨ 원래 ChatGPT 예약 생성 대화 유지
 사용자가 만든 AISTING 매시간 예약은 가능한 한 바로 이 기존 원래 대화에서 이어져야 한다. ChatGPT 플랫폼이 대화를 강제로 이동시키는 것은 여기서 통제할 수 없으므로, 이동 시에는 본 문서와 원본 기획·GitHub 전체 이력·마지막 CI를 먼저 읽고 인계 사유를 명시하며 다시 사용자에게 설명을 요구하지 않는다. 이번 실행 중 예약·다른 프로젝트의 예약은 생성·수정·종료하지 않음.
+
+## 18. 2026-10-20 11시 이후 최신 회차 — YouTube API 메시지 ID 리플레이와 Stop·재시작 안전성 묶음 개발/전량 검증
+
+### ① 사용자 원본 요청·금지 및 기획 준수
+사용자 지시 "계속": 이전에 반복 강조한 **여러 실질 기능 묶음 개발 → 전체 회귀검사 → 실제 Windows EXE·GUI 및 가능한 연동검사 → 실패 원인 수정 후 전량 재검증**을 그대로 따른다. 최신 SHA 표시는 목적이 아니라 누적 코드 덮어쓰기 방지용. 원본 `docs/ORIGINAL_PLAN.txt`, `docs/ROADMAP_100.md`, `config/roadmap.json`, 기존 네이티브 Windows 10/11 Tk AISTING.exe, 저장 캐릭터 이름/성격/말투·SQLite·설정, Open-LLM-VTuber+GPT-SoVITS 한국어 음성+Live2D+OBS, 플랫폼 선택, 중복 포함 실채팅 FIFO 목표 유지. 브랜치 생성·삭제/강제푸시/원복/웹·HTML 대체/새 기능 임의 추가/유료 API·로그인/실제 방송 시작·녹화·게시/사용자 PC 접속/권리 없는 음성 학습 금지. 기존 1시간 예약과 다른 프로젝트 예약 변경 금지.
+
+### ② 완료한 실제 누적 수정과 ⑤ 변경 파일·커밋
+- 기존 `junggyeol4444/AISTING`의 `main`에 다음 **4개 파일을 단일 원자적 묶음 커밋** `a34c0b96bf17cb7fdc36727c5cea9c6296342384`로 반영. 분기 추가·강제 푸시·원본 파일 재개발 없음:
+  1. `src/ai_broadcaster/multiplatform_readonly.py`: YouTube Data API liveChatMessages 목록의 **동일 `id` 이벤트가 페이지를 넘어 다시 돌아오면 시청자 질문을 중복 AI 요청하지 않도록** 최근 고유 ID 5만 개를 순환 기록해 중복 ID만 제거. 내용·발신자가 같아도 별도 `id`면 각각 FIFO 전달. ID가 없는 유효 이벤트는 누락 방지 차원에서 그대로 전달. ID 캐시를 제한해 24시간 장시간 실행의 메모리 무한 증가를 피함. 외부 계정/YouTube API 키가 없어 본 실행은 네트워크 실제 인증 수신을 수행하지 않음.
+  2. `src/ai_broadcaster/desktop_chat_tab.py`: **공개 채팅 중지 버튼을 눌렀을 때 네트워크 수신 스레드의 종료를 무기한 기다리지 않고 즉시 Tk UI의 연결 상태·버튼을 복원**하고 기존 AI FIFO에 종료 신호를 넣음. 이전 세션 스레드에서 늦게 온 응답은 이미 있는 세션 범위 검사로 신연결과 분리. 실제 전송/방송 시작 없음.
+  3. `tests/test_aisting_multiplatform_readonly.py`: 같은 메시지 ID 재전달 1회 처리와 별도 메시지 ID지만 텍스트 중복인 실제 3개 메시지의 FIFO 보존, ID 없는 유효 메시지 보존 회귀 2개.
+  4. `tests/test_aisting_twitch_ai_integration.py`: 수신 스레드가 연결을 종료하기 전에 사용자 Stop을 눌러도 UI 즉시 복원되고, 이전 세션의 늦은 이벤트가 새 세션에서 처리되지 않음 확인 1개 회귀.
+- 사용자 캐릭터 데이터베이스/설정·실제 모델·OBS 환경 미변경. 네이티브 Tk 기반만 수정.
+
+### ③ 전량 검사·CI 진행 상태 및 ⑥ Windows EXE artifact
+- 본 코드 커밋 전체 회귀검사 https://github.com/junggyeol4444/AISTING/actions/runs/39358345339 — **completed/success**, 실제 로그 `Ran 2383 tests`, `OK (skipped=2)`, 실패 0.
+- 본 코드 커밋 Windows 통합검사 https://github.com/junggyeol4444/AISTING/actions/runs/39358345654 — **completed/success**, 5개 job 모두 성공:
+  `windows-exe`(Windows EXE 빌드·실행·기존 실제 Tk GUI 단추 검사), `ollama-real-local-e2e`(CI 로컬 Ollama 실제 한국어 추론), `obs-real-readonly`(CI 실제 OBS 화면/입력 읽기 전용), `twitch-public-readonly`, `korean-public-chat-readonly`(치지직·SOOP 공개 수신).
+- 최신 이 코드의 실제 GitHub artifact `AISTING-Windows-EXE-integrated`: ID `12236192940`, ZIP 크기 **19,650,903 bytes**, GitHub artifact **ZIP SHA-256** `747ef224d809fdb69360a18b6f949414832e9c645f4e279875e04d1a5b6c2944`. 개별 EXE 파일 해시와 혼동 금지.
+- 문서 갱신 직전 코드 `main` HEAD `a34c0b96bf17cb7fdc36727c5cea9c6296342384`. 문서 갱신으로 새로운 커밋이 발생하므로 이후 HEAD는 다시 확인할 것. 문서-only 새 CI가 돌 수 있으나 소스 전체 CI 합격 사실과 구분.
+- 이번 회차 기능 수정에 따른 실패가 없었음. 다만 테스트 성공을 실제 사용자 소유 PC·음성 모델 실사용 E2E 성공이라고 부르지 말 것.
+
+### ④ 미완료·미검증/범위 구분
+- **권리 있는 실제 GPT-SoVITS 한국어 음성**, 승인된 참조 WAV, 공식 Live2D/Cubism 실제 입 움직임, OBS 프로그램 영상과 오디오가 동일한 실제 발화로 연결되는 **사용자 Windows EXE 전 경로**는 자료·PC 모델 환경에 접근할 수 없어 미실증. CI의 독립 OBS/로컬 Ollama/GUI 모의 외부 서비스 성공과 엄격히 분리.
+- 소유 API 키로 YouTube 실제 활성 생방송 채팅 수신, 다중 플랫폼 100~500명 실시간 FIFO, 1~3초 응답 및 24시간 무중단 실제 스트레스 검증 미완료. 특히 이번 YouTube 이벤트 ID 중복 제거는 오프라인 회귀 성공이며 실제 라이브 인증 연결 증명이 아님.
+- 5만 개 이전의 오래된 YouTube ID 재등장 시 캐시에서 제거되어 중복 처리 가능성 존재(경계 있는 장기 메모리 정책). 동일 ID 중복을 영구 완벽 보장하지 않음. 반대로 별도 메시지 ID의 중복 텍스트는 의도적으로 각각 처리.
+
+### ⑦ 사용자 데이터/설정 보존
+기존 사용자 캐릭터 이름/말투/성격 확정 설정, 로컬 SQLite 기억, OBS·Live2D 설정, 플랫폼 선택·기본값 파일을 건드리지 않음. Windows CI는 격리된 테스트 파일·모의 GUI 외부 모델/승인 없는 공개 읽기 전용 소스만 사용. 무단 모델 훈련·API 로그인·채팅 전송/방송·녹화 시작 없음.
+
+### ⑧ 다음 회차 구체적 복수 작업
+1. 현재 YouTube API 페이지 경계의 동일 이벤트 ID 재수신에 대한 누락·중복 정책과 유실 없이 cursor/종료 순서 검증, 실제 키가 없으면 실제 활성 라이브 채팅 성공으로 주장하지 않음.
+2. 초장시간 네 플랫폼 수신 정지/연결 실패/재연결에서 stale 이벤트·GUI 상태, AI FIFO 1~N천 건 장기 큐 메모리/지연 분석, 한국 플랫폼 공개 프로토콜 변경 위험 점검.
+3. 공식 GPT-SoVITS 한국어 음성의 시간축, 공식 Live2D 입 움직임과 OBS 입력 미터의 **실제 동일 발화**를 확인할 수 있는 자료/승인 환경이 있다면 녹화·송출 없이 사용자 흐름 실증. 없으면 실증 미완료 분리.
+4. 기존 프로그램 저장 캐릭터 재실행/SQLite 영속/실제 Windows GUI 버튼·실패 후 재진입을 묶음으로 수정하고 **전체 회귀·Windows EXE·실제 가능한 읽기 전용 통합검사 전량** 수행, 오류 발견 시 같은 묶음을 재검증.
+5. 해당 commit/files/jobs/artifact/미검증을 본 GitHub 누적 문서에 계속 업데이트.
+
+### ⑨ 원래 AISTING 예약 생성 대화 유지
+사용자 최우선 희망은 기존 AISTING 예약 생성 원본 채팅에서 매시간 계속하고 타 대화로 임의 이동하지 않는 것. 대화 길이·플랫폼 차원에서 불가능한 경우 원래 문맥에 접근한 척하지 말고 본 GitHub 문서와 원본 기획·로드맵·main 이력·실제 CI를 먼저 읽어 이어가며, 이동 사유를 실제 확인 가능한 수준에서만 명시할 것. 이번 실행에서 예약을 만들거나 변경·종료하지 않았음.
