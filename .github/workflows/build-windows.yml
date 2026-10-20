@@ -96,6 +96,16 @@ jobs:
             if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force }
           }
 
+      - name: Click official Live2D OBS controls in actual Windows Tk GUI (external services simulated)
+        shell: pwsh
+        timeout-minutes: 5
+        env:
+          AISTING_GUI_SELFTEST: approved_ci_only
+        run: |
+          $env:LOCALAPPDATA = Join-Path $env:RUNNER_TEMP 'AISTING-REAL-TK-CLICK-ISOLATED'
+          New-Item -ItemType Directory -Path $env:LOCALAPPDATA -Force | Out-Null
+          python scripts/gui_official_pipeline_click_windows.py
+
       - name: Upload real Windows EXE artifact
         uses: actions/upload-artifact@v4
         with:
