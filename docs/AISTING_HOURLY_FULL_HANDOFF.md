@@ -789,3 +789,21 @@ GitHub `junggyeol4444/AISTING`, **기존 main에만 빠른전진 반영**:
 - 다음 예약 실행은 이 누적 문서의 1절부터 끝까지, 별도 원문 백업, `docs/ORIGINAL_PLAN.txt`, `docs/ROADMAP_100.md`, `config/roadmap.json`, 최신 main 소스와 검증 이력을 모두 읽어 **복수 미완료 기능 개발부터** 시작한다. 개발 전체 → 전체 검증 → 오류 수정 → 전체 재검증 순서 외 임의 재해석 금지.
 - 2026-10-20 **17:30 KST부터 매시간** 별도 대화 예약 요청, 가장 높은 사용 가능 모델 요청, Google Drive 불필요, GitHub 허용된 다양한 경로 탐색 요청을 명시한다. 실제 모델·대화 라우팅을 통제/선택했다고 허위 확답 금지. 중복 예약이 있다면 대상을 확인해 동일 작업의 중복 GitHub 쓰기를 피한다. 다른 프로젝트 자동화 건드리지 않는다.
 - 가장 최신 검증은 코드 커밋 `a5c074f3c5ef1ce3e955c80d0dd8b9929a6fe2ed`, 전체 회귀 2,421개 https://github.com/junggyeol4444/AISTING/actions/runs/39388635212, Windows 5job https://github.com/junggyeol4444/AISTING/actions/runs/39388635145, Artifact ID `12248437439` (ZIP SHA-256 `8dfae3480593e34d489f61fd4e11faf38312824074ecdebc964cd9ec3fe91f97`). 실제 음성 모델/YouTube 인증/24시간 수백 명 실운용 미검증은 계속 명시.
+
+## 39. 2026-10-21 07:54 KST 이후 실제 기존 main 묶음 개발 — 다중 채팅 세션 종료·시간제한·복구 회귀
+
+### 사용자 지시·원본 보존
+- 원본 1~27절 전체 텍스트를 삭제/축약 없이 유지한다. v14 ZIP에 보존된 28~38절 추가 이력은 본 원격 문서에는 아직 합쳐지지 않았으며, 없는 절을 GitHub에 존재한다고 꾸미지 않는다.
+- 2026-10-21 07:54 KST 기준 HEAD `2efc6a0627327e789e72c45e3976bec1af48b534` 확인. 원본 기획, 100단계, roadmap.json은 읽고 변경하지 않음. 본캐릭터·설정·SQLite 내용 변경 없음.
+- 예약/다른 프로젝트/외부 드라이브/사용자 계정/방송·녹화/채팅 발신 변경 없음. 기존 Windows 네이티브 Tk/EXE 유지. 승인 없는 TTS 훈련 없음.
+
+### 실제 묶음 소스 개발
+- `src/ai_broadcaster/multi_platform_session.py`: 4개 수신기의 비정상 차단 stop()을 병렬 요청(전체 약 0.5초)하고 중복 Stop 재요청 차단; 공유 3초 종료 기한은 실제 Stop 시각부터 계산; 검사 max_seconds를 전체 세션에 적용; 일부 스레드 start() 실패 시 이미 시작한 리더까지 일괄 중지; exception의 키·URL 원문을 재노출하지 않음. 기존 무삭제·FIFO 이벤트 콜백 유지.
+- `tests/test_aisting_multiplatform_session_lifecycle.py`: 신규 독립 5개 격리 회귀(4수신기 공통 검사 시간, 반복 Stop, 오류 종료 격리, 부분 시작 실패 정리, 동일채팅 FIFO/Stop 이후 억제).
+- 파일은 Git blob 2개로 묶어서 생성함: 생산 `c96156139874181687f1de63246b221a2909b246`, 검사 `36074aff0e9112a69eb55a4825dfe6580f4a4b16`.
+- 최신 GitHub commit/Actions/Windows EXE 결과는 실제 반영 후에만 별도 확인하여 최신 절에 사실대로 추가할 것.
+
+### 미반영 및 다음 묶음 개발
+- 2026-10-21 07:30 이전 준비된 v14 GUI 통합 수정안(5파일 묶음)은 아직 원격 main에 반영되지 않음. 이전 ZIP `AISTING_20261021_0730_v14_통합패치_격리22검사_인수인계.zip`에 로컬 보존되어 있음. 기존 원격 GUI의 '전체' 선택과 실제 4플랫폼 AI FIFO 연결은 아직 완료 표기 금지.
+- 실제 Windows EXE 수동 GUI 전 흐름, 소유 YouTube API 실인증, 실제 GPT-SoVITS→공식 Cubism 립싱크→OBS 동일 발화 출력, 수백명 1~3초 및 24시간 장기 부하, 로드맵 010/100 최종 승인 모두 **미실증**.
+- 후속 회차에는 누적 v14 GUI/FIFO/비밀값 보호까지 기존 소스에 묶어 개발한 후 전체 회귀·Windows EXE/GUI/가능한 연동을 한 번에 검증, 실패 시 수정 후 전체 재검증한다. 현재 단위검사가 곧 제품 완성이 아님.

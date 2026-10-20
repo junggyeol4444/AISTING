@@ -30,6 +30,7 @@ class MultiPlatformReadOnlySession:
             raise ValueError("지원하지 않는 플랫폼 또는 비어 있는 채널입니다.")
         self.channel = "전체"
         self._stop = threading.Event()
+        self._stop_started_at = None
         self._run_lock = threading.Lock()
         self._emit_lock = threading.Lock()
         self._started_once = False
@@ -67,16 +68,35 @@ class MultiPlatformReadOnlySession:
             self._readers[code] = factories[code](channel.strip(), callback_for(code))
 
     def stop(self) -> None:
+        """Close every transport without blocking Tk on a broken reader."""
         with self._run_lock:
+            if self._stop.is_set():
+                return
+            self._stop_started_at = time.monotonic()
             self._stop.set()
-        for reader in self._readers.values():
+        def close_one(reader):
             try:
                 reader.stop()
             except Exception:
-                # One broken reader cannot prevent the other readers stopping.
+                # Do not expose transport URLs, credentials or internals.
                 pass
+        closers = [
+            threading.Thread(target=close_one, args=(reader,), daemon=True)
+            for reader in self._readers.values()
+        ]
+        for closer in closers:
+            try:
+                closer.start()
+            except RuntimeError:
+                # Failure to launch a closer cannot block other Stop requests.
+                continue
+        deadline = time.monotonic() + 0.5
+        for closer in closers:
+            if closer.ident is not None:
+                closer.join(timeout=max(0, deadline - time.monotonic()))
 
     def run(self, *, max_seconds=None) -> None:
+        """One finite inspection deadline and a shared operator Stop deadline."""
         if max_seconds is not None and (
                 type(max_seconds) not in (int, float)
                 or not math.isfinite(max_seconds) or max_seconds < 0):
@@ -90,6 +110,9 @@ class MultiPlatformReadOnlySession:
                 return
             self._running = True
             self._started_once = True
+        started_at = time.monotonic()
+        run_deadline = (started_at + max_seconds
+                        if max_seconds is not None else None)
         try:
             def read_one(code, reader):
                 try:
@@ -98,31 +121,46 @@ class MultiPlatformReadOnlySession:
                     if not self._stop.is_set():
                         with self._emit_lock:
                             if not self._stop.is_set():
-                                # No exception messages: they may contain credentials.
+                                # Exception text may contain an API key.
                                 self._emit("error", code + " 읽기 실패 (" +
                                            type(exc).__name__ + ")")
-
             workers = [
                 threading.Thread(target=read_one, args=(code, reader),
                                  name="aisting-public-" + code, daemon=True)
                 for code, reader in self._readers.items()
             ]
             started = []
+            startup_failed = False
             for worker in workers:
                 with self._run_lock:
                     if self._stop.is_set():
                         break
-                    worker.start()
+                    try:
+                        worker.start()
+                    except Exception:
+                        startup_failed = True
+                        break
                     started.append(worker)
+            if startup_failed:
+                self.stop()
+                raise RuntimeError("공개 채팅 수신 작업을 시작할 수 없습니다.")
             for worker in started:
-                deadline = None
                 while worker.is_alive():
-                    worker.join(timeout=0.2)
+                    if (run_deadline is not None
+                            and time.monotonic() >= run_deadline
+                            and not self._stop.is_set()):
+                        self.stop()
                     if self._stop.is_set():
-                        if deadline is None:
-                            deadline = time.monotonic() + 3
-                        if time.monotonic() >= deadline:
+                        # The three seconds start when Stop was requested,
+                        # not when this particular worker is joined.
+                        remaining = self._stop_started_at + 3 - time.monotonic()
+                        if remaining <= 0:
                             break
+                        worker.join(timeout=min(0.2, remaining))
+                    else:
+                        remaining = (run_deadline - time.monotonic()
+                                     if run_deadline is not None else 0.2)
+                        worker.join(timeout=max(0.001, min(0.2, remaining)))
         finally:
             with self._run_lock:
                 self._running = False
