@@ -20,8 +20,6 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from ai_broadcaster.desktop import AistingApp
-
 
 def pump_until(app, predicate, seconds=6):
     deadline = time.monotonic() + seconds
@@ -43,6 +41,16 @@ def main():
         # Only isolated CI app state; never use the operator's LOCALAPPDATA.
         os.environ["LOCALAPPDATA"] = str(root / "AppData")
         (root / "AppData").mkdir()
+        # Must import AFTER isolating LOCALAPPDATA: operator_settings.DEFAULT_FILE
+        # and conversation_memory.DEFAULT_MEMORY_FILE are evaluated at import.
+        from ai_broadcaster.desktop import AistingApp
+        from ai_broadcaster.operator_settings import DEFAULT_FILE
+        from ai_broadcaster.conversation_memory import DEFAULT_MEMORY_FILE
+        assert DEFAULT_FILE.is_relative_to(root / "AppData"), (
+            "Windows settings path escaped disposable CI profile")
+        assert DEFAULT_MEMORY_FILE.is_relative_to(root / "AppData"), (
+            "Windows SQLite memory path escaped disposable CI profile")
+        print("GUI_REAL_WINDOWS_PROFILE_PATH_ISOLATED_PASS")
         settings = root / "original_persona.json"
         settings.write_text('{"preserve":"캐릭터/설정은 변경하지 않습니다"}', encoding="utf-8")
         database = root / "user_memory.sqlite3"
