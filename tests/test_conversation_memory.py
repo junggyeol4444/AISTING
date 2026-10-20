@@ -1,6 +1,7 @@
 """GitHub CI에서 외부 AI나 실제 방송 없이 대화 기억을 검증."""
 import json
 import sqlite3
+from contextlib import closing
 import sys
 import tempfile
 import threading
@@ -63,14 +64,14 @@ class TestConversationMemory(unittest.TestCase):
 
     def test_foreign_database_is_refused_without_changing_existing_bytes(self):
         import sqlite3
-        with sqlite3.connect(self.path) as db:
+        with closing(sqlite3.connect(self.path)) as db, db:
             db.execute("CREATE TABLE foreign_data (secret TEXT)")
             db.execute("INSERT INTO foreign_data VALUES ('keep')")
         before = self.path.read_bytes()
         with self.assertRaisesRegex(ValueError, "대화 기억 전용"):
             ConversationMemory(self.path)
         self.assertEqual(self.path.read_bytes(), before)
-        with sqlite3.connect(self.path) as db:
+        with closing(sqlite3.connect(self.path)) as db, db:
             self.assertEqual(db.execute("SELECT secret FROM foreign_data").fetchone()[0], "keep")
 
     def test_corrupt_sqlite_not_replaced_or_reinitialized(self):
@@ -90,7 +91,7 @@ class TestConversationMemory(unittest.TestCase):
 
     def test_symlinked_memory_path_is_refused_without_target_mutation(self):
         external = Path(self.folder.name) / "external.sqlite3"
-        with sqlite3.connect(external) as db:
+        with closing(sqlite3.connect(external)) as db, db:
             db.execute("CREATE TABLE external_data(value TEXT)")
         before = external.read_bytes()
         link = Path(self.folder.name) / "linked.sqlite3"
