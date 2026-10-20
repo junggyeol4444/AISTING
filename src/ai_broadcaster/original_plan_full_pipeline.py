@@ -101,24 +101,29 @@ def verify_official_chat_live2d_obs(
         # OBS WebSocket request/reply clients are not assumed thread-safe.
         # The monitor owns a different read-only localhost connection from
         # the main-thread stream/recording safety preflight.
-        started.set()
         try:
             observer = OfficialObsWebsocket(obs_password, port=obs_port)
             state = observer.connect()
             if state.streaming or state.scene != before.scene:
                 raise RuntimeError("OBS 관찰 연결 중 프로그램 장면·송출이 변경됐습니다.")
+            # No approved AI prompt is sent until the separate OBS monitor
+            # has actually connected to the correct stopped scene.
+            started.set()
             observation.append(observer.inspect_program_media(
                 operator_approved=True, input_name=obs_input_name,
                 duration=duration
             ))
         except Exception as exc:
             errors.append(exc)
+            started.set()
 
     monitor = threading.Thread(target=obs_worker, daemon=True,
                                name="aisting-official-obs-program-observer")
     monitor.start()
     if not started.wait(timeout=3):
         raise RuntimeError("OBS 영상·음성 관찰을 시작하지 못했습니다.")
+    if errors:
+        raise RuntimeError("OBS 관찰 연결 준비 실패 · AI 질문을 보내지 않았습니다.") from errors[0]
     # No text is handed to the official upstream session if OBS began
     # broadcasting/recording during the read-only monitor setup.
     ensure_offline()
