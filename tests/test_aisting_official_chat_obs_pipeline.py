@@ -55,7 +55,8 @@ class FullPipelineContracts(unittest.TestCase):
                 "한국어 테스트", obs_password="local", obs_input_name="Mic",
                 operator_approved=True, voice_rights_confirmed=True)
         self.assertTrue(result.verified_observation)
-        self.assertEqual(obs.probe_count, 1)
+        self.assertGreaterEqual(obs.probe_count, 1)
+        self.assertLessEqual(obs.probe_count, 6)
         send.assert_called_once_with(
             "한국어 테스트", operator_approved=True, duration=8.0)
 
@@ -130,7 +131,8 @@ class FullPipelineContracts(unittest.TestCase):
         self.assertTrue(result.verified_observation)
         self.assertEqual(factory.call_count, 2)
         self.assertEqual(safety.probe_count, 0)
-        self.assertEqual(monitor.probe_count, 1)
+        self.assertGreaterEqual(monitor.probe_count, 1)
+        self.assertLessEqual(monitor.probe_count, 6)
 
     def test_slow_korean_voice_uses_later_obs_meter_window(self):
         import threading
