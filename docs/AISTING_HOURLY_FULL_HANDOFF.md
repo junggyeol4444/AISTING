@@ -1225,3 +1225,16 @@ GitHub `junggyeol4444/AISTING`, **기존 main에만 빠른전진 반영**:
 - 실제 모델 부하 500건 완주는 사실이지만 1~3초 목표는 실패임. 단일 1-worker 순차 FIFO를 유지하는 구조로 동시 500건에 대해 3초 보장 불가; 사용자 명시 승인 없는 강제 토큰 상한/부분 메시지 폐기/자동 발신·병렬 페르소나 불일치를 임의 변경하지 않는다.
 - 소유 GPT-SoVITS 모델·합법 참조 한국어 WAV, 공식 Live2D Cubism 실제 해당 발화와 OBS 실제 비무음 미터의 사용자 PC 실증, 실제 24h 방송·최종 시청자 종단 간 지연은 여전히 별도 자산·허가된 운영 환경 필요. 프로그램이 가능한 구간 개발과 진짜 실증 증거 구분.
 - 원본 인수인계 1~66절 및 28~38절 분리 원문, ORIGINAL_PLAN/ROADMAP_100/config roadmap, 캐릭터/메모리/SQLite·전체 누적 소스 유지; 다른 프로젝트/예약/Drive·새 브랜치/force-push 안 함.
+
+## 68. 2026-10-21 — 원래 한국어 GPT-SoVITS 실제 WAV→OBS 입력 미터의 재생 시점 불일치 수정
+
+### 앞선 변경 실제 검사 결과
+- 67절 진행 상태 출력/단일 FIFO 중간 집계 저장 코드 main c06e48276d85dcae43e40d1d29903aaa4bbbd4b1 이후 전체 [39553762593](https://github.com/junggyeol4444/AISTING/actions/runs/39553762593): **2,506 tests passed / skipped 2**. Windows [39553762863](https://github.com/junggyeol4444/AISTING/actions/runs/39553762863): windows-exe, ollama-real-local-e2e, obs-real-readonly, korean-public-chat-readonly, twitch-public-readonly **5/5 success**. EXE 산출물 AISTING-Windows-EXE-integrated, AISTING-Windows-Real-Ollama-FIFO-500-24h-EXE (해당 run artifacts에 있음).
+- 실제 500 모델 완료된 이전 run 39547986524는 500/500 성공, 499/500 3초 초과, 전체 p95=2995.954초, wait p95=2989.844초, AI p95=7.922초. 1~3초 목표는 실측상 실패함. 최신 원본 토큰 제한 철회 모델의 500건 run 39550394094, 최신 67절 계측 포함 run 39553762562는 각각 완료시 최종 확인해야 하며 이전 테스트를 최신 코드 성능으로 혼동 금지.
+
+### 이번 추가 실질 버그 수정
+- src/ai_broadcaster/original_plan_voice_obs_bridge.py 기존 실제 음성→OBS 버튼 함수 `verify_gpt_sovits_to_obs`: 기존에는 임시 `ffmpeg_source` WAV를 CreateInput으로 재생한 뒤 **0.4초 대기 후** 미터 이벤트를 구독해, 짧은 합법 한국어 WAV는 신호가 지나간 후 구독할 수 있었음. 0.4초 sleep 제거. 현재 방송·장면·녹화 상태를 계속 재확인하면서 고유 임시 입력이 생성된 상태에서만 **OBS 오디오 미터 이벤트 구독 준비 후 해당 임시 입력 RESTART** 하여 WAV 처음부터 실제 meter 계측. 사용자의 다른 소스/녹화/방송은 재시작·쓰기 금지. 정리 시 임시 소스만 삭제, 실패하더라도 원본 유지.
+- src/ai_broadcaster/original_plan_obs.py `read_actual_audio_meters`에 기본값 None `start_action` 선택형 인자. 원래 읽기 전용 OBS 검사 호출은 100% 변경 없음; 운영자 승인·명시 입력 이름이 모두 있을 때만 구독 등록 이후 callback 실행. 임시 음성 브리지에서만 이 콜백으로 임시 미디어를 restart. OBS WebSocket v5 공식 명세 `TriggerMediaInputAction`, `OBS_WEBSOCKET_MEDIA_INPUT_ACTION_RESTART` 확인 (https://github.com/obsproject/obs-websocket/blob/master/src/requesthandler/RequestHandler_MediaInputs.cpp).
+- tests/test_aisting_gpt_sovits_obs_integration.py: 실제 호출 순서 `create → meter subscribed → authorized restart only own source → meter → remove` 확인, 송출이 시작됐을 때 소스 재생 거절 및 정리, 지정된 입력명과 운영자 승인 없는 callback 차단, EventClient 실제 등록 이후 이벤트 시각 측정·selected audio signal 검증. 기존 미터 read-only 검사/타 프로젝트/SQLite/캐릭터/인증·OBS 원본 전체 보존.
+- 코드를 main 누적으로 빠른전진 추가한 뒤 전체 회귀/Windows EXE/OBS/로컬 Ollama/공개읽기 5job 검증. 오류 시 수정 후 전체 재검사. 이 모의 API 계약 검사는 사용권리 확인된 실제 GPT-SoVITS 모델이나 사용자 Live2D/OBS의 실제 동일 발화 성공 증거가 아니며, 해당 런타임에서 완주 전 절대 완료 처리하지 않음.
+- 1~67절 및 별도 28~38절 원문, ORIGINAL_PLAN/ROADMAP_100/config/roadmap 사용자 승인 정책 변경 없음. 임의 `num_predict=96`, `keep_alive=10m` 절대 재추가하지 않음.

@@ -4,15 +4,72 @@ Unit tests intentionally substitute dependencies. They cannot certify the
 presence of a downloaded GPT-SoVITS model or a real OBS process.
 """
 import sys
+import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
+from ai_broadcaster.original_plan_obs import OfficialObsWebsocket
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from ai_broadcaster.original_plan_voice_obs_bridge import verify_gpt_sovits_to_obs
 
 class VerifyRealVoiceObsTests(unittest.TestCase):
+    def test_obs_meter_subscribes_before_authorized_temporary_source_restart(self):
+        steps = []
+        class Client:
+            def get_input_list(self):
+                return SimpleNamespace(inputs=[{
+                    "inputName":"AISTING-new-temp", "inputUuid":"unique-test-uuid"}])
+            def get_input_mute(self, name):
+                return SimpleNamespace(input_muted=False)
+            def get_input_volume(self, name):
+                return SimpleNamespace(input_volume_mul=1.0)
+        class Events:
+            def __init__(self, **kwargs):
+                self.callback = SimpleNamespace(register=self.register)
+            def register(self, fn):
+                steps.append("registered")
+                self.fn = fn
+            def disconnect(self):
+                steps.append("disconnected")
+        event = Events()
+        fake_obsws = SimpleNamespace(
+            Subs=SimpleNamespace(INPUTVOLUMEMETERS=128),
+            EventClient=lambda **kwargs:event)
+        real_obs = OfficialObsWebsocket("test-only", port=4455)
+        real_obs._client = Client()
+        def start():
+            self.assertEqual(steps, ["registered"])
+            steps.append("restart")
+            event.fn(SimpleNamespace(inputs=[{
+                "inputName":"AISTING-new-temp",
+                "inputLevelsMul":[[0.15,0.08]]}]))
+        with patch.dict(sys.modules, {"obsws_python":fake_obsws}):
+            obs_meter = real_obs.read_actual_audio_meters(
+                operator_approved=True,
+                input_name="AISTING-new-temp",
+                duration=1, start_action=start)
+        self.assertEqual(steps, ["registered","restart","disconnected"])
+        self.assertEqual(obs_meter.selected_meter_events,1)
+        self.assertTrue(obs_meter.selected_signal)
+        self.assertGreater(obs_meter.first_selected_signal_monotonic,0)
+        self.assertLessEqual(
+            obs_meter.first_selected_signal_monotonic,
+            obs_meter.last_selected_signal_monotonic)
+
+    def test_obs_meter_will_not_accept_any_unbound_restart_action(self):
+        real_obs = OfficialObsWebsocket("test-only", port=4455)
+        real_obs._client = object()
+        with self.assertRaises(ValueError):
+            real_obs.read_actual_audio_meters(
+                operator_approved=True, input_name=None,
+                duration=1, start_action=lambda:None)
+        with self.assertRaises(PermissionError):
+            real_obs.read_actual_audio_meters(
+                operator_approved=False, input_name="AISTING-new-temp",
+                duration=1, start_action=lambda:None)
+
     def test_permission_rejection_does_not_contact_obs_or_voice(self):
         with patch("ai_broadcaster.original_plan_voice_obs_bridge.OfficialObsWebsocket",
                    side_effect=AssertionError("unexpected obs")):

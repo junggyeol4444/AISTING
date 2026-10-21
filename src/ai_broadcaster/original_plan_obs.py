@@ -728,15 +728,21 @@ class OfficialObsWebsocket:
 
     def read_actual_audio_meters(self, *, operator_approved: bool = False,
                                  duration: float = 3.0,
-                                 input_name: str | None = None) -> ActualObsAudioMeters:
+                                 input_name: str | None = None,
+                                 start_action=None) -> ActualObsAudioMeters:
         """Observe selected OBS input events without recording or changing OBS.
 
         Meter peaks are not proof of GPT-SoVITS speech or stream delivery.
         The selected input's identity, mute and gain are checked before and
         after the observation, so stale meter events do not certify a new path.
+        A supplied operator-authorized start_action is invoked ONLY after
+        the meter subscription is registered; by default NO OBS input changes
+        are made. The caller owns all source-identity and stream safety checks.
         """
         if operator_approved is not True:
             raise PermissionError('실제 OBS 오디오 미터 관찰 승인이 필요합니다.')
+        if start_action is not None and (input_name is None or not callable(start_action)):
+            raise ValueError('실제 지정 음성 입력과 승인된 재생 작업이 필요합니다.')
         if type(duration) not in (int, float) or not 1 <= duration <= 8:
             raise ValueError('OBS 미터 관찰 기간은 1~8초여야 합니다.')
         if input_name is not None and (
@@ -833,6 +839,11 @@ class OfficialObsWebsocket:
                 subs=obsws_python.Subs.INPUTVOLUMEMETERS, timeout=5,
             )
             events.callback.register(on_input_volume_meters)
+            # Register FIRST, then optionally restart the caller's freshly
+            # created temporary OBS media source. Otherwise the beginning
+            # (or all) of a short generated Korean utterance is missed.
+            if start_action is not None:
+                start_action()
             threading.Event().wait(float(duration))
         except Exception as exc:
             raise ObsConnectionError('실제 OBS 오디오 미터 이벤트 관찰 실패') from exc

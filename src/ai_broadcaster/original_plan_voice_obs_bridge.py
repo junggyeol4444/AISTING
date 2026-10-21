@@ -111,10 +111,22 @@ def verify_gpt_sovits_to_obs(
             if after_input.streaming or after_input.scene != state.scene:
                 raise RuntimeError("OBS 음성 입력 생성 도중 송출 또는 장면 상태가 변경되었습니다.")
             ensure_not_recording()
-            import time
-            time.sleep(.4)
+
+            def start_exact_created_media_after_meter_subscription():
+                # The only mutable target is the unique temporary source we
+                # created for THIS licensed utterance, never an existing
+                # recording/stream or the user's named OBS media input.
+                fresh = obs.status()
+                if fresh.streaming or fresh.scene != state.scene:
+                    raise RuntimeError(
+                        "OBS 미터 연결 도중 방송 또는 장면이 바뀌어 재생을 중단합니다.")
+                ensure_not_recording()
+                client.trigger_media_input_action(
+                    input_name, "OBS_WEBSOCKET_MEDIA_INPUT_ACTION_RESTART")
+
             meters = obs.read_actual_audio_meters(
-                operator_approved=True, input_name=input_name, duration=3)
+                operator_approved=True, input_name=input_name, duration=3,
+                start_action=start_exact_created_media_after_meter_subscription)
             result = RealVoiceObsResult(
                 sample_rate=utterance.sample_rate,
                 channels=utterance.channels,
