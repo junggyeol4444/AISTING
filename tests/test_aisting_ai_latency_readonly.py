@@ -84,7 +84,7 @@ class LocalAIMeasurementTests(unittest.TestCase):
         results.put(("twitch_ai_latency", 3.6))
         status = Value()
         fake = SimpleNamespace(_closed=False, _results=results, _twitch_status=status,
-                               after=lambda *_: None)
+                               _poll=lambda: None, after=lambda *_: None)
         LocalChatTab._poll(fake)
         self.assertIn("3초 초과", status.get())
         self.assertIn("GUI 접수", status.get())
@@ -95,7 +95,7 @@ class LocalAIMeasurementTests(unittest.TestCase):
         results.put(("twitch_ai_latency", math.nan))
         status = Value()
         fake = SimpleNamespace(_closed=False, _results=results, _twitch_status=status,
-                               after=lambda *_: None)
+                               _poll=lambda: None, after=lambda *_: None)
         LocalChatTab._poll(fake)
         self.assertEqual(status.get(), "")
 

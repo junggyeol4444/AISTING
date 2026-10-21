@@ -920,3 +920,11 @@ GitHub `junggyeol4444/AISTING`, **기존 main에만 빠른전진 반영**:
 - 새로운 `main`에서 전체 회귀검사를 한 번에 실행하고 Windows EXE/실제 Tk/기존 읽기전용 테스트 5개를 실행한다. 검증 실패 시 실제 원인을 수정하고 같은 최신 코드를 재검증한다.
 - 정확한 GitHub Actions URL과 결과는 실행 후에 기록할 것. 테스트 성공은 실제 소유 YouTube API 연결, 정당한 GPT-SoVITS 음성 합성·공식 Cubism 립싱크·OBS 동일 발화 재생, 수백 명 1~3초 및 24시간 운영 실증이 아님.
 - 이번 시간 측정은 **로컬 GUI 접수 이후 구간의 실제 앱 처리 소요 시간**이며 외부 구간을 포함한 종단 간 시간 아님. 3초 목표 충족이 아니라 경고/측정 기능임.
+
+## 47. 2026-10-21 신규 AI 지연 회귀검사 실패 수정 → 전체 재검증
+
+- 첫 묶음 코드 commit `5f8d190d41bb8c299067d1ac19db4061ee689542`의 GitHub Actions 전체 회귀 https://github.com/junggyeol4444/AISTING/actions/runs/39518672472 : 2,446 tests, error 2, skip 2. Windows https://github.com/junggyeol4444/AISTING/actions/runs/39518672484 의 초기 검증 단계도 같은 2개 신규 검사로 실패. 이전 성공으로 바꾸어 쓰지 않는다.
+- 실패 원인: `tests/test_aisting_ai_latency_readonly.py` 두 가짜 GUI SimpleNamespace가 실제 Tk `_poll` 콜백 속성을 제공하지 않아 `AttributeError` 발생. 핵심 기능/실제 Windows Tk가 아니라 테스트 fakes 구성 오류.
+- 두 검사 가짜 객체에 명시적 `_poll` 무동작 콜백을 추가하며 기존 코드 4플랫폼/AI FIFO/캐릭터·SQLite·설정/원본 로드맵은 변경하지 않는다.
+- 새 commit에 대해 전량 회귀, Windows EXE 네이티브 GUI, OBS/로컬 Ollama/공개 읽기 전용 5-job 전체를 **다시** 실행하고 결과를 확인한다.
+- 1~3초는 실제 외부 시청자 종단 간 보장이 아닌 GUI 접수 이후 로컬 앱 AI 소요 측정. 실제 GPT-SoVITS/공식 Cubism/OBS 동일 발화, 소유 YouTube 활성 API, 수백명 24시간 실증은 여전히 미완료.
