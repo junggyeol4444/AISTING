@@ -136,7 +136,7 @@ class CoordinatorLifecycle(unittest.TestCase):
 
     def test_unbounded_transport_failure_reconnects_and_preserves_duplicate_events(self):
         # Transport and events are mocked; no live platform or account.
-        events, created = [], []
+        events, created, holder = [], [], {}
         class RecoveringReader(MockReader):
             def __init__(self, channel, callback, *args):
                 super().__init__(channel, callback, *args)
@@ -146,10 +146,12 @@ class CoordinatorLifecycle(unittest.TestCase):
                     self.channel, "viewer", "같은 문장", "twitch"))
                 if len(created) == 1:
                     raise ConnectionResetError("secret-do-not-log")
+                holder["session"].stop()
         with patch.object(module, "TwitchReadOnlySession", RecoveringReader):
             session = module.MultiPlatformReadOnlySession(
                 {"twitch": "testchannel"},
                 lambda kind, item: events.append((kind, item)))
+            holder["session"] = session
             session.run()
         self.assertEqual(len(created), 2)
         self.assertEqual([v.text for kind, v in events if kind == "chat"],

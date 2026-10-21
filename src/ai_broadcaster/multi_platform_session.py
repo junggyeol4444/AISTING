@@ -133,6 +133,9 @@ class MultiPlatformReadOnlySession:
                         connected_at = time.monotonic()
                         try:
                             reader.run(max_seconds=max_seconds)
+                            # 무기한 수신기가 Stop 없이 끝나면 연결 공백으로 처리한다.
+                            if max_seconds is None and not self._stop.is_set():
+                                raise ConnectionError("공개 채팅 읽기가 예기치 않게 종료됐습니다.")
                             break
                         except Exception as exc:
                             if self._stop.is_set():
@@ -148,26 +151,33 @@ class MultiPlatformReadOnlySession:
                             if time.monotonic() - connected_at >= 30:
                                 failures = 0
                             failures += 1
-                            if failures > 3:
+                            # 장시간 장애 중에도 운영자가 Stop할 때까지 재연결한다.
+                            if failures == 4 or failures % 30 == 0:
                                 with self._emit_lock:
                                     if not self._stop.is_set():
                                         self._emit("error", code +
-                                                   " 재연결 3회 실패 · 수신 공백 확인 필요")
-                                break
+                                                   " 재연결 3회 이상 실패 · 수신 공백 지속 · 재시도 중")
                             with self._emit_lock:
                                 if not self._stop.is_set():
                                     self._emit("error", code +
                                                " 수신 연결 끊김 · 재연결 대기 중 (공백 가능)")
-                            if self._stop.wait(min(2 ** (failures - 1), 4)):
+                            # 재연결 횟수가 커져도 거대한 정수 계산을 피한다.
+                            if self._stop.wait(min(2 ** min(failures - 1, 2), 4)):
                                 break
-                            try:
-                                replacement = self._factories[code](
-                                    self._channels[code], self._callbacks[code])
-                            except Exception as reconnect_error:
-                                with self._emit_lock:
-                                    if not self._stop.is_set():
-                                        self._emit("error", code + " 재연결 준비 실패 (" +
-                                                   type(reconnect_error).__name__ + ")")
+                            # 실패한 옛 수신기는 재사용하지 않고 새 수신기만 재생성한다.
+                            replacement = None
+                            while replacement is None and not self._stop.is_set():
+                                try:
+                                    replacement = self._factories[code](
+                                        self._channels[code], self._callbacks[code])
+                                except Exception as reconnect_error:
+                                    with self._emit_lock:
+                                        if not self._stop.is_set():
+                                            self._emit("error", code + " 재연결 준비 실패 (" +
+                                                       type(reconnect_error).__name__ + ")")
+                                    if self._stop.wait(min(2 ** min(failures - 1, 2), 4)):
+                                        break
+                            if replacement is None:
                                 break
                             with self._run_lock:
                                 stopped = self._stop.is_set()
