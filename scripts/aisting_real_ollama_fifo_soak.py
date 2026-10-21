@@ -174,6 +174,8 @@ def run_real_load(*, model: str, messages: int, duration_seconds: float,
             elif kind == "twitch_ai_timing":
                 if not metrics.terminal(*value):
                     real_reply["invalid_timing"] += 1
+                # 결과를 한 묶음으로 회수해도 25/50건 체크포인트를 놓치지 않는다.
+                publish_progress()
 
         def drain_observed(limit=128):
             # 24시간 동안 간격을 둔 입력에서도 완료된 결과를 누적 집계한다.
