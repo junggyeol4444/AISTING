@@ -1072,3 +1072,18 @@ GitHub `junggyeol4444/AISTING`, **기존 main에만 빠른전진 반영**:
 - **전체 동일 발화**는 별도 기존 original_plan_full_pipeline.verify_official_chat_live2d_obs에서 이미 공식 Open-LLM-VTuber AI 한 세션, Cubism 입 + OBS 동일 미터 타임스탬프를 검사하며 이 기능과 임의 2중 TTS 호출하지 않음. 실제 모델·아바타·WebView2·OBS 경로의 동시 실증은 별도, 라이선스 명확한 자산 준비 필요.
 - 실제 시청자 수백 명·24시간 스트리밍·최종 도달 지연은 운영자가 통제하는 실계정/장치 방송 실행이 있어야 관측 가능. 개발된 500~10,000건 큐·p95 국소 측정은 방송 도달 보장 아님.
 - Google Drive 등 외부 드라이브 사용/요구 없음. 다른 프로젝트/예약/브랜치/전면 재개발/무단 방송·녹화·채팅 발신 없음.
+
+## 58. 2026-10-21 — 57절 실제 GPT-SoVITS→OBS 네이티브 버튼 전체 검증 성공 및 인수인계
+
+### 검증된 기존 main의 누적 코드와 이번 회차 결과
+- 실제 코드 변경 커밋: https://github.com/junggyeol4444/AISTING/commit/41099c11137be378dbd3ab4fc7796cb7154f8629
+- **전체 회귀 성공**: https://github.com/junggyeol4444/AISTING/actions/runs/39540229262 — Ran 2490 tests, OK(skipped=2), 실패 0. GPT-SoVITS→OBS 신규 GUI 관련 8건 격리검사 포함.
+- **Windows 전체 성공**: https://github.com/junggyeol4444/AISTING/actions/runs/39540229198 — windows-exe, twitch-public-readonly, korean-public-chat-readonly, ollama-real-local-e2e, obs-real-readonly 총 5/5 성공. Windows 실버튼 로그에서 WINDOWS_ACTUAL_GPT_SOVITS_TO_OBS_BUTTON_DENY_NO_IO_PASS, WINDOWS_REAL_TTS_BUTTON_VISIBLE_OFFLINE_FAIL_CLOSED_PASS 확인. 승인 거절 시 계정/모델/OBS IO 0건.
+- Windows EXE 산출물 AISTING-Windows-EXE-integrated, artifact ID 12319421532, ZIP 크기 19,840,393 bytes, SHA-256 digest 438ded189a1cc2764de6829cc2e04a6c1b64b88507af0746ae7d6d882ca96120.
+- 기존 실제 original_plan_voice_obs_bridge.verify_gpt_sovits_to_obs를 native Tk에 연결. 저장된 한국어 GPT-SoVITS 설정→합법 참조 WAV/FLAC 실제 1회 합성→현재 OBS가 송출/녹화 중이 아닌지 확인→고유 임시 OBS ffmpeg 입력 생성→실제 미터 이벤트→임시 입력/WAV 정리. 권리와 각 단계 사용자 명시 승인 우선, 로컬 실제 환경 없는 CI 성공을 허위 GSV 합성 인증으로 바꾸지 않음.
+
+### 실제 실행 증명의 남은 경계
+- GitHub Windows CI에서 실제 OBS Studio와 실제 Ollama를 구동한 부분은 성공했지만, **이 CI에서 권리 확인된 GPT-SoVITS 학습 모델/한국어 참조 음성은 설치되어 있지 않음**. 승인 거부를 검증하는 native GUI 테스트는 실제 GSV 합성 성공의 근거가 아님.
+- 실제 합법 보이스 참조·모델과 Windows OBS에서 새 버튼으로 WAV→OBS 신호 실증, 공식 Live2D의 같은 발화 RMS·입/동일 오디오 미터 시간 겹침, 원격 시청자 도달·수백명 24시간/1~3초 실증은 별개. GSV 합성 테스트 한 건과 별개 Live2D 대사를 짜맞춰 동일 발화 성공 주장 금지.
+- Google 소유계정의 OAuth 인증/실방송 수신도 명시 운영자 권한 필요. 다른 장치/계정·음성 무단 접근 및 훈련/녹화/송출/채팅 발신 없음.
+- 기존 1~57절 원문 및 28~38절 별도 보존 원문, original plan/100 roadmap/config/SQLite·설정·캐릭터·다른 프로젝트/예약 유지. main 외 branch·force push·rollback/Drive 연결 없음. 문서 전용 추가 커밋 후 CI가 재개되더라도 위 성공 run은 정확히 57절 코드 커밋 기준.
