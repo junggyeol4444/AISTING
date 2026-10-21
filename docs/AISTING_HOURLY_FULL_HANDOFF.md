@@ -1010,3 +1010,20 @@ GitHub `junggyeol4444/AISTING`, **기존 main에만 빠른전진 반영**:
 - 52절 기능 개발 `main` commit `9fa47b03969e2448404d1d6f08f5da677e4a0ed3`의 첫 전체 Actions https://github.com/junggyeol4444/AISTING/actions/runs/39530009832 : **2,461 검사, 오류 1, 건너뜀 2**. 오류는 새 `tests/test_aisting_real_tts_gui_probe.py`의 `SimpleNamespace` 테스트 GUI에 `_work_official_tts_probe` bound callback 누락(`AttributeError`). 실제 GPT-SoVITS 서버의 음성 합성 오류와는 별개.
 - 테스트 fake에 실제 기존 GUI worker 메서드를 명시적으로 바인딩하여 테스트가 사용자 승인 이후 호출·메시지 큐 상태를 검증하도록 수정. 기존 프로그램 코드/권리 게이트·캐릭터·설정·SQLite 변경 없음.
 - 수정 후 전체 회귀, 기존 Windows 네이티브 EXE/GUI 및 5-job 검증을 동일 최신 코드로 재실행한다. 반드시 결과를 추가 기록하고 모의 테스트만으로 실제 GPT-SoVITS/Live2D/OBS 합성을 성공 주장하지 않는다.
+
+## 54. 2026-10-21 — 기존 실제 4플랫폼 Windows GUI FIFO 응답시간·장시간 경과 실측 계측 개발
+
+### 직전 전체 실증 기록 확인 (53절 수정 성공)
+- commit 775fa3269c4b602f84d794b8bfa8fef01b28e8c0 기준 full regression https://github.com/junggyeol4444/AISTING/actions/runs/39530298737 : **2,461 tests passed, 2 skipped**. Windows https://github.com/junggyeol4444/AISTING/actions/runs/39530298959 : **5/5 jobs success** (windows-exe, korean-public-chat-readonly, twitch-public-readonly, obs-real-readonly, ollama-real-local-e2e). 첫 한 건 테스트 오류는 53절에서 이미 수정됨.
+- CI 통과는 사용자 실 소유 방송 계정·한국어 GPT-SoVITS 음성 모델·Cubism 립싱크·OBS 최종 음성/시청자 전달의 실제 증명이 아님.
+
+### 이번 묶음 개발 후 전체 재검증
+1. src/ai_broadcaster/live_runtime_metrics.py 추가: **실제 로컬 Windows GUI 수신**의 FIFO 대기·실제 AI 생성 처리·합계 초, 초과 3초·실패·유효하지 않은 단조 시각·오류·수신 접수와 완료 차이, 최근 최대 1,024 샘플 p95 및 세션 로컬 실행시간. 채팅 텍스트·사용자명·API 토큰·음성 파일 저장 금지. 수신기의 24시간 경과는 OBS 송출 24시간 증거가 아니라는 명시적 상태. 500/2,000/10,000건에서도 샘플 메모리 제한. 지연을 일부러 추가하거나 이미 받은 독립 메시지를 임의 버리지 않음.
+2. src/ai_broadcaster/desktop_chat_tab.py 수정: 기존 single AI worker의 AI 처리 시작 단조 시각을 실제 수신 GUI 접수 시각과 결합. 기존 이벤트 twitch_ai_latency 계약과 새 twitch_ai_timing (대기, 추론, 총계, 실패)를 동시에 보고. 연결 시작 시 세션별 메트릭 초기화, 실제 채팅 각각 수신 계수, 실제 오류 및 운영자 Stop 완료 계측; 이전 세션을 새 세션에 섞지 않음. 한국어 원래 GUI 대화창에 최초 3건·25건마다 실제 계측 요약, Stop 후 최종 합계 표시. 텍스트/일반 방송 채팅 외부 발신 없음.
+3. tests/test_aisting_real_live_runtime_metrics.py 신규 8건: 500건 p95 대기·AI 분리, 10,000건 샘플 한도, 24h 로컬 경과 허위 방송 증명 방지, 단조 시각 유효성, 2,000건 중복/실패 보존, 실제 worker 성공/실패 시간 이벤트와 기존 호환성, Tk 기존 폴 처리 연결.
+4. docs/LIVE_REAL_FIFO_LATENCY_AND_24H_VALIDATION.md 신규: 사용자 Windows 실사용 단계, 소유 YouTube OAuth 읽기 절차, GPT-SoVITS 허가 음성, 실제 Cubism RMS/OBS 미터 겹침, 수백명 24시간 단말 수신 확인, 최종 관객 1~3초 구간은 아직 미계측 명시.
+
+### 현재 검사 경계
+- 이 개발은 1~3초를 **보장**하지 않음. 실제 로컬 FIFO 대기가 3초를 넘는 건을 정량적으로 밝혀 미충족을 확인할 수 있음. 로컬 3초 이내가 시청자 종단 간 3초 보장은 아님.
+- 실제 Windows 사용자 방송·참조 음성·OBS·YouTube 소유 OAuth는 사용자 자산 및 운영자 명시적 동의가 필요한 외부 런타임. 사용자가 승인하지 않은 로그인·마이크 녹음·방송 시작/중지/계정 송신은 하지 않음. 드라이브 무연결, 다른 프로젝트 무변경.
+- user instruction: main 누적 수정만, 1~53절 기존 기록 그대로 보존, 신규 브랜치/강제푸시/원복 없음, 한국어 사용자 표시, 실제 전체 테스트와 Windows EXE/GUI 검사 결과를 확인 후 실패면 재개발·재검증. 단순 2,000건 격리 모의로 실사용 인증 금지.

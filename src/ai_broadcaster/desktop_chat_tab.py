@@ -22,6 +22,7 @@ from .avatar_animation import SpeechActivity
 from .twitch_readonly import TwitchReadOnlySession, TwitchReadError
 from .multiplatform_readonly import ChzzkReadOnlySession, SoopReadOnlySession, YouTubeReadOnlySession
 from .multi_platform_session import MultiPlatformReadOnlySession
+from .live_runtime_metrics import LiveLatencyMetrics
 from .offline_settings import load_settings
 
 
@@ -68,6 +69,7 @@ class LocalChatTab(ttk.Frame):
         # Wall-clock at native GUI acceptance; one FIFO timestamp per
         # accepted chat. No text copies, storage, logging, or deduplication.
         self._ai_arrival_times: queue.SimpleQueue = queue.SimpleQueue()
+        self._live_latency_metrics: LiveLatencyMetrics | None = None
         # Reader EOF is distinct from operator Stop; keep accepted AI work alive.
         self._twitch_reader_finished = False
         self._twitch_reader_error = None
@@ -566,6 +568,9 @@ class LocalChatTab(ttk.Frame):
         inbox = queue.SimpleQueue()
         self._twitch_ai_inbox = inbox
         self._ai_arrival_times = queue.SimpleQueue()
+        # The user's real Windows receiver gets fresh private diagnostics on
+        # each connection; no message text or credentials enter this meter.
+        self._live_latency_metrics = LiveLatencyMetrics(time.monotonic())
         self._twitch_active_workers.add(session)
         # One worker calls the EXISTING local Ollama conversation in order.
         # No extra model service, intentional delay or platform chat posting.
@@ -635,11 +640,22 @@ class LocalChatTab(ttk.Frame):
                 except queue.Empty:
                     accepted_at = None
 
+                # Measure actual FIFO waiting separately from actual model
+                # processing; preserve the existing legacy latency event.
+                model_started_at = time.monotonic()
+                attempt_failed = False
+
                 def report_measured_elapsed():
                     if accepted_at is not None:
-                        elapsed = time.monotonic() - accepted_at
+                        ended_at = time.monotonic()
+                        elapsed = ended_at - accepted_at
                         if math.isfinite(elapsed) and elapsed >= 0:
                             report("twitch_ai_latency", elapsed)
+                            if getattr(self, "_live_latency_metrics", None) is not None:
+                                report("twitch_ai_timing", (
+                                    max(0.0, model_started_at - accepted_at),
+                                    max(0.0, ended_at - model_started_at),
+                                    elapsed, attempt_failed))
                 if official:
                     # Official WebView2 owns the AI, GPT-SoVITS audio and Cubism
                     # model in ONE upstream conversation. Never duplicate this
@@ -649,8 +665,10 @@ class LocalChatTab(ttk.Frame):
                         evidence = send_to_native_live2d_session_with_observation(
                             chat.text, operator_approved=True, duration=8)
                     except Exception as exc:
+                        attempt_failed = True
                         report("twitch_ai_error", (chat, type(exc).__name__))
                     else:
+                        attempt_failed = not bool(evidence.verified_signal)
                         report("twitch_live2d_ok", (chat, evidence))
                     finally:
                         report_measured_elapsed()
@@ -662,6 +680,7 @@ class LocalChatTab(ttk.Frame):
                                 getattr(chat, "platform", "twitch"), "트위치") + "] " + chat.sender,
                         use_committed_gui_character=True)
                 except Exception as exc:
+                    attempt_failed = True
                     report("twitch_ai_error", (chat, type(exc).__name__))
                 else:
                     report("twitch_ai_ok", (chat, result))
@@ -683,6 +702,10 @@ class LocalChatTab(ttk.Frame):
         if session is None:
             return
         session.stop()
+        meter = getattr(self, "_live_latency_metrics", None)
+        if meter is not None:
+            meter.stop(time.monotonic())
+            self._append("[로컬 수신 종료] " + meter.snapshot(time.monotonic()).describe())
         if self._twitch_ai_inbox is not None:
             # Wake worker, but never submit further queued AI requests.
             self._twitch_ai_inbox.put(None)
@@ -760,6 +783,9 @@ class LocalChatTab(ttk.Frame):
                             self._chat_platform.get() + " " + str(payload) +
                             " 채팅방 입장 확인 · 실제 채팅 대기")
                     elif kind == "twitch_chat":
+                        meter = getattr(self, "_live_latency_metrics", None)
+                        if meter is not None:
+                            meter.accept()
                         self._twitch_received += 1
                         name = {"twitch":"트위치","chzzk":"치지직",
                                 "soop":"SOOP","youtube":"유튜브"}.get(
@@ -815,6 +841,21 @@ class LocalChatTab(ttk.Frame):
                         self._twitch_status.set(
                             "AI 처리 실패 " + str(self._twitch_ai_failures)
                             + "건 · 성공 응답으로 계산하지 않음")
+                    elif kind == "twitch_ai_timing":
+                        # Real GUI receiver's local FIFO wait and AI time,
+                        # no inferred OBS/video/audience delivery timestamps.
+                        meter = getattr(self, "_live_latency_metrics", None)
+                        if meter is not None:
+                            valid = meter.terminal(*payload)
+                            if valid and (meter.completed <= 3
+                                          or meter.completed % 25 == 0):
+                                self._append(
+                                    "[로컬 채팅 실측] "
+                                    + meter.snapshot(time.monotonic()).describe())
+                            elif not valid:
+                                self._append(
+                                    "[로컬 채팅 실측] 시각 데이터 오류 또는 수신 종료 "
+                                    "· 해당 메시지는 성공 판정에서 제외")
                     elif kind == "twitch_ai_latency":
                         # This is *not* transport-to-viewer latency. It is
                         # GUI acceptance + local queue wait + model processing.
@@ -829,6 +870,9 @@ class LocalChatTab(ttk.Frame):
                         self._append("수신기 상태: " + str(payload))
                         self._twitch_status.set("플랫폼별 수신 상태: " + str(payload))
                     elif kind == "twitch_error":
+                        meter = getattr(self, "_live_latency_metrics", None)
+                        if meter is not None:
+                            meter.reader_fault()
                         self._twitch_reader_error = str(payload)
                         self._twitch_status.set(
                             "실제 " + self._chat_platform.get() +
