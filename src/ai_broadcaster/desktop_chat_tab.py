@@ -49,6 +49,8 @@ class LocalChatTab(ttk.Frame):
         # Only the Tk event loop removes completed workers from this set.
         self._twitch_active_workers: set[object] = set()
         self._twitch_channel = tk.StringVar()
+        self._twitch_oauth_token = tk.StringVar()
+        self._twitch_oauth_login = tk.StringVar()
         self._chat_platform = tk.StringVar(value='트위치')
         self._multi_channels = {name: tk.StringVar() for name in ('twitch','chzzk','soop','youtube')}
         self._official_live2d = tk.BooleanVar(value=False)
@@ -148,6 +150,15 @@ class LocalChatTab(ttk.Frame):
         keyline = ttk.Frame(self)
         keyline.pack(fill="x", before=model_row)
         self._chat_keyline = keyline
+        twitch_oauth_line = ttk.Frame(self)
+        twitch_oauth_line.pack(fill="x", before=model_row)
+        ttk.Label(twitch_oauth_line,
+                  text="Twitch chat:read 토큰 (메모리 전용)").pack(side="left")
+        ttk.Entry(twitch_oauth_line, textvariable=self._twitch_oauth_token,
+                  show="*", width=29).pack(side="left", padx=4)
+        ttk.Label(twitch_oauth_line, text="승인 계정 ID").pack(side="left")
+        ttk.Entry(twitch_oauth_line, textvariable=self._twitch_oauth_login,
+                  width=19).pack(side="left", padx=4)
         oauth_line = ttk.Frame(self)
         oauth_line.pack(fill="x", before=model_row)
         ttk.Label(oauth_line, text="유튜브 OAuth 읽기 토큰 (승인 완료분·메모리에만 보관)").pack(side="left")
@@ -668,13 +679,27 @@ class LocalChatTab(ttk.Frame):
             emit = lambda kind, item: LocalChatTab._enqueue_public_event(
                 self, session, kind, item)
             if choice == "전체":
+                twitch_token = getattr(self, "_twitch_oauth_token", None)
+                twitch_login = getattr(self, "_twitch_oauth_login", None)
+                multi_options = {
+                    "youtube_api_key": self._youtube_api_key.get(),
+                    "youtube_oauth_token": self._youtube_oauth_token.get()}
+                if twitch_token is not None and twitch_token.get():
+                    multi_options["twitch_oauth_token"] = twitch_token.get()
+                    multi_options["twitch_oauth_login"] = (
+                        twitch_login.get().strip() if twitch_login is not None else "")
                 session = MultiPlatformReadOnlySession(
                     {name: self._multi_channels[name].get().strip()
-                     for name in saved_platforms}, emit,
-                    youtube_api_key=self._youtube_api_key.get(),
-                    youtube_oauth_token=self._youtube_oauth_token.get())
+                     for name in saved_platforms}, emit, **multi_options)
             elif code == "twitch":
-                session = TwitchReadOnlySession(channel, emit)
+                token = getattr(self, "_twitch_oauth_token", None)
+                login = getattr(self, "_twitch_oauth_login", None)
+                if token is not None and token.get():
+                    session = TwitchReadOnlySession(
+                        channel, emit, oauth_token=token.get(),
+                        oauth_login=login.get().strip() if login is not None else "")
+                else:
+                    session = TwitchReadOnlySession(channel, emit)
             elif code == "chzzk":
                 session = ChzzkReadOnlySession(channel, emit)
             elif code == "soop":
@@ -866,6 +891,8 @@ class LocalChatTab(ttk.Frame):
         # YouTube API key is memory-only, and must not survive GUI shutdown.
         self._youtube_api_key.set("")
         self._youtube_oauth_token.set("")
+        self._twitch_oauth_token.set("")
+        self._twitch_oauth_login.set("")
         self._stop_twitch()
         if self._twitch_ai_inbox is not None:
             self._twitch_ai_inbox.put(None)

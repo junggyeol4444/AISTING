@@ -22,7 +22,8 @@ class MultiPlatformReadOnlySession:
     """Run selected read-only transports concurrently, preserving each FIFO."""
 
     def __init__(self, channels: dict[str, str], emit, *, youtube_api_key: str = "",
-                 youtube_oauth_token: str = ""):
+                 youtube_oauth_token: str = "",
+                 twitch_oauth_token: str = "", twitch_oauth_login: str = ""):
         if (type(channels) is not dict or not channels or len(channels) > 4
                 or not callable(emit)):
             raise ValueError("동시 채팅 플랫폼과 채널을 확인하세요.")
@@ -59,7 +60,10 @@ class MultiPlatformReadOnlySession:
             return callback
 
         factories = {
-            "twitch": lambda channel, cb: TwitchReadOnlySession(channel, cb),
+            "twitch": lambda channel, cb: TwitchReadOnlySession(
+                channel, cb, oauth_token=twitch_oauth_token,
+                oauth_login=twitch_oauth_login) if twitch_oauth_token else
+                TwitchReadOnlySession(channel, cb),
             "chzzk": lambda channel, cb: ChzzkReadOnlySession(channel, cb),
             "soop": lambda channel, cb: SoopReadOnlySession(channel, cb),
             "youtube": lambda channel, cb: YouTubeReadOnlySession(

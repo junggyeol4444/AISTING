@@ -53,12 +53,22 @@ def parse_irc_chat_line(line: str, channel: str) -> TwitchChatLine | None:
 class TwitchReadOnlySession:
     """One explicit user-directed public channel read, with no chat posting."""
 
-    def __init__(self, channel: str, emit: Callable[[str, object], None]):
+    def __init__(self, channel: str, emit: Callable[[str, object], None], *,
+                 oauth_token: str = "", oauth_login: str = ""):
+        if type(oauth_token) is not str or type(oauth_login) is not str:
+            raise ValueError("트위치 채팅 읽기 승인 정보 형식이 올바르지 않습니다.")
+        if oauth_token or oauth_login:
+            if (not 12 <= len(oauth_token) <= 400
+                    or not all(ch.isalnum() for ch in oauth_token)
+                    or not _CHANNEL.fullmatch(oauth_login)):
+                raise ValueError("트위치 읽기 전용 OAuth 토큰·계정 이름을 확인하세요.")
         if not isinstance(channel, str) or not _CHANNEL.fullmatch(channel):
             raise ValueError("트위치 채널 이름은 영문·숫자·밑줄 3~25자여야 합니다.")
         if not callable(emit):
             raise TypeError("채팅 수신 콜백이 필요합니다.")
         self.channel = channel.lower()
+        self._oauth_token = oauth_token
+        self._oauth_login = oauth_login.lower()
         self.emit = emit
         self._stop = threading.Event()
         self._socket = None
@@ -135,16 +145,25 @@ class TwitchReadOnlySession:
                 self._socket = None
             self.emit("stopped", 0)
             return
-        nick = "justinfan" + str(secrets.randbelow(90000000) + 10000000)
+        nick = (self._oauth_login if self._oauth_token
+                else "justinfan" + str(secrets.randbelow(90000000) + 10000000))
         ready = False
         received = 0
         deadline = time.monotonic() + max_seconds if max_seconds else None
         try:
-            for command in (
-                "CAP REQ :twitch.tv/tags twitch.tv/commands\r\n",
-                "NICK " + nick + "\r\n",
-                "JOIN #" + self.channel + "\r\n",
-            ):
+            # For real read-only auth Twitch officially requires IRC PASS
+            # oauth:<token> and NICK of the token's owner. Anonymous JOIN
+            # stays compatible but can no longer prove chat:read access.
+            commands = (
+                ("PASS oauth:" + self._oauth_token + "\r\n",
+                 "NICK " + nick + "\r\n",
+                 "CAP REQ :twitch.tv/tags twitch.tv/commands\r\n",
+                 "JOIN #" + self.channel + "\r\n")
+                if self._oauth_token else (
+                    "CAP REQ :twitch.tv/tags twitch.tv/commands\r\n",
+                    "NICK " + nick + "\r\n",
+                    "JOIN #" + self.channel + "\r\n"))
+            for command in commands:
                 if self._stop.is_set():
                     return
                 try:
@@ -196,7 +215,7 @@ class TwitchReadOnlySession:
                     elif _AUTH_NOTICE.match(line) and (
                         "Login authentication failed" in line or "Improperly formatted auth" in line
                     ):
-                        raise TwitchReadError("트위치 익명 읽기 연결 거부")
+                        raise TwitchReadError("트위치 IRC 읽기 인증 오류 · chat:read 권한 확인 필요")
                     elif (ack := _JOIN_ACK.match(line)) is not None:
                         if ack.group(1).lower() == self.channel and not ready:
                             ready = True

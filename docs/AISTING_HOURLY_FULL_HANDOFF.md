@@ -1112,3 +1112,23 @@ GitHub `junggyeol4444/AISTING`, **기존 main에만 빠른전진 반영**:
 - test_aisting_official_chat_obs_pipeline.py의 지연 TTS 시간 mock 코드에서 import time 문이 사용 이후에 있어 UnboundLocalError가 발생했고, 음성과 입 움직임이 *서로 다르다*는 부정 예시에서 OBS의 음성 이벤트 마지막 시각을 관찰 창 종료 시각으로 설정해 실제로는 양쪽이 겹치는 잘못된 테스트 입력이었음.
 - 기존 OBS 실제 monotonic 소리 first/last 기록 및 공식 Cubism first/last timestamp 직접 겹침 판정 기능 자체는 유지한다. 지연 TTS 테스트의 import 선행과 부정 예시를 80ms 넓은 관찰 구간 중 초기 1ms 비무음 OBS 신호만 있도록 정확히 수정. full regression/Windows EXE·real Ollama·OBS·CHZZK·SOOP·Twitch 5 jobs 모두 새 main으로 재실행하고 실패하면 코드 수정 후 전체 재검증한다.
 - 59절에 이미 포함된 scripts/aisting_real_ollama_fifo_soak.py는 실제 4플랫폼 합성 채팅 500건 이상/24h 로컬 사용 가능한 스크립트이며, GitHub Actions에는 **모의 모델이 아닌 실제 CPU Ollama 4개 메시지** 간단 시험을 추가함. 이 짧은 시험의 성공이 수백명 실제 방송 24시간 결과는 아니다.
+
+## 61. 2026-10-21 — 채팅 실수신 장애 확인 후 공식 Twitch 읽기 OAuth 기존 Windows·4플랫폼 연결
+
+### 실제로 발생한 검증 결과
+- 60절 테스트 시간 수정 commit 4eec3274af1cc5560abc536e6f9f0b2f18825f5c.
+- 전체 회귀 https://github.com/junggyeol4444/AISTING/actions/runs/39544602085: **2,496 tests passed, 2 skipped, 0 failures**. OBS non-silent meter timestamp vs Cubism first/last strict overlap 검사 포함.
+- Windows 통합 https://github.com/junggyeol4444/AISTING/actions/runs/39544602255: Windows EXE, 실제 Ollama, 실제 OBS, CHZZK/SOOP 읽기 **4/5 success**; Twitch 공개 읽기 1 job FAIL. 실제 IRC JOIN은 xqc/ow_esports/valorant 각 채널에서 확인됐지만 PRIVMSG가 0건이므로 실제 채팅 읽기 성공이라고 주장하지 않음.
+- 실제 Ollama Windows 작업 로그에는 ACTUAL_OLLAMA_FOUR_PLATFORM_FIFO_SUCCESS 4, 실제 local p95 6.312초 측정. 실4명 시청자가 아니라 4개 플랫폼 별 1개 synthetic chat을 기존 실제 Ollama+SQLite/1-worker FIFO로 실행한 결과. **이미 3초 초과**, 그러므로 100~500명/1~3초 보장 검증 성공 금지. 기존 script 500건/24시간 옵션은 장시간 실측 수행시 사용할 실행 코드이지 현 GitHub CI에서 24시간 성공했다는 의미 아님.
+- Twitch 개발자 공식 명세: https://dev.twitch.tv/docs/chat/irc 는 IRC 읽기에 이용자 OAuth access token + chat:read scope 및 PASS oauth:... 다음 NICK OAuth 소유 계정이 필요하다고 명시. 익명 justinfan JOIN은 실채팅 READ 성공 증거가 아님. 기존 익명 경로의 호환성은 유지하되 성공 단정 금지.
+
+### 이번 누적 실제 코드 개발
+1. src/ai_broadcaster/twitch_readonly.py 기존 읽기 전용 IRC 수신기에 운영자 제공 oauth_token / oauth_login 선택형 인자 추가. 2개 동시 제공 및 형식 검증; 명시 승인 토큰 사용 시 WSS 실제 PASS oauth:<token>, NICK 소유 계정 ID, CAP tags/commands, JOIN 순서로 인증하고 기존 모든 PRIVMSG 중복/순서 그대로 전달; PRIVMSG 게시/채팅 편집권한/로그인 자동화 없음. 익명 원래 생성/검사 호환 유지.
+2. src/ai_broadcaster/multi_platform_session.py 기존 4플랫폼 읽기 코디네이터에 Twitch 전용 token·username 전달 추가. CHZZK/SOOP/YouTube 원본 코드/키·큐/캐릭터/설정 보존.
+3. src/ai_broadcaster/desktop_chat_tab.py 원래 Windows Tk에 Twitch 읽기 승인 토큰(가려진 입력) 및 소유 계정 이름 입력줄을 추가하고 단일 Twitch/4플랫폼 전체 실제 채팅 수신 세션에만 메모리 자격증명 전달. 화면 종료 시 키/이름 삭제. 사용자 명시 수신 버튼 전 어떤 Twitch 네트워크 I/O도 실행하지 않음.
+4. tests/test_aisting_twitch_owner_readonly_auth.py 5개 격리 테스트: 승인 수신기 초기 네트워크 없음, AUTH PASS/NICK 순서와 실제 중복 IRC 메시지 보존/발신 명령 없음, 잘못된 자격증명 차단, 4플랫폼 코디네이터 전달, 익명 하위 호환.
+- 이후 전체 회귀/Windows 5-job 검증. Twitch 공개 CI job은 사용자 실제 인증정보가 없고 익명 읽기 메시지가 없으면 실패할 수 있으며 이를 PASS로 위장하지 않는다.
+
+### 미완료의 정확한 범위
+- GPT-SoVITS 한국어 실제 소유권 확인된 모델·참조 음성+Live2D·OBS 같은 발화 현장 실증 및 사용자 PC 실제 수백명·24h·시청자 1~3초는 아직 수행되지 않음. 새 OBS 시간 상관·실 Ollama 4건은 준비된 실행 가능한 도구/측정값이지 그 현장 증거가 아님. 사용자가 제공하지 않은 저작권 있는 보이스·계정에 접근하거나 모델 무단 훈련/방송·채팅 발신 금지.
+- 기존 handoff 원문 1~60절 및 분리 보존 28~38절, ORIGINAL_PLAN/ROADMAP/roadmap.json, Windows 네이티브 GUI/모든 사용자 설정·SQLite 유지. only main fast-forward, 신규 브랜치/force push/rollback/Drive 연결 없음.
