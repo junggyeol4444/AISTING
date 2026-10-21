@@ -961,3 +961,10 @@ GitHub `junggyeol4444/AISTING`, **기존 main에만 빠른전진 반영**:
 ### 전체 회귀 및 Windows 검증
 - 위 5개 실질 파일 묶음을 커밋한 뒤 전체 테스트/Windows EXE·GUI/읽기 전용 연동 GitHub Actions 실행. 실패 시 오류 수정 후 전체 재실행, 결과 정확히 후속 절에 기록. CI 성공 여부와 실제 방송 성공은 절대 동일시하지 않는다.
 - 실제 소유 GPT-SoVITS 한국어 음성 합성→공식 Live2D Cubism 해당 발화 립싱크→OBS 동일 발화 화면/음성, 수백 명 1~3초/24시간 실측, 로드맵 소유자 승인 상태는 별도 미실증이며 무단 훈련·녹화·스트리밍 금지.
+
+## 50. 2026-10-21 YouTube OAuth 통합 첫 회귀 실패 수정 및 전체 재검사
+
+- 49절 실제 OAuth 코드 `main` 반영 후 GitHub Actions [39526560892](https://github.com/junggyeol4444/AISTING/actions/runs/39526560892) : `Ran 2455 tests`, `FAILED (errors=1, skipped=2)`. Windows [39526561080](https://github.com/junggyeol4444/AISTING/actions/runs/39526561080)도 원격 실행 중. 성공이라 보고 금지.
+- 원인: 기존 4플랫폼 GUI 격리검사의 `tests/test_aisting_multiplatform_gui_routing.py` 내 `self.fake()`가 새 OAuth GUI 입력 `_youtube_oauth_token`을 제공하지 않아 `AttributeError`. OAuth 기능 자체를 실제 YouTube로 실행한 것이 아니며, 원본 설정/SQLite/사용자 계정 접근 없음.
+- 수정: 같은 검사 파일의 격리 fake 객체에 `_youtube_oauth_token=Value()`을 명시적으로 추가한다. 동작 API의 OAuth 토큰 메모리 전용 사용/연결·공식 API 키 기존 경로를 그대로 보존한다.
+- 전체 회귀 및 Windows EXE 5-job 전체를 수정된 새 `main`으로 재실행, 실패 시 수정→전체 재검증하고 결과를 후속 절에 사실대로 남긴다.

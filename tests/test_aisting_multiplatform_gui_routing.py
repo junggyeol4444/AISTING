@@ -28,6 +28,7 @@ class NativeChatRouting(unittest.TestCase):
             _multi_channels={key: Value()
                              for key in ("twitch", "chzzk", "soop", "youtube")},
             _twitch_channel=Value(), _youtube_api_key=Value("secret-test-api-key"),
+            _youtube_oauth_token=Value(),
             _results=queue.SimpleQueue(),
         )
 
