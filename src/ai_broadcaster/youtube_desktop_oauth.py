@@ -112,7 +112,8 @@ def exchange_code(client_id: str, client_secret: str, redirect_uri: str,
     if not isinstance(document, dict):
         raise RuntimeError("YouTube OAuth 토큰 응답 형식 오류")
     token = document.get("access_token")
-    if (document.get("token_type", "").lower() != "bearer"
+    token_type = document.get("token_type")
+    if (type(token_type) is not str or token_type.lower() != "bearer"
             or type(token) is not str or not 30 <= len(token) <= 4096
             or any(ord(ch) <= 32 or ord(ch) > 126 for ch in token)):
         raise RuntimeError("YouTube OAuth access token 형식 오류")
@@ -137,6 +138,7 @@ def authorize_owner_readonly(client_id: str, client_secret: str = "", *,
     state, verifier, challenge = new_pkce()
     received: list[str] = []
     failure: list[str] = []
+    user_denied: list[bool] = []
 
     class CallbackHandler(BaseHTTPRequestHandler):
         def log_message(self, *_args):
@@ -148,6 +150,8 @@ def authorize_owner_readonly(client_id: str, client_secret: str = "", *,
                 code = verify_callback(self.path, state)
             except Exception as exc:
                 failure.append(type(exc).__name__)
+                if isinstance(exc, PermissionError):
+                    user_denied.append(True)
                 code = None
             if code is not None:
                 received.append(code)
@@ -172,10 +176,12 @@ def authorize_owner_readonly(client_id: str, client_secret: str = "", *,
         if opened is not True:
             raise RuntimeError("Google 동의 브라우저를 열지 못했습니다.")
         deadline = time.monotonic() + timeout
-        while not received and time.monotonic() < deadline:
+        while not received and not user_denied and time.monotonic() < deadline:
             server.handle_request()
             if len(failure) > 32:
                 raise RuntimeError("OAuth 콜백 오류 횟수가 너무 많습니다.")
+        if user_denied:
+            raise PermissionError("사용자가 YouTube 읽기 동의를 취소했습니다.")
         if not received:
             raise TimeoutError("YouTube OAuth 동의 시간이 만료되었습니다.")
     return exchange_code(client_id, client_secret, redirect, verifier, received[0])

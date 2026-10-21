@@ -156,6 +156,42 @@ class OwnerPKCETests(unittest.TestCase):
         self.assertEqual(exchange.call_count, 1)
         self.assertEqual(exchange.call_args.args[0], CLIENT)
 
+    def test_browser_denial_returns_immediately_without_code_exchange(self):
+        errors = []
+        threads = []
+        def local_browser(url):
+            params = parse_qs(urlsplit(url).query)
+            callback = params["redirect_uri"][0] + "?" + urlencode({
+                "state": params["state"][0], "error": "access_denied"})
+            def send():
+                try:
+                    with raw_open(callback, timeout=3):
+                        pass
+                except Exception as exc:
+                    errors.append(type(exc).__name__)
+            worker = threading.Thread(target=send, daemon=True)
+            threads.append(worker)
+            worker.start()
+            return True
+        with patch("ai_broadcaster.youtube_desktop_oauth.exchange_code") as exchange:
+            with self.assertRaises(PermissionError):
+                oauth.authorize_owner_readonly(
+                    CLIENT, operator_approved=True, timeout=10,
+                    browser_opener=local_browser)
+        exchange.assert_not_called()
+        for worker in threads:
+            worker.join(timeout=2)
+        self.assertIn("HTTPError", errors)
+
+    def test_malformed_token_type_rejected_without_exposing_body(self):
+        response = {"access_token": TOKEN, "token_type": 3}
+        with patch("ai_broadcaster.youtube_desktop_oauth.urlopen",
+                   return_value=io.BytesIO(json.dumps(response).encode("utf-8"))):
+            with self.assertRaises(RuntimeError):
+                oauth.exchange_code(
+                    CLIENT, "", "http://127.0.0.1:43210/oauth2callback",
+                    "A" * 64, "CODE-12345678")
+
     def test_native_gui_explicit_denial_does_not_open_browser(self):
         fake = SimpleNamespace(
             _closed=False, _oauth_busy=False, _busy=False,

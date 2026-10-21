@@ -1045,3 +1045,10 @@ GitHub `junggyeol4444/AISTING`, **기존 main에만 빠른전진 반영**:
 - 브라우저는 구글 인증 규격상 외부 Google 계정 동의를 보여줄 때만 사용. 사용자 프로그램은 Windows Tk EXE 그대로, 웹/HTML UI나 Drive 연동 추가하지 않음.
 - 24시간 YouTube OAuth access token 만료 재인증 문제는 실환경에서 여전히 확인 필요(운영자 권한 갱신 방침 결정 필요). 외부 계정 임의 인증/갱신 없음.
 - 기존 1~54절 삭제/축약 금지; main에 누적 변경만, 버전 되돌리기/새 브랜치/force push 없음; 사용자 캐릭터/프로필·SQLite·OBS·음성 권리는 유지.
+
+## 56. 2026-10-21 — Google 동의 취소 즉시 처리 및 완료 CI 후속
+- 55절 main 2f3f86a5d6f126f1df6f8f478b49dbcfaf628501 전체 검증 https://github.com/junggyeol4444/AISTING/actions/runs/39533089714 : **2,480 tests passed, 2 skipped**. Windows EXE https://github.com/junggyeol4444/AISTING/actions/runs/39533089642 : **5/5 jobs success** (windows-exe, twitch-public-readonly, korean-public-chat-readonly, ollama-real-local-e2e, obs-real-readonly). 실제 소유 Google 계정/OAuth/한국어 음성 모델·24시간 시청자 실증은 아님.
+- 운영자 Google 동의 거절한 뒤 OAuth 콜백 상태가 유효하면 이전에는 150초 만료까지 기다릴 수 있던 문제 해결: 승인 취소 표시 시 즉시 거절 완료하고 네이티브 GUI를 복구. 악성·무효 state/임의 요청은 별도 무시/상한 유지. 비문자 token_type 응답에서 AttributeError 대신 안전한 명시적 RuntimeError로 종료, 원본 응답/자격증명 비노출.
+- 새 로컬 loopback 실제 HTTP 취소 시나리오와 잘못된 token_type 테스트 2건 추가, 비동기 로컬 응답 검증 race 줄이기 위해 테스트 스레드 join.
+- 변경 파일: src/ai_broadcaster/youtube_desktop_oauth.py, tests/test_aisting_owner_youtube_desktop_oauth_pkce.py, 본 누적 문서. 기존 소스/기획서/캐릭터/모든 단일 AI FIFO/4플랫폼/Windows/로컬 설정 및 1~55절 유지. main 빠른 전진만. full regression 및 Windows build 다시 검증.
+- 다음 핵심 실증: 유저 본인 소유 Google OAuth desktop client 및 본인 방송 동의, 실제 음성 권리확인 GPT-SoVITS 모델·Official Live2D·OBS 같은 발화, 100~500명·24시간·관객 1~3초. 실행을 허용받지 않은 실제 계정/음성/방송을 임의로 만지지 않음. 갱신 토큰 없는 Google online OAuth access token의 만료 이후 24시간 연속 소유 방송 수신을 보장할 수 없으므로 계속 미검증.
