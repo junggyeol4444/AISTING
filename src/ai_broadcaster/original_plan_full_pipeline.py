@@ -235,11 +235,26 @@ def verify_official_chat_live2d_obs(
                           and math.isfinite(mouth_first)
                           and math.isfinite(mouth_last)
                           and 0 < mouth_first <= mouth_last)
-    matching = ([sample for began, ended, sample in observation
-                 if began <= mouth_last and ended >= mouth_first
-                 and sample.coherent_media_candidate]
-                if valid_mouth_window else [])
-    selected = next(
+    # Match the actual NON-SILENT OBS meter timestamps, not a broad
+    # 3-second video+audio inspection window that could include unrelated
+    # noise before/after the Cubism mouth change.
+    def same_utterance_window(began, ended, sample):
+        if not valid_mouth_window or not sample.coherent_media_candidate:
+            return False
+        audio = getattr(sample, "audio", None)
+        first = getattr(audio, "first_selected_signal_monotonic", 0.0)
+        last = getattr(audio, "last_selected_signal_monotonic", 0.0)
+        if (type(first) not in (int, float) or type(last) not in (int, float)
+                or not math.isfinite(first) or not math.isfinite(last)
+                or not (began <= first <= last <= ended)):
+            return False
+        # The same monotonic clock is used by both native Windows OBS events
+        # and official WebView2/Cubism evidence; NO broad window shortcut.
+        return first <= mouth_last and last >= mouth_first
+
+    matching = [sample for began, ended, sample in observation
+                if same_utterance_window(began, ended, sample)]
+    selected = matching[0] if matching else next(
         (sample for _, _, sample in observation if sample.coherent_media_candidate),
         observation[-1][2],
     )

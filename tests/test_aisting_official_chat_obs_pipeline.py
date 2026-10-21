@@ -28,9 +28,15 @@ def make_obs(*, confirmed=True, stable=True):
             # The real meter API blocks for 1-3 seconds; the mock must yield
             # enough for the official-turn thread to finish (not instant-loop).
             import time
-            time.sleep(0.004)
+            began = time.monotonic()
+            time.sleep(0.015)
             self.probe_count += 1
-            return SimpleNamespace(coherent_media_candidate=stable)
+            ended = time.monotonic()
+            return SimpleNamespace(
+                coherent_media_candidate=stable,
+                audio=SimpleNamespace(
+                    first_selected_signal_monotonic=began if stable else 0.0,
+                    last_selected_signal_monotonic=ended if stable else 0.0))
         def status(self):
             return SimpleNamespace(streaming=False, scene="Scene")
     return Obs()
@@ -221,10 +227,15 @@ class FullPipelineContracts(unittest.TestCase):
             monitor.probe_count += 1
             if monitor.probe_count == 1:
                 return SimpleNamespace(coherent_media_candidate=False)
+            began = time.monotonic()
             second_window.set()
             import time
             time.sleep(0.01)
-            return SimpleNamespace(coherent_media_candidate=True)
+            return SimpleNamespace(
+                coherent_media_candidate=True,
+                audio=SimpleNamespace(
+                    first_selected_signal_monotonic=began,
+                    last_selected_signal_monotonic=time.monotonic()))
 
         def slow_official_turn(*args, **kwargs):
             prompt_started.set()
@@ -286,6 +297,65 @@ class FullPipelineContracts(unittest.TestCase):
                 "과거 입 움직임", obs_password="local", obs_input_name="Mic",
                 operator_approved=True, voice_rights_confirmed=True)
         self.assertFalse(result.temporal_overlap_candidate)
+        self.assertFalse(result.verified_observation)
+
+    def test_broad_three_second_window_does_not_certify_unrelated_meter_event(self):
+        safety, monitor = make_obs(), make_obs()
+        obs_signal = []
+        def disjoint_media(**kwargs):
+            began = time.monotonic()
+            # A real 3-second OBS observation could be coherent even though
+            # its only non-silent meter tick happened BEFORE mouth motion.
+            time.sleep(0.08)
+            ended = time.monotonic()
+            obs_signal.append((began, ended))
+            return SimpleNamespace(
+                coherent_media_candidate=True,
+                audio=SimpleNamespace(
+                    first_selected_signal_monotonic=began,
+                    last_selected_signal_monotonic=ended))
+        monitor.inspect_program_media = disjoint_media
+        def unrelated_lip(*args, **kwargs):
+            time.sleep(0.035)
+            tm = time.monotonic()
+            return SimpleNamespace(
+                verified_signal=True,
+                first_audio_mouth_monotonic=tm,
+                last_audio_mouth_monotonic=tm)
+        with patch.object(pipeline, "OfficialObsWebsocket",
+                          side_effect=[safety, monitor]), patch.object(
+                          pipeline, "send_to_native_live2d_session_with_observation",
+                          side_effect=unrelated_lip):
+            result = pipeline.verify_official_chat_live2d_obs(
+                "OBS 먼저 짧은 소리, Live2D 나중에 다른 발화",
+                obs_password="local", obs_input_name="Mic",
+                operator_approved=True, voice_rights_confirmed=True)
+        self.assertFalse(result.verified_observation)
+        self.assertFalse(result.temporal_overlap_candidate)
+
+    def test_missing_obs_event_monotonic_times_cannot_certify_same_utterance(self):
+        safety, monitor = make_obs(), make_obs()
+        def no_timestamps(**kwargs):
+            time.sleep(0.015)
+            return SimpleNamespace(
+                coherent_media_candidate=True,
+                audio=SimpleNamespace(first_selected_signal_monotonic=0.0,
+                                      last_selected_signal_monotonic=0.0))
+        monitor.inspect_program_media = no_timestamps
+        def live2d(*args, **kwargs):
+            time.sleep(0.005)
+            now = time.monotonic()
+            return SimpleNamespace(
+                verified_signal=True,
+                first_audio_mouth_monotonic=now,
+                last_audio_mouth_monotonic=now)
+        with patch.object(pipeline, "OfficialObsWebsocket",
+                          side_effect=[safety, monitor]), patch.object(
+                          pipeline, "send_to_native_live2d_session_with_observation",
+                          side_effect=live2d):
+            result = pipeline.verify_official_chat_live2d_obs(
+                "OBS time missing", obs_password="local", obs_input_name="Mic",
+                operator_approved=True, voice_rights_confirmed=True)
         self.assertFalse(result.verified_observation)
 
     def test_failed_obs_observer_setup_prevents_ai_prompt(self):

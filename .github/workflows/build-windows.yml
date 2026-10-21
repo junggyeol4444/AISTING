@@ -596,6 +596,19 @@ jobs:
           '@ | Set-Content -Path $script -Encoding utf8
             python $script
             if ($LASTEXITCODE -ne 0) { throw 'Real AISTING GUI + local Ollama inference failed' }
+            # REAL local model, isolated SQLite, the actual one-worker live
+            # chat FIFO, one message per 4 selected platforms. This is not
+            # 500 genuine remote viewers or 24-hour broadcast proof.
+            $report = Join-Path $env:RUNNER_TEMP 'aisting-real-four-platform-soak.json'
+            python scripts/aisting_real_ollama_fifo_soak.py --operator-approved --model 'qwen2.5:0.5b' --messages 4 --duration-seconds 180 --queue-size 256 --report $report
+            if ($LASTEXITCODE -ne 0) { throw 'Real four-platform Ollama FIFO smoke failed' }
+            if (-not (Test-Path $report)) { throw 'Real local FIFO health report missing' }
+            $data = Get-Content $report -Raw | ConvertFrom-Json
+            if ($data.model_success -ne 4 -or $data.completed -ne 4 -or -not $data.passed_no_drops) {
+              throw 'Real local Ollama failed to complete four distinct platform messages'
+            }
+            Write-Host ('ACTUAL_OLLAMA_FOUR_PLATFORM_FIFO_SUCCESS ' + $data.model_success)
+            Write-Host ('ACTUAL_OLLAMA_FOUR_PLATFORM_LOCAL_P95_SEC ' + $data.local_p95_seconds)
           } finally {
             if (-not $server.HasExited) {
               Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue

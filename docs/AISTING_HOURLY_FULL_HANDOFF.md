@@ -1087,3 +1087,21 @@ GitHub `junggyeol4444/AISTING`, **기존 main에만 빠른전진 반영**:
 - 실제 합법 보이스 참조·모델과 Windows OBS에서 새 버튼으로 WAV→OBS 신호 실증, 공식 Live2D의 같은 발화 RMS·입/동일 오디오 미터 시간 겹침, 원격 시청자 도달·수백명 24시간/1~3초 실증은 별개. GSV 합성 테스트 한 건과 별개 Live2D 대사를 짜맞춰 동일 발화 성공 주장 금지.
 - Google 소유계정의 OAuth 인증/실방송 수신도 명시 운영자 권한 필요. 다른 장치/계정·음성 무단 접근 및 훈련/녹화/송출/채팅 발신 없음.
 - 기존 1~57절 원문 및 28~38절 별도 보존 원문, original plan/100 roadmap/config/SQLite·설정·캐릭터·다른 프로젝트/예약 유지. main 외 branch·force push·rollback/Drive 연결 없음. 문서 전용 추가 커밋 후 CI가 재개되더라도 위 성공 run은 정확히 57절 코드 커밋 기준.
+
+## 59. 2026-10-21 — 핵심 3경로 직접 개발: 실제 OBS 오디오 시각↔Cubism 입 상관 검증 및 실제 Ollama 4플랫폼 장시간 부하 실행
+
+### 선행 원본·사용자 지시
+- GitHub main 실제 HEAD 확인/원본 누적 handoff 1~58절 전부 보존(기존 28~38절 원문은 docs/hourly-handoff-appendices에 별도로 보존). ORIGINAL_PLAN.txt / ROADMAP_100.md / config/roadmap.json 원본 그대로. 다른 프로젝트, 예약/브랜치, 기존 설정/SQLite/페르소나 무변경. 사용자는 미개발 핵심을 실제로 구현하고 전체 검증하라고 반복 지시했음.
+- 기존 58절 코드 회귀 2,490 tests/2 skipped, Windows EXE 5/5 jobs PASS 는 **이전 코드 기준**. 이번 변경 자체에 대한 Actions는 새 커밋 이후 확인해야 함.
+
+### 이번 실제 코드 구현 — 기존 제품 소스 대체/재개발 아님
+1. src/ai_broadcaster/original_plan_obs.py: 실제 OBS WebSocket input-volume-meter 이벤트에서 선택된 입력의 **0.001 이상 실제 비무음 신호**가 발생한 monotonic 첫/마지막 시간을 기록한다. 기존 OBS 입력 이름/UUID/mute/volume/route 검사를 유지하고, 이전 검사 자료는 zero 기본값으로 두어 시각이 없으면 증거 불충족. OBS 소스 생성/방송/녹화 없음.
+2. src/ai_broadcaster/original_plan_full_pipeline.py: 기존 같은 Live2D Cubism/RMS 1회 발화 관찰을 유지하며, 단순 1~3초 OBS 관찰 윈도우 겹침만으로 동일 발화를 참으로 처리하던 오류를 수정. 실제 OBS **비무음 미터 이벤트 first/last**와 실제 Cubism의 first_audio_mouth/last_audio_mouth 시각이 같은 monotonic 시간에서 직접 겹쳐야만 temporal_overlap_candidate=True. 실제 OBStudio 입력 경로·씬 변경·오디오 신호 확인 조건 유지, 다른 발화 조각을 동일 출력으로 짜맞추지 않음.
+3. tests/test_aisting_official_chat_obs_pipeline.py: 관찰 윈도우만 겹치고 실제 미터 발생 시각이 앞선 경우를 거부, OBS 이벤트 monotonic 값이 없으면 동일 발화 성공을 거부; 기존 실제 타임 윈도우 모의 검사 개선.
+4. scripts/aisting_real_ollama_fifo_soak.py: 실제 사용자 Windows PC의 **설치된 실제 로컬 Ollama 모델과 AISTING의 기존 single-AI-worker FIFO**를 통과하는 4플랫폼 합성 500건 이상 스트레스/24h watchdog 실행기. 실제 로컬 run_local_chat / SQLite(격리된 OS temp directory) 경유, 절대로 모의 LLM 결과로 성능을 속이지 않음. 플랫폼/동일 문장 보존, 개별 실제 AI 성공/실패/p95/3초 초과·최대 Python 메모리/미처리 건수, 기간/처리량 보고. --arrival-rate로 synthetic feed 조절 가능, --hold-full-duration으로 운영자가 정확히 지정한 경과시간(최대 86,400초) 유지 검사 가능. 실제 시청자·방송 24시간 증거와 구별.
+5. .github/workflows/build-windows.yml: 기존 Windows actual local Ollama job에서 실제 AISTING GUI+실제 Ollama 응답 후 4개 플랫폼 합성 채팅 각각 한 건씩 실제 원래 모델 경로(모델 qwen2.5:0.5b)를 실행하는 Windows E2E 스트레스 smoke 추가. CI 성공은 500명 실제 방송 24h 결과가 아니며 500명 본실측은 앞의 실행기를 원본 Windows 앱 환경에서 돌려야 함.
+6. tests/test_aisting_real_local_fifo_soak.py: 모델 없이도 synthetic 동시 사용자 정의/중복·4플랫폼·24시간 한도/오류 거부를 검사. 실제 모델 사용 여부는 Windows E2E에서 확인.
+
+### 다음 조치/검증 경계
+- 위 실질 기능들을 묶어 기존 main에 커밋 → 전체 회귀/Windows 네이티브 EXE + 실제 Ollama + OBS 공개읽기 5-job 검사, 실패 시 소스/검사 오류 수정 후 전체 재실행. 결과/새 artifact를 반드시 60절에 정확히 추가.
+- 사용자 계정 YouTube OAuth의 실제 동의와 본인 활성 방송 수신, 실제 권리 확인된 한국어 GPT-SoVITS 모델/참조 보이스를 활용한 실제 합성→공식 Live2D Cubism→OBS 동일 발화, 원격 시청자 최종 도달 지연/실제 방송의 수백명 24h은 **이 격리 GitHub runner에서 성공했다고 보고 금지**. 윈도우/모델 준비 없이 모의 입력으로 대신 성공 처리 금지. 로컬 OBS 입력 미터와 Cubism 시간 직접 상관 코드는 이제 실제 성공/실패를 제대로 가를 수 있어야 함.

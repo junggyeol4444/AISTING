@@ -13,6 +13,7 @@ import binascii
 import math
 import os
 import threading
+import time
 import zlib
 from typing import Any
 
@@ -67,6 +68,8 @@ class ActualObsAudioMeters:
     selected_volume: float | None = None
     selected_meter_events: int = 0
     selected_route_changed: bool = False
+    first_selected_signal_monotonic: float = 0.0
+    last_selected_signal_monotonic: float = 0.0
 
     @property
     def any_signal(self) -> bool:
@@ -785,9 +788,12 @@ class OfficialObsWebsocket:
         peaks: dict[str, float] = {}
         count = 0
         selected_meter_events = 0
+        first_selected_signal_monotonic = 0.0
+        last_selected_signal_monotonic = 0.0
 
         def on_input_volume_meters(data: object) -> None:
             nonlocal count, selected_meter_events
+            nonlocal first_selected_signal_monotonic, last_selected_signal_monotonic
             inputs = getattr(data, 'inputs', None)
             if not isinstance(inputs, list):
                 return
@@ -814,6 +820,11 @@ class OfficialObsWebsocket:
                         peaks[name] = max(peaks.get(name, 0.0), max(channel_peaks))
                         if input_name is not None and name == input_name:
                             selected_meter_events += 1
+                            if max(channel_peaks) > 0.001:
+                                sampled_at = time.monotonic()
+                                if not first_selected_signal_monotonic:
+                                    first_selected_signal_monotonic = sampled_at
+                                last_selected_signal_monotonic = sampled_at
 
         events = None
         try:
@@ -862,6 +873,8 @@ class OfficialObsWebsocket:
                 count, tuple(sorted(peaks.items())), input_name,
                 selected_muted, selected_volume, selected_meter_events,
                 route_changed,
+                first_selected_signal_monotonic,
+                last_selected_signal_monotonic,
             )
 
 
