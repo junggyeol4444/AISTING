@@ -1181,3 +1181,11 @@ GitHub `junggyeol4444/AISTING`, **기존 main에만 빠른전진 반영**:
 - 실제 합법 GPT-SoVITS 음성 모델·참조 보이스/공식 Live2D Cubism 앱·OBS 동일 발화의 사용자 Windows *현장* 실증은 해당 권리·모델·프로젝트 파일 없이 성공 처리 불가. GitHub Actions 실제 Ollama와 실제 OBS의 독립 성공이 세 단계를 연결한 한 발화 실증을 대신하지 않음.
 - GitHub 호스트 Windows 실행은 최대 24시간 방송/시청자 상태를 보장하지 않음. 사용자 허가 Windows 환경에서 지정 86400초 동안 실제 현장 실행하고 오류/외부 시청자 수신을 확인하기 전에는 24시간 성공 처리 금지.
 - 다른 프로젝트/예약/브랜치/Drive/운영자 계정/기존 SQLite 무변경, 무단 방송·녹화·훈련·유료 API 불사용.
+
+## 65. 2026-10-21 — Python 설치 없는 독립 Windows 500건·24시간 실 Ollama 부하검사 EXE 통합 빌드
+
+- 64절 전체 코드 main 7e5a99db987feffe535f1da6586565489ac5eb69 기준 [전체 회귀 39547986502](https://github.com/junggyeol4444/AISTING/actions/runs/39547986502) `Ran 2504 tests, OK(skipped=2)`. [기존 Windows EXE 검증 39547986520](https://github.com/junggyeol4444/AISTING/actions/runs/39547986520) 5개 전부 success, AISTING-Windows-EXE-integrated artifact ID 12322751892, ZIP 19,849,773 bytes, digest b39a21df21d15b3144a25d283d9fd15711c944250c2988592a29f1b75632f4ef. 해당 run 실제 로컬 Ollama 4 synthetic 채팅 p95=4.234초로 1~3초 목표 미달. 이전 6.312초 실행과 환경/편차 차이 고려, 500건 성능 목표의 성공이라고 주장 불가.
+- [실제 Windows 500건 모델 검증 run 39547986524](https://github.com/junggyeol4444/AISTING/actions/runs/39547986524) 는 공식 qwen2.5:0.5b를 실제 4플랫폼 원본 FIFO로 500건 생성하는 별도 장시간 검증. **완료 성공 전 성공으로 쓰지 말고 실제 진행/실패를 확인할 것**. main 문서 추가 커밋은 이 시험의 SHA를 변경하지 않음.
+- Python 설치를 유저에게 강제하지 않고 기존 Windows AISTING.exe를 그대로 보존하면서, 기존 sources `scripts/aisting_real_ollama_fifo_soak.py`를 독립 네이티브 Windows x64 `AISTING-FIFO-Soak.exe`로 PyInstaller onefile 빌드하는 단계를 기존 `.github/workflows/build-windows.yml`에 추가. 별도 `AISTING-Windows-Real-Ollama-FIFO-500-24h-EXE` 산출물 업로드, CI에서 EXE --help 직접 실행 확인. 원본 AISTING.exe와 분리된 실제 모델 부하검사용 EXE이며 user login/OBS stream/Google account/write API는 자동 호출 안 함.
+- 운영자는 해당 EXE를 Windows에서 `AISTING-FIFO-Soak.exe --operator-approved --model <installed-local-ollama-model> --messages 500 --duration-seconds 86400 --hold-full-duration --report <desired_path>`처럼 사용 가능. 이는 승인된 로컬 Ollama/500 합성 요청을 24시간 동안 분배·계측하는 옵션이고 실제 방송 수백 시청자/관객 오디오 24시간 실증 성공과 구별해야 함.
+- Windows EXE 추가 빌드와 원본 GUI 통합검사를 최종 CI에서 실제 확인하고 실패 시 소스·워크플로를 수정해 전체 재검사할 것. 기존 1~64절/별도 28~38절/프로젝트 100단계 원문 보존. 사용자 자산·다른 프로젝트·기존 예약/Google Drive·브랜치 변경 없음.

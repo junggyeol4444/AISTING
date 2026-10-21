@@ -106,6 +106,29 @@ jobs:
           New-Item -ItemType Directory -Path $env:LOCALAPPDATA -Force | Out-Null
           python scripts/gui_official_pipeline_click_windows.py
 
+      - name: Build standalone actual Ollama 500/24h Windows Soak EXE (no Python on user's PC)
+        shell: pwsh
+        timeout-minutes: 12
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $soakDist = Join-Path $env:RUNNER_TEMP 'AISTING-FIFO-Soak-dist'
+          $soakBuild = Join-Path $env:RUNNER_TEMP 'AISTING-FIFO-Soak-build'
+          python -m PyInstaller --noconfirm --clean --onefile --console --name AISTING-FIFO-Soak --paths src --distpath $soakDist --workpath $soakBuild scripts/aisting_real_ollama_fifo_soak.py
+          if ($LASTEXITCODE -ne 0) { throw 'Actual AISTING FIFO test executable build failed' }
+          $binary = Join-Path $soakDist 'AISTING-FIFO-Soak.exe'
+          if (-not (Test-Path $binary)) { throw 'Actual Windows FIFO EXE not found' }
+          if ((Get-Item $binary).Length -lt 1000000) { throw 'Windows FIFO EXE unexpectedly small' }
+          & $binary --help
+          if ($LASTEXITCODE -ne 0) { throw 'Standalone FIFO EXE cannot open CLI' }
+          Write-Host 'STANDALONE_ACTUAL_OLLAMA_500_24H_TEST_EXECUTABLE_BUILT_AND_STARTED'
+      - name: Upload standalone Windows 500/24h actual-model test EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: AISTING-Windows-Real-Ollama-FIFO-500-24h-EXE
+          path: ${{ runner.temp }}/AISTING-FIFO-Soak-dist/AISTING-FIFO-Soak.exe
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Upload real Windows EXE artifact
         uses: actions/upload-artifact@v4
         with:
