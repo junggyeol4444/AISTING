@@ -116,6 +116,39 @@ class LoadRunnerContracts(unittest.TestCase):
             self.assertEqual(second["completed"], 500)
             self.assertEqual(list(Path(folder).iterdir()), [file])
 
+    def test_deadline_partial_acceptance_is_failure_even_when_every_accepted_reply_succeeds(self):
+        # A finite-duration paced test must NOT certify 500/500 after
+        # accepting only its first message. Real AI is mocked here only
+        # to test the result's accounting, not model performance.
+        with patch.object(SOAK, "real_ollama_chat",
+                          return_value=SimpleNamespace(reply="정상", remembered_count=1)):
+            result = SOAK.run_real_load(
+                model="installed-local-test", messages=500,
+                duration_seconds=1, arrival_rate=0.1,
+                queue_size=100)
+        self.assertGreater(result["accepted"], 0)
+        self.assertLess(result["accepted"], 500)
+        self.assertEqual(result["model_success"], result["accepted"])
+        self.assertEqual(result["completed"], result["accepted"])
+        self.assertEqual(result["not_accepted"], 500 - result["accepted"])
+        self.assertFalse(result["requested_load_fully_accepted"])
+        self.assertIn("requested_messages_not_fully_accepted",
+                      result["processing_errors"])
+        self.assertFalse(result["passed_no_drops"])
+        self.assertFalse(result["passed_three_second_local"])
+        self.assertFalse(result["viewer_end_to_end_verified"])
+
+    def test_success_requires_full_target_and_reports_p95_sample_size(self):
+        with patch.object(SOAK, "real_ollama_chat",
+                          return_value=SimpleNamespace(reply="정상", remembered_count=1)):
+            result = SOAK.run_real_load(
+                model="installed-local-test", messages=36,
+                duration_seconds=3, queue_size=50)
+        self.assertTrue(result["requested_load_fully_accepted"])
+        self.assertEqual(result["not_accepted"], 0)
+        self.assertTrue(result["passed_no_drops"])
+        self.assertEqual(result["local_p95_sample_count"], 36)
+
     def test_invalid_time_or_bounded_queue_rejected(self):
         for args in [(500, 0, 10000, 11434),
                      (500, 86401, 10000, 11434),

@@ -107,6 +107,7 @@ def run_real_load(*, model: str, messages: int, duration_seconds: float,
             "real_viewers": False,
             "target_messages": messages,
             "accepted": emitted,
+            "not_accepted": messages - emitted,
             "completed": snap.completed,
             "success": real_reply["success"],
             "model_failure": real_reply["error"],
@@ -254,6 +255,10 @@ def run_real_load(*, model: str, messages: int, duration_seconds: float,
                 elif kind == "twitch_ai_timing":
                     if not metrics.terminal(*value):
                         real_reply["invalid_timing"] += 1
+            if emitted != messages:
+                # Never mark a 500-message test as PASS if only the first
+                # few arrived before the operator's finite test deadline.
+                errors.append("requested_messages_not_fully_accepted")
             publish_progress(force=True)
             current, peak = tracemalloc.get_traced_memory()
         finally:
@@ -271,6 +276,8 @@ def run_real_load(*, model: str, messages: int, duration_seconds: float,
         "completed_full_local_duration": bool(
             hold_full_duration and ended - start >= duration_seconds),
         "accepted": emitted,
+        "not_accepted": messages - emitted,
+        "requested_load_fully_accepted": emitted == messages,
         "platform_event_counts": dict(platform_counts),
         "completed": snap.completed,
         "model_success": real_reply["success"],
@@ -280,16 +287,18 @@ def run_real_load(*, model: str, messages: int, duration_seconds: float,
         "local_p95_seconds": snap.total_p95,
         "local_wait_p95_seconds": snap.wait_p95,
         "local_ai_p95_seconds": snap.inference_p95,
+        "local_p95_sample_count": snap.sampled,
         "python_peak_bytes": peak,
         "worker_ended": worker_finished.is_set(),
         "processing_errors": errors,
         "viewer_end_to_end_verified": False,
         "long_running_broadcast_verified": False,
         "passed_no_drops": (
-            not errors and snap.completed == emitted and
+            not errors and emitted == messages and snap.completed == emitted and
             real_reply["success"] == emitted and worker_finished.is_set()),
         "passed_three_second_local": (
-            snap.completed == emitted and snap.over_three_seconds == 0),
+            not errors and emitted == messages and snap.completed == emitted
+            and real_reply["success"] == emitted and snap.over_three_seconds == 0),
     }
 
 
