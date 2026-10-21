@@ -261,6 +261,136 @@ class VerifyRealVoiceObsTests(unittest.TestCase):
         self.assertEqual(removed,created)
         self.assertEqual(len(created),1)
 
+    def test_created_obs_media_uuid_remains_owned_until_restart_and_cleanup(self):
+        """임시 OBS 소스의 UUID가 일치하면 재생과 정리 작업을 수행한다."""
+        actions, removed, listed = [], [], []
+        class Client:
+            def get_record_status(self):
+                return SimpleNamespace(output_active=False)
+            def get_input_kind_list(self, ignored):
+                return SimpleNamespace(input_kinds=["ffmpeg_source"])
+            def create_input(self, scene, name, kind, settings, enabled):
+                listed.append(name)
+                return SimpleNamespace(input_uuid="probe-uuid-1")
+            def get_input_list(self):
+                return SimpleNamespace(inputs=[{
+                    "inputName":listed[0], "inputUuid":"probe-uuid-1",
+                    "inputKind":"ffmpeg_source"}])
+            def trigger_media_input_action(self, name, action):
+                actions.append((name, action))
+            def remove_input(self, name):
+                removed.append(name)
+        def meter(**kwargs):
+            kwargs["start_action"]()
+            return SimpleNamespace(selected_meter_events=2, selected_signal=True)
+        obs = SimpleNamespace(
+            _client=Client(),
+            connect=lambda:SimpleNamespace(
+                version="32.2",scene="Scene",streaming=False),
+            status=lambda:SimpleNamespace(scene="Scene",streaming=False),
+            read_actual_audio_meters=meter)
+        voice = SimpleNamespace(sample_rate=24000,channels=1,frame_count=80,
+                                wav_data=b"RIFF"+b"x"*60)
+        with patch("ai_broadcaster.original_plan_voice_obs_bridge.OfficialObsWebsocket",
+                   return_value=obs), patch(
+                "ai_broadcaster.original_plan_voice_obs_bridge.synthesize_local_gpt_sovits",
+                return_value=voice):
+            result = verify_gpt_sovits_to_obs(
+                Path("licensed.wav"),"권리 확인","안녕하세요",
+                obs_password="test",operator_approved=True,rights_confirmed=True)
+        self.assertTrue(result.actual_signal)
+        self.assertEqual(removed,listed)
+        self.assertEqual(actions,[(
+            listed[0],"OBS_WEBSOCKET_MEDIA_INPUT_ACTION_RESTART")])
+
+    def test_replaced_obs_media_uuid_is_never_restarted_or_deleted(self):
+        """재생 전 임시 소스 이름이 재사용되면 해당 소스를 건드리지 않는다."""
+        listed, restarted, removed = [], [], []
+        lookups = [0]
+        class Client:
+            def get_record_status(self):
+                return SimpleNamespace(output_active=False)
+            def get_input_kind_list(self, ignored):
+                return SimpleNamespace(input_kinds=["ffmpeg_source"])
+            def create_input(self, scene, name, kind, settings, enabled):
+                listed.append(name)
+                return SimpleNamespace(input_uuid="original-uuid")
+            def get_input_list(self):
+                lookups[0] += 1
+                uid = "original-uuid" if lookups[0] == 1 else "other-uuid"
+                return SimpleNamespace(inputs=[{
+                    "inputName":listed[0], "inputUuid":uid,
+                    "inputKind":"ffmpeg_source"}])
+            def trigger_media_input_action(self, name, action):
+                restarted.append(name)
+            def remove_input(self, name):
+                removed.append(name)
+        def meter(**kwargs):
+            kwargs["start_action"]()
+            return SimpleNamespace(selected_meter_events=1, selected_signal=True)
+        obs = SimpleNamespace(
+            _client=Client(),
+            connect=lambda:SimpleNamespace(
+                version="32.2",scene="Scene",streaming=False),
+            status=lambda:SimpleNamespace(scene="Scene",streaming=False),
+            read_actual_audio_meters=meter)
+        voice = SimpleNamespace(sample_rate=24000,channels=1,frame_count=80,
+                                wav_data=b"RIFF"+b"x"*60)
+        with patch("ai_broadcaster.original_plan_voice_obs_bridge.OfficialObsWebsocket",
+                   return_value=obs), patch(
+                "ai_broadcaster.original_plan_voice_obs_bridge.synthesize_local_gpt_sovits",
+                return_value=voice):
+            with self.assertRaisesRegex(RuntimeError,"정리에 실패"):
+                verify_gpt_sovits_to_obs(
+                    Path("licensed.wav"),"권리 확인","안녕하세요",
+                    obs_password="test",operator_approved=True,rights_confirmed=True)
+        self.assertEqual(restarted,[])
+        self.assertEqual(removed,[])
+        self.assertGreaterEqual(lookups[0],3)
+
+    def test_obs_media_uuid_changed_only_after_playback_still_protects_cleanup(self):
+        """재생 후 소스가 교체됐을 때 타인의 소스를 삭제하지 않는다."""
+        listed, restarted, removed, lookups = [], [], [], [0]
+        class Client:
+            def get_record_status(self):
+                return SimpleNamespace(output_active=False)
+            def get_input_kind_list(self, ignored):
+                return SimpleNamespace(input_kinds=["ffmpeg_source"])
+            def create_input(self, scene, name, kind, settings, enabled):
+                listed.append(name)
+                return SimpleNamespace(input_uuid="original-uuid")
+            def get_input_list(self):
+                lookups[0] += 1
+                return SimpleNamespace(inputs=[{
+                    "inputName":listed[0],
+                    "inputUuid":("original-uuid" if lookups[0] <= 2 else "replacement-uuid"),
+                    "inputKind":"ffmpeg_source"}])
+            def trigger_media_input_action(self, name, action):
+                restarted.append(name)
+            def remove_input(self, name):
+                removed.append(name)
+        def meter(**kwargs):
+            kwargs["start_action"]()
+            return SimpleNamespace(selected_meter_events=2, selected_signal=True)
+        obs = SimpleNamespace(
+            _client=Client(),
+            connect=lambda:SimpleNamespace(version="32", scene="Scene", streaming=False),
+            status=lambda:SimpleNamespace(scene="Scene", streaming=False),
+            read_actual_audio_meters=meter)
+        voice = SimpleNamespace(sample_rate=24000, channels=1, frame_count=80,
+                                wav_data=b"RIFF"+b"x"*60)
+        with patch("ai_broadcaster.original_plan_voice_obs_bridge.OfficialObsWebsocket",
+                   return_value=obs), patch(
+                "ai_broadcaster.original_plan_voice_obs_bridge.synthesize_local_gpt_sovits",
+                return_value=voice):
+            with self.assertRaisesRegex(RuntimeError, "정리에 실패"):
+                verify_gpt_sovits_to_obs(Path("licensed.wav"),"권리 확인","안녕하세요",
+                                         obs_password="test",operator_approved=True,
+                                         rights_confirmed=True)
+        self.assertEqual(len(restarted), 1)
+        self.assertEqual(removed, [])
+        self.assertEqual(lookups[0], 3)
+
     def test_gpt_obs_gui_worker_uses_captured_tk_inputs(self):
         """Tk StringVar.get belongs on the GUI thread, not the synthesis worker."""
         import ast

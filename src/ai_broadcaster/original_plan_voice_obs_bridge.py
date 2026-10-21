@@ -80,6 +80,26 @@ def verify_gpt_sovits_to_obs(
     input_name = "AISTING-verification-" + secrets.token_hex(8)
     created = False
     creation_attempted = False
+    owned_input_uuid = None
+
+    def confirm_owned_input():
+        # 같은 이름이라도 다른 UUID로 교체된 입력은 절대로 재생·삭제하지 않는다.
+        if not callable(getattr(client, "get_input_list", None)):
+            return None  # 기존 구형 테스트용 주입 클라이언트
+        inputs = client.get_input_list().inputs
+        if not isinstance(inputs, list):
+            raise RuntimeError("OBS 임시 음성 입력 목록을 확인하지 못했습니다.")
+        matches = [item for item in inputs if isinstance(item, dict)
+                   and item.get("inputName") == input_name]
+        if len(matches) != 1 or matches[0].get("inputKind") != "ffmpeg_source":
+            raise RuntimeError("OBS 임시 음성 소스의 동일성을 확인하지 못했습니다.")
+        uuid = matches[0].get("inputUuid")
+        if not isinstance(uuid, str) or not uuid:
+            raise RuntimeError("OBS 임시 음성 소스 UUID를 확인하지 못했습니다.")
+        if owned_input_uuid is not None and uuid != owned_input_uuid:
+            raise RuntimeError("OBS 임시 음성 소스가 다른 입력으로 교체되었습니다.")
+        return uuid
+
     with tempfile.TemporaryDirectory(prefix="AISTING_real_voice_") as root:
         wav_path = Path(root) / "one_shot.wav"
         wav_path.write_bytes(raw)
@@ -96,7 +116,7 @@ def verify_gpt_sovits_to_obs(
             # OBS media source plays the WAV into the OBS mixer only.
             # It does not start recording or stream output.
             creation_attempted = True
-            client.create_input(state.scene, input_name, "ffmpeg_source", {
+            creation_result = client.create_input(state.scene, input_name, "ffmpeg_source", {
                 "is_local_file": True,
                 "local_file": str(wav_path),
                 # One authorized voice probe is never indefinite replay.
@@ -105,6 +125,12 @@ def verify_gpt_sovits_to_obs(
                 "close_when_inactive": False,
             }, True)
             created = True
+            owned_input_uuid = getattr(creation_result, "input_uuid", None)
+            confirmed_uuid = confirm_owned_input()
+            if confirmed_uuid is not None:
+                if owned_input_uuid is not None and owned_input_uuid != confirmed_uuid:
+                    raise RuntimeError("OBS 새 임시 음성 소스 UUID가 일치하지 않습니다.")
+                owned_input_uuid = confirmed_uuid
             # The OBS state can change while CreateInput is in flight.
             # Never claim a safe offline proof if a stream just began.
             after_input = obs.status()
@@ -121,6 +147,7 @@ def verify_gpt_sovits_to_obs(
                     raise RuntimeError(
                         "OBS 미터 연결 도중 방송 또는 장면이 바뀌어 재생을 중단합니다.")
                 ensure_not_recording()
+                confirm_owned_input()
                 client.trigger_media_input_action(
                     input_name, "OBS_WEBSOCKET_MEDIA_INPUT_ACTION_RESTART")
 
@@ -144,8 +171,9 @@ def verify_gpt_sovits_to_obs(
             return result
         finally:
             if created:
-                # Only delete our newly created temporary source.
+                # 삭제 직전에도 UUID를 재확인한다. 다른 사용자의 소스는 보호한다.
                 try:
+                    confirm_owned_input()
                     client.remove_input(input_name)
                 except Exception as exc:
                     # Never report success when our temporary input may remain.

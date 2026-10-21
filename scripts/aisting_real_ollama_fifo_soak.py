@@ -160,6 +160,31 @@ def run_real_load(*, model: str, messages: int, duration_seconds: float,
             finally:
                 worker_finished.set()
 
+        def consume_result(kind, value):
+            # 실사용자 채팅·AI 응답 내용은 부하 보고서에 저장하지 않는다.
+            if kind == "twitch_scoped":
+                scope, kind, value = value
+                if scope is not session:
+                    errors.append("unexpected_session_scope")
+                    return
+            if kind == "twitch_ai_ok":
+                real_reply["success"] += 1
+            elif kind == "twitch_ai_error":
+                real_reply["error"] += 1
+            elif kind == "twitch_ai_timing":
+                if not metrics.terminal(*value):
+                    real_reply["invalid_timing"] += 1
+
+        def drain_observed(limit=128):
+            # 24시간 동안 간격을 둔 입력에서도 완료된 결과를 누적 집계한다.
+            for _ in range(limit):
+                try:
+                    kind, value = observed.get_nowait()
+                except queue.Empty:
+                    break
+                consume_result(kind, value)
+            publish_progress()
+
         tracemalloc.start()
         try:
             worker = threading.Thread(target=consumer, daemon=True)
@@ -172,7 +197,8 @@ def run_real_load(*, model: str, messages: int, duration_seconds: float,
                     while time.monotonic() < planned:
                         if time.monotonic() >= deadline:
                             break
-                        time.sleep(min(.25, planned - time.monotonic()))
+                        time.sleep(min(.25, max(0.0, planned - time.monotonic())))
+                        drain_observed()
                 if time.monotonic() >= deadline:
                     break
                 event = make_message(index, duplicate=duplicate)
@@ -190,6 +216,7 @@ def run_real_load(*, model: str, messages: int, duration_seconds: float,
                 metrics.accept()
                 emitted += 1
                 platform_counts[getattr(event, "platform", "twitch")] += 1
+                drain_observed()
 
             # Do not force a sentinel behind a saturated queue for ever.
             while time.monotonic() < deadline:
@@ -197,14 +224,14 @@ def run_real_load(*, model: str, messages: int, duration_seconds: float,
                     input_fifo.put(None, timeout=min(1, max(.01, deadline-time.monotonic())))
                     break
                 except queue.Full:
+                    drain_observed()
                     continue
 
             while time.monotonic() < deadline:
+                drain_observed()
                 if worker_finished.is_set() and observed.empty():
-                    publish_progress()
                     if hold_full_duration:
-                        # This checks the Python process can stay alive, NOT
-                        # that OBS streamed for 24 hours or viewers heard it.
+                        # 이는 프로세스 생존 검사이지 실제 송출 검증은 아니다.
                         time.sleep(min(1.0, max(.01, deadline-time.monotonic())))
                         continue
                     break
@@ -213,19 +240,8 @@ def run_real_load(*, model: str, messages: int, duration_seconds: float,
                 except queue.Empty:
                     publish_progress()
                     continue
-                if kind == "twitch_scoped":
-                    scope, kind, value = value
-                    if scope is not session:
-                        errors.append("unexpected_session_scope")
-                        continue
-                if kind == "twitch_ai_ok":
-                    real_reply["success"] += 1
-                elif kind == "twitch_ai_error":
-                    real_reply["error"] += 1
-                elif kind == "twitch_ai_timing":
-                    if not metrics.terminal(*value):
-                        real_reply["invalid_timing"] += 1
-                    publish_progress()
+                consume_result(kind, value)
+                publish_progress()
             # Collect completed events even if the worker stopped just before
             # the deadline. Never call remaining events successful.
             if not worker_finished.is_set():
@@ -242,19 +258,7 @@ def run_real_load(*, model: str, messages: int, duration_seconds: float,
                 if worker.is_alive():
                     errors.append("local_model_worker_unresponsive_after_stop")
             while not observed.empty():
-                kind, value = observed.get_nowait()
-                if kind == "twitch_scoped":
-                    scope, kind, value = value
-                    if scope is not session:
-                        errors.append("unexpected_session_scope")
-                        continue
-                if kind == "twitch_ai_ok":
-                    real_reply["success"] += 1
-                elif kind == "twitch_ai_error":
-                    real_reply["error"] += 1
-                elif kind == "twitch_ai_timing":
-                    if not metrics.terminal(*value):
-                        real_reply["invalid_timing"] += 1
+                drain_observed()
             if emitted != messages:
                 # Never mark a 500-message test as PASS if only the first
                 # few arrived before the operator's finite test deadline.

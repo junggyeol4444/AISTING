@@ -149,6 +149,35 @@ class LoadRunnerContracts(unittest.TestCase):
         self.assertTrue(result["passed_no_drops"])
         self.assertEqual(result["local_p95_sample_count"], 36)
 
+    def test_paced_24h_style_run_drains_results_while_messages_are_arriving(self):
+        # 간격 입력 중 중간 완료 결과 집계. 로컬 모델은 여기서 모의한다.
+        snapshots = []
+        with patch.object(SOAK, "real_ollama_chat",
+                          return_value=SimpleNamespace(reply="정상", remembered_count=1)):
+            result = SOAK.run_real_load(
+                model="installed-local-test", messages=36,
+                duration_seconds=5, arrival_rate=12,
+                queue_size=80, progress_callback=snapshots.append)
+        self.assertTrue(result["passed_no_drops"])
+        self.assertEqual(result["completed"], 36)
+        self.assertTrue(any(
+            item["completed"] >= 25 and item["accepted"] < 36
+            for item in snapshots))
+        self.assertEqual(snapshots[-1]["completed"], 36)
+        self.assertFalse(result["long_running_broadcast_verified"])
+
+    def test_observed_output_is_not_reported_as_live_viewer_delivery(self):
+        # 로컬 추론 성공과 시청자에게 전달됐다는 증거는 다르다.
+        with patch.object(SOAK, "real_ollama_chat",
+                          return_value=SimpleNamespace(reply="정상", remembered_count=1)):
+            result = SOAK.run_real_load(
+                model="installed-local-test", messages=16,
+                duration_seconds=4, arrival_rate=8, queue_size=40)
+        self.assertEqual(result["accepted"], 16)
+        self.assertEqual(result["model_success"], 16)
+        self.assertFalse(result["viewer_end_to_end_verified"])
+        self.assertFalse(result["long_running_broadcast_verified"])
+
     def test_invalid_time_or_bounded_queue_rejected(self):
         for args in [(500, 0, 10000, 11434),
                      (500, 86401, 10000, 11434),

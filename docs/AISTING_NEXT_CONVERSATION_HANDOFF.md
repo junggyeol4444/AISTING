@@ -1377,3 +1377,105 @@ F) 원본 100단계 roadmap.json status는 completed=9, pending=91이며 **코�
 3. 사용자 요구대로 핵심 소스 개발 누적 → 전체 회귀/Windows 네이티브 EXE·Tk GUI/OBS/실제 로컬 Ollama/4플랫폼 공개 읽기 → 오류 수정 후 전체 재검증. 실제 Twitch 0건/시청자 0건은 원인 구분 및 실패 기록 유지.
 4. 권리 있는 실제 한국어 GPT-SoVITS WAV→공식 Live2D Cubism 립싱크→OBS 동일 발화의 실제 오디오/영상 E2E, 실제 4플랫폼 수백 명, 24시간 방송/재연결, 1~3초 지연 실증은 **미완료**. 사용자 소유 모델/참조 WAV·실기 OBS·Live2D·승인 없는 실제 송출/녹화/훈련/채팅 발신 금지.
 5. 작업 시 이전 원문/SQLite/캐릭터/설정·기존 예약/다른 프로젝트 보존, 완료/미완료/실증 수준과 정확한 HEAD·CI를 추가 기록.
+
+
+## 73. 2026-10-21 과거 인수인계 원문(내용 변경 없음)
+
+# AISTING 73절 — 2026-10-21 19:51 KST 매시간 누적 개발 인수인계 (main 원격 쓰기 차단)
+
+## 기준 및 보존
+- 프로젝트: `junggyeol4444/AISTING` 하나만 대상. 시작/종료 main HEAD: `37ae19498f845ec7a0576fd68fc829a30d9a5de0` (변경 없음).
+- 원문 확인: `docs/AISTING_NEXT_CONVERSATION_HANDOFF.md` (1~72절), `docs/AISTING_HOURLY_FULL_HANDOFF.md` (1~72절), `docs/hourly-handoff-appendices/`의 과거 16개 파일 전부, `docs/ORIGINAL_PLAN.txt`, `docs/ROADMAP_100.md`, `config/roadmap.json`. GitHub tree 전체 1319개 파일 목록과 핵심 소스, 실제 CI 읽음. 전체 `src/` 142개를 읽으려는 일괄 호출은 도구 호출 상한에 걸려 전체 본문을 다 읽었다고 주장하지 않음.
+- 기존 1~72절, 16개 appendix 원문, 캐릭터, SQLite, 설정, 원본 로드맵 상태, 다른 프로젝트, Drive, 예약은 변경하지 않음. 새 브랜치/force push/롤백 없음. 계정 로그인, 방송 송출/녹화, 채팅 발신, 음성 무단 훈련 없음. 96토큰 및 keep_alive 10m 설정 재도입 없음.
+
+## 직전 개발을 이어받아 이번 회차에 준비한 실제 코드
+1. `scripts/aisting_real_ollama_fifo_soak.py`: 24시간 paced 수신 중에도 실제 worker 결과 큐를 128개씩 지속 회수하고 진행 집계. 이전 코드는 합성 입력 500건을 장시간 천천히 넣는 동안 응답 결과를 끝에 몰아 읽어서 중간 집계 0건과 큐 적체를 유발할 수 있었음. 원본 FIFO/단일 AI worker/메시지 보존·정책은 그대로.
+2. `tests/test_aisting_real_local_fifo_soak.py`: 36건/초당 12건의 단축 paced 계약 검사 추가. 실제 Ollama·24시간 실증으로 포장하지 않음.
+3. `src/ai_broadcaster/original_plan_voice_obs_bridge.py`: 임시 OBS ffmpeg 소스 CreateInput 반환 UUID와 GetInputList UUID를 비교. 재생 직전 및 삭제 직전 동일성 확인. 다른 UUID로 교체된 사용자 소스 재생/삭제 금지. 기존 임시 WAV·미터 구독 후 재생, 송출·녹화 사전 거부는 보존.
+4. `tests/test_aisting_gpt_sovits_obs_integration.py`: UUID 정상 유지→재생/삭제, UUID 교체→재생·삭제 거부 회귀 2개 추가.
+5. 재현 가능한 4파일 보존형 변환 스크립트 `AISTING_20261021_1951_PENDING_APPLY.py` 생성. GitHub main 각 파일 blob SHA 일치와 고유 원문 앵커를 확인한 뒤에만 diff 생성/명시적 로컬 적용이 가능. 기본 실행은 원본을 수정하지 않음. **현재 GitHub main에 미반영**.
+
+## 이번 회차 실제 검증 및 쓰기 차단
+- 생성한 패치 변환 스크립트 Python 구문 검사 성공. 신규 회귀 테스트 3개 메서드를 추출한 최소 Python 클래스 구문 검사 성공, 원문 앵커 불일치 시 중단 검증 성공. **이것은 전체 AISTING 회귀/Windows EXE/OBS/GPT-SoVITS 실제 검증이 아님**.
+- GitHub `create_blob`으로 OBS UUID 회귀 테스트 코드를 반영하려고 시도했으나 **OpenAI safety checks 차단**. 이후 다른 GitHub 쓰기 경로로 우회하지 않음. 신규 main 커밋/CI 없음.
+- 기존 main 회귀 [39580268467](https://github.com/junggyeol4444/AISTING/actions/runs/39580268467): success, 이번 73절 변경의 검증 아님.
+- 기존 main Windows 통합 [39580268520](https://github.com/junggyeol4444/AISTING/actions/runs/39580268520): 최종 5개 job 중 **4 success, 1 failure**. Windows EXE, Twitch 공개 실제 PRIVMSG 1건, CHZZK/SOOP 공개 읽기, OBS 읽기 성공. `ollama-real-local-e2e`는 실제 로컬 모델 한글 Tk 답변 **18자 성공** 후 외부 실제 시청자 채팅 0건으로 `AssertionError: No real live viewer message arrived` 실패. 모델 로컬 생성 성공과 실제 viewer 미수신을 분리하고 CI 실패 유지.
+- 실제 모델 500건 [39572382928](https://github.com/junggyeol4444/AISTING/actions/runs/39572382928): 500/500 성공·누락 0, **500/500 3초 초과**, p95 전체 2781.218초, FIFO 대기 2775.281초, AI 처리 6.078초. 실제 500명 시청자·24시간 방송·최종 1~3초 성공이 아님.
+
+## 미완료·다음 회차 우선 작업
+- 73절 패치 4파일은 안전 검사 차단으로 main 미반영, 해당 변경의 전체 회귀/Windows 네이티브 EXE/실제 OBS/GPT-SoVITS/로컬 Ollama 재검증 미실행. 기존 main HEAD가 바뀌면 패치의 SHA 및 원문 앵커 재검토. 안전 차단 우회 금지.
+- 실제 권리 있는 한국어 GPT-SoVITS 참조 WAV와 합성 모델→공식 Live2D Cubism 립싱크→OBS 동일 발화 실제 음성·영상 출력 및 타이밍 실증 미완료. 소유자 승인 없는 계정/모델/방송 작업 금지.
+- 4플랫폼 실제 수백 명 부하, 24시간 실제 방송 안정성/재연결, 최종 시청자 1~3초 미완료. 기존 단일 FIFO의 burst 대기 병목(수천 초) 개발 필요. 메시지 임의 건너뛰기·중복 병합·응답 길이 강제 제한 금지.
+- 다음 회차는 1~72절 원문 및 73절을 함께 읽고, 실제 main과 CI를 확인한 후 소스 개발→전체 회귀→Windows 네이티브 EXE/GUI·OBS·로컬 모델·공개 채팅 검사→실패 수정 후 전체 재검증. 변경 완료/실증 수준 구분, 원문 추가 인수인계 유지.
+
+
+## 74. 2026-10-21 과거 인수인계 원문(내용 변경 없음)
+
+# AISTING 74절 — 2026-10-21 20:17 KST 이후 누적 개발 인수인계
+
+## 1. 프로젝트·기준·읽은 원문
+- 대상 저장소 **오직** `junggyeol4444/AISTING`; 원격 `main` HEAD `37ae19498f845ec7a0576fd68fc829a30d9a5de0`. 74회차 GitHub 커밋 없음. 73절도 원격 미반영.
+- GitHub `docs/AISTING_NEXT_CONVERSATION_HANDOFF.md` 전체(1~72절 포함, 172094자), `docs/AISTING_HOURLY_FULL_HANDOFF.md` 전체(1~72절 포함, 166967자), `docs/hourly-handoff-appendices/` 16개 원문 전체(합계 56777자), `docs/ORIGINAL_PLAN.txt`(19347자), `docs/ROADMAP_100.md`(34687자), `config/roadmap.json`(19909자) 조회.
+- 현재 GitHub tree 1344개 경로 확인. 73절 대상 프로덕션 2개/테스트 2개 전체를 조회해 blob SHA 및 소스 수정 앵커 13곳을 대조함. 로컬 FIFO 지연 측정/동시 플랫폼 세션 관련 소스 일부도 조회했으나, **1344개 전 파일 전체 본문을 읽지는 않았음**. 조회하지 않은 파일까지 읽었다고 주장하지 말 것.
+- `docs/ORIGINAL_PLAN.txt`, 기존 100단계 상태(`pending`), 원래 네이티브 Windows EXE/Tk UI, 단일 AI FIFO, 캐릭터·SQLite·설정 보존 요구 유지.
+
+## 2. 73절에서 이어받아 이번 회차 개발한 코드 (로컬 패치, main 미반영)
+- 산출물 `AISTING_20261021_2017_PENDING_APPLY_74.py`: **기존 73절 4개 파일 변환을 전부 포함**하는 보존형 갱신 코드. 지정한 기존 main 소스와 Git blob SHA 및 정확히 1회 나오는 원문 앵커가 일치해야만 패치를 생성함. 실행 기본값은 읽기 전용이며 명시적인 `--apply`가 없으면 원본을 쓰지 않음.
+- `scripts/aisting_real_ollama_fifo_soak.py`: 24시간 paced 합성 입력 중에도 OBS와 무관한 **실제 로컬 AI worker 결과 큐를 주기적으로 회수**, 중간 처리 진행 체크포인트에 반영하는 73절 개선을 보존. 추가로 매우 짧은 sleep 잔여 시간을 연속 monotonic 호출 사이에 음수가 되지 않게 `max(0.0, ...)`로 보강하여 Windows 선점 타이밍에서 발생할 수 있는 `ValueError` 후보를 수정.
+- `src/ai_broadcaster/original_plan_voice_obs_bridge.py`: 실제 GPT-SoVITS 음성의 임시 OBS `ffmpeg_source`에 대해 CreateInput 반환 `input_uuid`와 GetInputList의 `inputUuid`를 교차 확인하고, 재생과 정리 직전에 UUID 일치 여부를 확인하도록 하는 73절 소스 변경안을 보존. 사용자 소스가 같은 이름으로 교체됐으면 재생 또는 삭제하지 않고 실패로 남김. 예전 주입 테스트 더블과의 동작 조건은 그대로 유지.
+- `tests/test_aisting_real_local_fifo_soak.py`: paced 입력 중 중간 완료 결과 관찰 테스트 및 **로컬 성공을 시청자 실증으로 오인하지 않는 검사** 추가 후보.
+- `tests/test_aisting_gpt_sovits_obs_integration.py`: UUID 생성·재생·정리 성공, 재생 전에 UUID 변경되어 재생·삭제 거부, **재생 이후 UUID가 변경되면 삭제 거부**의 테스트 추가 후보. 테스트의 mock은 실제 OBS 또는 라이선스 보이스 실증이 아님.
+- 새 사용자 설정, 모델 파라미터, 음성·캐릭터, 정책, 토큰 생성 길이, keep_alive 값, 방송 자동 실행, 외부 계정 코드는 추가·변경하지 않음.
+
+## 3. 이번 로컬 코드 검사 (증빙 구분)
+- 앞선 73절 소스/테스트 blob SHA가 여전히 원격 main에서 각각 일치:
+  - `scripts/aisting_real_ollama_fifo_soak.py`: `0b1b17039fcecb2f468e2b0c8fd1a173efd589b7`
+  - `tests/test_aisting_real_local_fifo_soak.py`: `bc574fa3a8746212f5ff33452c679086cead8d24`
+  - `src/ai_broadcaster/original_plan_voice_obs_bridge.py`: `9878f7c80a42b30d961d176ccc5b995079a2c29e`
+  - `tests/test_aisting_gpt_sovits_obs_integration.py`: `88d7e7fe91e40cd1ec15563b60e82018bb13e0af`
+- 73절 기존 앵커 13곳이 최신 main에서 각각 1회 존재하는 것을 GitHub 실파일과 대조.
+- 74절 생성 코드 및 자가 검사 코드 `py_compile` 통과. 작성한 테스트를 처음 실행할 때 **패치 생성기의 신규 테스트 문자열 참조 오류(`NameError`)와 격리 검증기의 변수 참조 오류**가 발생하여 각각 수정하고 전량 재검사함.
+- `AISTING_20261021_2017_PATCH_SELFTEST_74.py` 전체 **5개 통과**: 원본 앵커 중복 중단, 기존 24h 소스 교체와 sleep 하한, 실제 AI 결과 집계 함수, OBS UUID 정상·교체·중복·누락 동작, 신규 회귀 테스트 문법.
+- **검증하지 못한 것:** 현행 1344개 소스 전체 회귀, 새 74절 패치를 실제 원본 4개에 적용해 실행한 결과, 실제 Windows EXE/Tk GUI, 진짜 GPU Ollama/OBS/Live2D/GPT-SoVITS/외부 플랫폼. 새로운 74절 실제 CI는 없음. 자가 검사 5개를 메인 테스트 5개 통과나 최종 Windows 실증으로 포장 금지.
+
+## 4. CI의 실제 현재 상태 — 성공과 실패 그대로 유지
+- 기존 main `37ae1949` 전체 회귀 [39580268467](https://github.com/junggyeol4444/AISTING/actions/runs/39580268467): `success` (이번 미반영 코드 테스트 아님).
+- 동일 HEAD Windows 통합 [39580268520](https://github.com/junggyeol4444/AISTING/actions/runs/39580268520): `failure`, jobs 5개 중 4개 success(`windows-exe`, `twitch-public-readonly`, `korean-public-chat-readonly`, `obs-real-readonly`), 1개 failure(`ollama-real-local-e2e`). 이전 증빙의 실제 로컬 한국어 Ollama 생성 성공과 외부 시청자 채팅 0건 실패를 분리해서 그대로 유지.
+- 이전 HEAD `2837946a` 실제 로컬 모델 부하 [39572382928](https://github.com/junggyeol4444/AISTING/actions/runs/39572382928): synthetic 4플랫폼 총 500건 모두 접수/500건 모델 처리, 누락 0건. 3초 초과 **500/500건**, 총 p95 **2781.218초**, FIFO 대기 p95 **2775.281초**, AI 계산 p95 **6.078초**. 이는 실제 500명 시청자·24시간 송출·최종 1~3초 실증 아님.
+
+## 5. 원격 미반영 이유·변경하지 않은 것
+- 직전 73절에서 GitHub 쓰기가 안전 검사에 의해 차단되었으며, **이번 74절은 우회성 원격 쓰기 시도를 하지 않음**. GitHub main을 갱신했다고 주장하지 않음. 이 회차는 격리된 `/mnt/data` 내 코드·테스트·결과·인수인계 파일만 작성.
+- GitHub의 원래 1~72절 원문, 과거 16개 appendix, 기획안·로드맵, 캐릭터·말투, SQLite 데이터, 사용자 설정, 기존 main 코드, 다른 저장소·프로젝트·예약·Drive **전부 미변경**.
+- 새 브랜치·force push·롤백·파일 삭제·무단 OAuth 로그인·실제 방송·녹화·채팅 발신·무단 모델 훈련·사용권 없는 음성 합성 **없음**.
+
+## 6. 다음 회차의 정확한 이어받을 위치
+1. 현재 GitHub main HEAD 및 원본 1~72절, 본 73~74절, appendix, 원본 기획·100단계, 주요 실제 소스 재조회. 73~74 절간 중복 적용 방지.
+2. **`AISTING_20261021_2017_PENDING_APPLY_74.py`가 73절 누적 전부 포함한 최신 미반영 4파일 패치**임을 확인. 원격 변경이 있으면 SHA·원문 일치를 먼저 재검토. 안전검사가 허용하는 일반 절차에서만 기존 main fast-forward 반영하고, 차단된 쓰기를 우회하지 않음.
+3. 다수 핵심 소스 수정 누적 후 같은 HEAD로 전체 회귀 → 실제 Windows 네이티브 EXE·Tk GUI / OBS / 로컬 Ollama / 4플랫폼 실제 읽기 검사 → 실패 원인 수정 후 전량 재검증. `ollama-real-local-e2e` 실제 시청자 0건은 외부 환경과 소스 오류를 구별하고 실패 보존.
+4. 권리 확인된 한국어 GPT-SoVITS 실제 WAV → **공식 Live2D Cubism** 실제 입 움직임 → OBS 동일 발화 오디오·영상, 4플랫폼 실제 수백 명, 실제 24시간 안전성·재연결 및 최종 시청자 1~3초는 아직 **개발·실증 미완료**. 사용자 계정·장비·실제 방송에 대한 무단 조작 없이 계속 코드·테스트 우선 보완.
+5. 다음 새 절은 원문 삭제나 기존 완료상태 재해석 없이 추가. 실제 변경된 커밋/검사/실패/수정/유지/미완료를 누적.
+
+## 75. 2026-10-21 — 73~74절 미반영 기존 코드 보존형 main 반영 시도 및 검증 인계
+
+### 사용자 요구·원본 보존
+- 대상은 `junggyeol4444/AISTING` 기존 `main` 하나뿐. 이 변경의 부모는 `37ae19498f845ec7a0576fd68fc829a30d9a5de0`이며 강제 푸시·새 브랜치·롤백·다른 저장소/예약/Drive 변경 없음.
+- 원문 1~72절과 부록 16개, ORIGINAL_PLAN/ROADMAP_100/config roadmap, 기존 GUI·캐릭터·SQLite·설정은 삭제·초기화·변경하지 않음. 73·74절 이전 원문을 본 문서와 과거 부록에 그대로 추가.
+- 사용자 허가 없는 계정 OAuth 로그인/채팅 발신/방송·녹화/음성 모델 훈련 금지. 토큰 길이 96 및 keep_alive 10m 강제 재도입 금지.
+
+### 이 커밋에 포함하는 실제 소스 수정
+- `scripts/aisting_real_ollama_fifo_soak.py`: 장시간 paced 입력 중 완료 결과를 주기적으로 회수·집계하며 Windows 스레드 선점으로 인한 음수 sleep 방지. 실제 로컬 AI 추론은 기존 단일 FIFO·원래 코드 그대로 호출.
+- `tests/test_aisting_real_local_fifo_soak.py`: 입력이 계속되는 동안 중간 결과 처리 및 모의 입력/실제 시청자 배송 실증 구분 회귀 2건 추가.
+- `src/ai_broadcaster/original_plan_voice_obs_bridge.py`: 생성된 OBS 임시 ffmpeg 소스 UUID를 확인하여 재생 직전과 삭제 직전 다른 UUID의 사용자 소스가 되었다면 재생/삭제 거부. 기존 송출·녹화 차단, 음성 사용권 검사 유지.
+- `tests/test_aisting_gpt_sovits_obs_integration.py`: UUID 정상 유지, 재생 전 변경, 재생 후 변경 방어 회귀 3건 추가. 테스트 모의 클라이언트는 실제 OBS·음성 실증이 아님.
+- 이 새 변경은 실제 Windows EXE/OBS/Cubism/GPT-SoVITS 사용자 모델에 대해 아직 검증 완료한 상태가 아님. GitHub Actions 실행 전이나 진행 중인 결과를 성공으로 표시하지 않음.
+
+### 이미 입증된 구버전 실모델 결과와 미완료
+- 과거 실제 Ollama synthetic 입력 500/500건 처리, 누락 0건; 3초 초과 500건, 전체 p95 2781.218초, FIFO 대기 p95 2775.281초, AI 처리 p95 6.078초. 1~3초 목표 **실패**. 이전 실증에 대한 링크: https://github.com/junggyeol4444/AISTING/actions/runs/39572382928
+- 이전 Windows 통합 CI에서 외부 시청자 채팅 0건으로 검사가 실패한 상태를 그대로 둔다. 로컬 한국어 Ollama 한 문장 생성은 성공했지만 실제 시청자 송달 성공을 뜻하지 않음: https://github.com/junggyeol4444/AISTING/actions/runs/39580268520
+- 권리 있는 실제 GPT-SoVITS 한국어 WAV→공식 Live2D Cubism 실제 입 움직임→OBS 동일 발화 음성·영상 출력 E2E, 실제 4플랫폼 수백 명 동시 채팅, 24시간 실운용, 최종 시청자 1~3초 지연은 아직 **미완료·미실증**.
+
+### 다음 회차 검증 및 수정
+1. 새 `main` HEAD의 전체 회귀, Windows EXE 및 네이티브 Tk GUI, OBS 읽기·임시 소스, 로컬 Ollama 실제 모델 500건/24시간 및 4플랫폼 공개 읽기 CI의 **최종 상태와 실패 로그**를 수집.
+2. 실패가 코드 문제면 원본 소스 보존하면서 수정하고 동일 HEAD에서 전체 재검증. 외부 공개 채팅 미수신은 소스 실패와 따로 기록하며 실제 채팅 0건을 성공으로 표시하지 않음.
+3. GPT-SoVITS→Cubism→OBS **동일 발화 영상·음성** 결합 실구현과 병목 개선 및 24시간 재연결을 계속 개발. 실제 모델·방송/녹화/계정 작업은 무단 수행하지 않는다.
+4. 실제 변경 파일·검사 내역·건드리지 않은 것·남은 작업을 다음 76절에 원문 추가. 다른 저장소/예약/Drive 그대로 보존.
