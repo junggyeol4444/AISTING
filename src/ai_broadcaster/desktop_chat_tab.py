@@ -12,7 +12,7 @@ import math
 import time
 from collections import deque
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, simpledialog
 
 from .conversation_memory import ConversationMemory, DEFAULT_MEMORY_FILE
 from .desktop_chat import run_local_chat
@@ -54,6 +54,7 @@ class LocalChatTab(ttk.Frame):
         self._official_live2d = tk.BooleanVar(value=False)
         self._youtube_api_key = tk.StringVar()
         self._youtube_oauth_token = tk.StringVar()
+        self._oauth_busy = False
         self._pipeline_busy = False
         self._tts_probe_busy = False
         self._tts_probe_status = tk.StringVar(value="실제 GPT-SoVITS 한국어 합성 미실행")
@@ -152,8 +153,12 @@ class LocalChatTab(ttk.Frame):
         ttk.Label(oauth_line, text="유튜브 OAuth 읽기 토큰 (승인 완료분·메모리에만 보관)").pack(side="left")
         ttk.Entry(oauth_line, textvariable=self._youtube_oauth_token,
                   show="*", width=34).pack(side="left", padx=5)
-        ttk.Label(oauth_line, text="내 활성 방송: 채널 입력란에 '내 활성 방송' 입력"
-                                      " · 자동 로그인/계정 변경 없음").pack(side="left", padx=2)
+        self._youtube_oauth_button = ttk.Button(
+            oauth_line, text="Google 소유 계정 읽기 승인",
+            command=self._begin_owner_youtube_oauth)
+        self._youtube_oauth_button.pack(side="left", padx=3)
+        ttk.Label(oauth_line, text="승인 후 '내 활성 방송' 입력").pack(
+            side="left", padx=2)
         ttk.Label(keyline, text="YouTube API 키 (실행 중 메모리만 사용)").pack(side="left")
         ttk.Entry(keyline, textvariable=self._youtube_api_key, width=46,
                   show="*").pack(side="left", padx=5)
@@ -437,11 +442,60 @@ class LocalChatTab(ttk.Frame):
             else:
                 self._results.put(("pipeline_ok", (text, outcome)))
 
+    def _begin_owner_youtube_oauth(self) -> None:
+        """Explicit OS-browser-only owner OAuth, never GUI web login."""
+        if (self._closed or self._oauth_busy or self._busy
+                or self._pipeline_busy or getattr(self, "_tts_probe_busy", False)
+                or self._twitch_session is not None
+                or getattr(self, "_twitch_active_workers", None)):
+            self._twitch_status.set(
+                "기존 채팅/AI/방송 읽기 작업 종료 후 소유 Google 읽기를 승인하세요.")
+            return
+        if not messagebox.askyesno(
+            "소유 YouTube 방송 OAuth 인증",
+            "Google 공식 브라우저의 소유 계정 동의를 시작합니다. "
+            "YouTube 읽기 전용 권한만 요청합니다. "
+            "동의 토큰은 프로그램 메모리에만 저장하고 파일·갱신 토큰은 저장하지 "
+            "않습니다. 계정·방송 변경, 채팅 발신, 자동 방송 송출은 없습니다. "
+            "Google 데스크톱 OAuth 클라이언트 ID가 필요합니다. 계속합니까?",
+            parent=self):
+            return
+        client_id = simpledialog.askstring(
+            "Google 데스크톱 OAuth",
+            "Google Cloud에서 발급받은 데스크톱 OAuth 클라이언트 ID",
+            parent=self)
+        if client_id is None:
+            return
+        client_secret = simpledialog.askstring(
+            "Google 데스크톱 OAuth",
+            "데스크톱 OAuth 클라이언트 secret (없으면 빈 값)",
+            parent=self, show="*")
+        if client_secret is None:
+            return
+        self._oauth_busy = True
+        self._youtube_oauth_button.configure(state="disabled")
+        self._twitch_status.set("승인된 Google 브라우저에서 YouTube 읽기 동의 대기…")
+        threading.Thread(
+            target=self._work_owner_youtube_oauth,
+            args=(client_id.strip(), client_secret), daemon=True).start()
+
+    def _work_owner_youtube_oauth(self, client_id: str, client_secret: str) -> None:
+        try:
+            from .youtube_desktop_oauth import authorize_owner_readonly
+            token = authorize_owner_readonly(
+                client_id, client_secret, operator_approved=True)
+        except Exception as exc:
+            # No Google error body, authorization code, API token or secret.
+            self._results.put(("youtube_oauth_error", type(exc).__name__))
+        else:
+            self._results.put(("youtube_oauth_ok", token))
+
     def _start_twitch(self) -> None:
         # Never interleave automatic platform prompts into a one-shot
         # operator-approved official Live2D/OBS session probe.
         if (self._closed or self._twitch_session is not None
-                or self._pipeline_busy or getattr(self, "_tts_probe_busy", False)):
+                or self._pipeline_busy or getattr(self, "_tts_probe_busy", False)
+                or getattr(self, "_oauth_busy", False)):
             return
         if self._busy:
             messagebox.showwarning(
@@ -756,6 +810,20 @@ class LocalChatTab(ttk.Frame):
                     return
                 kind, payload = self._results.get_nowait()
                 processed += 1
+                if kind in ("youtube_oauth_ok", "youtube_oauth_error"):
+                    self._oauth_busy = False
+                    self._youtube_oauth_button.configure(state="normal")
+                    if kind == "youtube_oauth_ok":
+                        self._youtube_oauth_token.set(payload)
+                        self._twitch_status.set(
+                            "소유 Google 읽기 동의 완료 · 메모리 토큰 준비"
+                            " · 채널에 '내 활성 방송' 선택 후 수신 시작"
+                            " · 실제 수신은 아직 미실행")
+                    else:
+                        self._twitch_status.set(
+                            "소유 Google 읽기 인증 실패 (" + str(payload)
+                            + ") · 계정/클라이언트/브라우저 설정 확인")
+                    continue
                 if kind == "twitch_ai_worker_exited":
                     # Always consume the lifecycle marker, even from a
                     # stopped session. Scoped chat data is still discarded.

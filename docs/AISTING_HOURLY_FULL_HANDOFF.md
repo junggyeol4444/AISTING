@@ -1027,3 +1027,21 @@ GitHub `junggyeol4444/AISTING`, **기존 main에만 빠른전진 반영**:
 - 이 개발은 1~3초를 **보장**하지 않음. 실제 로컬 FIFO 대기가 3초를 넘는 건을 정량적으로 밝혀 미충족을 확인할 수 있음. 로컬 3초 이내가 시청자 종단 간 3초 보장은 아님.
 - 실제 Windows 사용자 방송·참조 음성·OBS·YouTube 소유 OAuth는 사용자 자산 및 운영자 명시적 동의가 필요한 외부 런타임. 사용자가 승인하지 않은 로그인·마이크 녹음·방송 시작/중지/계정 송신은 하지 않음. 드라이브 무연결, 다른 프로젝트 무변경.
 - user instruction: main 누적 수정만, 1~53절 기존 기록 그대로 보존, 신규 브랜치/강제푸시/원복 없음, 한국어 사용자 표시, 실제 전체 테스트와 Windows EXE/GUI 검사 결과를 확인 후 실패면 재개발·재검증. 단순 2,000건 격리 모의로 실사용 인증 금지.
+
+## 55. 2026-10-21 — 본인 소유 YouTube 읽기 OAuth 운영자 동의부터 네이티브 Windows 채팅 GUI 연결 개발
+
+### 선행 전체 회귀 완료
+- 54절 local real FIFO metrics main commit 727666f76831c17f8d30a9aecdfa966a20bbbc9e, workflow https://github.com/junggyeol4444/AISTING/actions/runs/39532204720 : 2,469 passed, 2 skipped, 실패 0. Windows https://github.com/junggyeol4444/AISTING/actions/runs/39532204746 : 최종 job 상태 별도 확인 필요. 이전 단계 한 건 mock 대신 실제 사용자 수신 지연을 분리해 계측하도록 코드를 연결했음. 새 Google 인증 구현은 이 통과 회차에 포함되지 않음.
+
+### 이번 개발 (새 HTML/web 앱이 아닌 기존 Tk Windows EXE)
+1. src/ai_broadcaster/youtube_desktop_oauth.py 신설: YouTube Data API 소유 계정 읽기 전용 Google 데스크톱 OAuth 인증을 **운영자가 GUI에서 누른 뒤에만** 개시. 공식 시스템 브라우저 Google consent; 암호학적 PKCE S256·state CSRF·127.0.0.1 임시 loopback callback·일회성 code 교환 Google token API. scope youtube.readonly만 요청, browser log/HTTP error text에 코드·token 노출 금지, 외부 호스트에서 callback 수신 금지. refresh token 요청/파일 저장/채팅 송신/방송 송출/자동로그인 안 함.
+2. src/ai_broadcaster/desktop_chat_tab.py 확장: 기존 '유튜브 OAuth 읽기 토큰' 입력 오른쪽에 'Google 소유 계정 읽기 승인' 버튼, 승인 다이얼로그 및 운영자가 제공한 데스크톱 client ID/secret 입력, UI 멈춤 방지 background worker, 결과는 GUI의 기존 토큰 메모리 상태에만 반영. 승인 성공 후에도 '내 활성 방송' 선택 및 기존 시작 버튼을 사용해야만 실제 실시간 채팅 API 조회 개시. 재인증 흐름과 다른 AI·채팅 작업의 중복 시작 차단.
+3. scripts/gui_official_pipeline_click_windows.py: 기존 네이티브 Tk 실클릭 Windows E2E 검사에 OAuth 버튼 표시/1280 폭 확인 및 승인 거부 시 Google 브라우저 열림·client prompt·로그인·네트워크 0건인 fail-closed 검사.
+4. tests/test_aisting_owner_youtube_desktop_oauth_pkce.py 신규 11건: PKCE, read-only scope, state mismatch·중복 코드 차단, 미승인 상태 무시, 잘못된 client ID 차단, Google token POST 정확성(모의 URL), 권한 누락 차단, 127.0.0.1 로컬 callback 실제 HTTP 통신 테스트, GUI 거절/오류/메모리 수신.
+5. docs/LIVE_REAL_FIFO_LATENCY_AND_24H_VALIDATION.md: 기존 54절 원문 보존, 소유자 OAuth Google 운영자 동의 실사용 절차 및 토큰 만료 재승인 한계 추가.
+
+### 외부 실사용 증명의 정확한 경계
+- OAuth 로컬 승인 코드↔Google token API 연결은 실제 사용자 소유 Google 개발자 OAuth client 설정과 운영자 로그인 동의가 있어야 성공. 이 코드가 CI에서 mock으로 성공해도 실제 소유 방송 읽기/게시된 메시지 인입 성공은 아님.
+- 브라우저는 구글 인증 규격상 외부 Google 계정 동의를 보여줄 때만 사용. 사용자 프로그램은 Windows Tk EXE 그대로, 웹/HTML UI나 Drive 연동 추가하지 않음.
+- 24시간 YouTube OAuth access token 만료 재인증 문제는 실환경에서 여전히 확인 필요(운영자 권한 갱신 방침 결정 필요). 외부 계정 임의 인증/갱신 없음.
+- 기존 1~54절 삭제/축약 금지; main에 누적 변경만, 버전 되돌리기/새 브랜치/force push 없음; 사용자 캐릭터/프로필·SQLite·OBS·음성 권리는 유지.

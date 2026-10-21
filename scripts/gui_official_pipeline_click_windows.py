@@ -125,6 +125,28 @@ def main():
                 authorize.assert_not_called()
                 assert not tab._tts_probe_busy
             print("WINDOWS_REAL_TTS_BUTTON_VISIBLE_OFFLINE_FAIL_CLOSED_PASS")
+            # Actual Tk OAuth button: Google system-browser auth must be
+            # explicitly approved and must never start on its own.
+            owner_button = tab._youtube_oauth_button
+            assert owner_button.winfo_ismapped(), (
+                "소유 YouTube OAuth 읽기 승인 버튼이 네이티브 앱에 보이지 않습니다")
+            assert 0 <= (owner_button.winfo_rootx() - app.winfo_rootx())
+            assert ((owner_button.winfo_rootx() - app.winfo_rootx()
+                     + owner_button.winfo_width()) <= app.winfo_width()), (
+                "1280 Windows 네이티브 폭에서 OAuth 승인 버튼이 가려졌습니다")
+            with patch("ai_broadcaster.desktop_chat_tab.messagebox.askyesno",
+                       return_value=False) as approval, patch(
+                       "ai_broadcaster.desktop_chat_tab.simpledialog.askstring"
+                       ) as prompt, patch(
+                       "ai_broadcaster.youtube_desktop_oauth.webbrowser.open"
+                       ) as browser:
+                owner_button.invoke()
+                app.update()
+                approval.assert_called_once()
+                prompt.assert_not_called()
+                browser.assert_not_called()
+                assert not tab._oauth_busy
+            print("WINDOWS_NATIVE_OWNER_OAUTH_EXPLICIT_DENIAL_NO_BROWSER_PASS")
             btn = tab._pipeline_button
             assert btn.winfo_ismapped(), "공식 AI·Live2D·OBS 버튼이 실제 표시되지 않았습니다"
             # A live operator has to be able to see/click the control, not
