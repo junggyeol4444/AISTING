@@ -227,9 +227,9 @@ class FullPipelineContracts(unittest.TestCase):
             monitor.probe_count += 1
             if monitor.probe_count == 1:
                 return SimpleNamespace(coherent_media_candidate=False)
+            import time
             began = time.monotonic()
             second_window.set()
-            import time
             time.sleep(0.01)
             return SimpleNamespace(
                 coherent_media_candidate=True,
@@ -312,8 +312,10 @@ class FullPipelineContracts(unittest.TestCase):
             return SimpleNamespace(
                 coherent_media_candidate=True,
                 audio=SimpleNamespace(
+                    # Only the initial 1ms tick was non-silent; the rest of
+                    # the 80ms OBS inspection was silent while mouth moved.
                     first_selected_signal_monotonic=began,
-                    last_selected_signal_monotonic=ended))
+                    last_selected_signal_monotonic=began + 0.001))
         monitor.inspect_program_media = disjoint_media
         def unrelated_lip(*args, **kwargs):
             time.sleep(0.035)

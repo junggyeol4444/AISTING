@@ -1105,3 +1105,10 @@ GitHub `junggyeol4444/AISTING`, **기존 main에만 빠른전진 반영**:
 ### 다음 조치/검증 경계
 - 위 실질 기능들을 묶어 기존 main에 커밋 → 전체 회귀/Windows 네이티브 EXE + 실제 Ollama + OBS 공개읽기 5-job 검사, 실패 시 소스/검사 오류 수정 후 전체 재실행. 결과/새 artifact를 반드시 60절에 정확히 추가.
 - 사용자 계정 YouTube OAuth의 실제 동의와 본인 활성 방송 수신, 실제 권리 확인된 한국어 GPT-SoVITS 모델/참조 보이스를 활용한 실제 합성→공식 Live2D Cubism→OBS 동일 발화, 원격 시청자 최종 도달 지연/실제 방송의 수백명 24h은 **이 격리 GitHub runner에서 성공했다고 보고 금지**. 윈도우/모델 준비 없이 모의 입력으로 대신 성공 처리 금지. 로컬 OBS 입력 미터와 Cubism 시간 직접 상관 코드는 이제 실제 성공/실패를 제대로 가를 수 있어야 함.
+
+## 60. 2026-10-21 59절 통합 코드 첫 전체 회귀 실패 실제 확인·수정
+
+- 첫 수정 기준 main b19875573d1d8e848d85cf9aa0094c57fc0b3b1b 전체 회귀 https://github.com/junggyeol4444/AISTING/actions/runs/39544322528 : 2,496 tests, failures=1, errors=1, skipped=2. Windows 전체 https://github.com/junggyeol4444/AISTING/actions/runs/39544322580 의 Windows EXE job도 같은 2개 단위 검사에서 실패. 성공이라 허위 보고하지 않음.
+- test_aisting_official_chat_obs_pipeline.py의 지연 TTS 시간 mock 코드에서 import time 문이 사용 이후에 있어 UnboundLocalError가 발생했고, 음성과 입 움직임이 *서로 다르다*는 부정 예시에서 OBS의 음성 이벤트 마지막 시각을 관찰 창 종료 시각으로 설정해 실제로는 양쪽이 겹치는 잘못된 테스트 입력이었음.
+- 기존 OBS 실제 monotonic 소리 first/last 기록 및 공식 Cubism first/last timestamp 직접 겹침 판정 기능 자체는 유지한다. 지연 TTS 테스트의 import 선행과 부정 예시를 80ms 넓은 관찰 구간 중 초기 1ms 비무음 OBS 신호만 있도록 정확히 수정. full regression/Windows EXE·real Ollama·OBS·CHZZK·SOOP·Twitch 5 jobs 모두 새 main으로 재실행하고 실패하면 코드 수정 후 전체 재검증한다.
+- 59절에 이미 포함된 scripts/aisting_real_ollama_fifo_soak.py는 실제 4플랫폼 합성 채팅 500건 이상/24h 로컬 사용 가능한 스크립트이며, GitHub Actions에는 **모의 모델이 아닌 실제 CPU Ollama 4개 메시지** 간단 시험을 추가함. 이 짧은 시험의 성공이 수백명 실제 방송 24시간 결과는 아니다.
