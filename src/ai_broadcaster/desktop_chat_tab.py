@@ -54,6 +54,8 @@ class LocalChatTab(ttk.Frame):
         self._youtube_api_key = tk.StringVar()
         self._youtube_oauth_token = tk.StringVar()
         self._pipeline_busy = False
+        self._tts_probe_busy = False
+        self._tts_probe_status = tk.StringVar(value="실제 GPT-SoVITS 한국어 합성 미실행")
         self._pipeline_cancel: threading.Event | None = None
         self._pipeline_audio_input = tk.StringVar()
         self._pipeline_obs_password = tk.StringVar()
@@ -195,6 +197,12 @@ class LocalChatTab(ttk.Frame):
             pipeline, text="실측 중지 요청", command=self._cancel_official_pipeline,
             state="disabled")
         self._pipeline_cancel_button.pack(side="left", padx=(8, 0), pady=(5, 0))
+        self._tts_probe_button = ttk.Button(
+            pipeline, text="실제 GPT-SoVITS 음성 단독 합성",
+            command=self._start_official_tts_probe)
+        self._tts_probe_button.pack(side="left", padx=(8, 0), pady=(5, 0))
+        ttk.Label(pipeline, textvariable=self._tts_probe_status,
+                  wraplength=580).pack(anchor="w")
         ttk.Label(pipeline, textvariable=self._pipeline_status,
                   wraplength=580).pack(anchor="w")
         self._refresh_memory_count()
@@ -232,7 +240,7 @@ class LocalChatTab(ttk.Frame):
             self._memory_count.set("대화 기억 확인 실패")
 
     def _submit(self) -> None:
-        if self._closed or self._busy or self._pipeline_busy:
+        if self._closed or self._busy or self._pipeline_busy or getattr(self, "_tts_probe_busy", False):
             return
         # A stopped public reader can still have an LLM turn writing SQLite.
         # Do not start a separate Ollama conversation against that same
@@ -264,9 +272,64 @@ class LocalChatTab(ttk.Frame):
         else:
             self._results.put(("ok",result))
 
+    def _start_official_tts_probe(self) -> None:
+        """Actual authorized GPT-SoVITS inference from the saved official voice."""
+        if (self._closed or self._busy or self._pipeline_busy
+                or self._tts_probe_busy or self._twitch_session is not None
+                or getattr(self, "_twitch_active_workers", None)):
+            self._tts_probe_status.set(
+                "다른 AI·채팅·음성 검사 작업이 끝난 뒤 실제 합성을 실행하세요.")
+            return
+        text = self._input.get().strip()
+        if not 1 <= len(text) <= 200 or any(ord(ch) < 32 for ch in text):
+            self._tts_probe_status.set("한국어 시험 발화 1~200자를 입력하세요.")
+            return
+        try:
+            from . import original_plan_frontend as frontend
+            from .official_tts_readiness import require_saved_korean_gpt_sovits
+            project = frontend._native_viewer_project
+            if project is None:
+                raise ValueError("공식 Live2D 프로젝트가 선택되지 않았습니다.")
+            require_saved_korean_gpt_sovits(project)
+        except Exception as exc:
+            self._tts_probe_status.set(
+                "기존 공식 음성 설정·참조 WAV/FLAC을 확인하세요 ("
+                + type(exc).__name__ + ")")
+            return
+        if not messagebox.askyesno(
+            "실제 한국어 GPT-SoVITS 합성 승인",
+            "선택한 기존 공식 프로젝트의 한국어 참조 음성과 대사를 사용해 "
+            "로컬 GPT-SoVITS /tts 서버에 입력 문장 한 건을 실제 합성합니다. "
+            "참조 음성의 소유·동의·라이선스 권리가 있고 이번 사용을 승인합니까? "
+            "소리 재생·파일 저장·모델 학습·방송 송출·채팅 발신은 하지 않습니다. "
+            "생성 WAV의 구조·음성 신호만 검사하며 Live2D·OBS 성공을 의미하지 않습니다.",
+            parent=self):
+            self._tts_probe_status.set("실제 합성을 승인하지 않아 요청하지 않았습니다.")
+            return
+        self._tts_probe_busy = True
+        self._tts_probe_button.configure(state="disabled")
+        self._pipeline_button.configure(state="disabled")
+        self._send.configure(state="disabled")
+        self._tts_probe_status.set("승인받은 로컬 GPT-SoVITS 실제 합성 중…")
+        threading.Thread(
+            target=self._work_official_tts_probe,
+            args=(project, text), daemon=True).start()
+
+    def _work_official_tts_probe(self, project, text: str) -> None:
+        try:
+            from .official_tts_readiness import synthesize_saved_korean_gpt_sovits
+            actual = synthesize_saved_korean_gpt_sovits(
+                project, text, operator_approved=True,
+                rights_confirmed=True, timeout=90)
+        except Exception as exc:
+            # Never show reference path, TTS URL or upstream traceback.
+            self._results.put(("tts_probe_error", type(exc).__name__))
+        else:
+            self._results.put(("tts_probe_ok", actual))
+
     def _start_official_pipeline(self) -> None:
         """Explicitly approved existing native Live2D + OBS observation."""
-        if self._closed or self._pipeline_busy or self._busy:
+        if self._closed or self._pipeline_busy or self._busy or getattr(self, "_tts_probe_busy", False):
             return
         if (self._twitch_session is not None
                 or getattr(self, "_twitch_active_workers", None)):
@@ -375,7 +438,8 @@ class LocalChatTab(ttk.Frame):
     def _start_twitch(self) -> None:
         # Never interleave automatic platform prompts into a one-shot
         # operator-approved official Live2D/OBS session probe.
-        if self._closed or self._twitch_session is not None or self._pipeline_busy:
+        if (self._closed or self._twitch_session is not None
+                or self._pipeline_busy or getattr(self, "_tts_probe_busy", False)):
             return
         if self._busy:
             messagebox.showwarning(
@@ -804,6 +868,24 @@ class LocalChatTab(ttk.Frame):
                                 + str(self._twitch_replied) + "건 · AI 오류 "
                                 + str(self._twitch_ai_failures) + "건")
                     continue
+                if kind in ("tts_probe_ok", "tts_probe_error"):
+                    self._tts_probe_busy = False
+                    self._tts_probe_button.configure(state="normal")
+                    if not self._pipeline_busy:
+                        self._pipeline_button.configure(state="normal")
+                    if not self._busy and not self._pipeline_busy:
+                        self._send.configure(state="normal")
+                    if kind == "tts_probe_error":
+                        self._tts_probe_status.set(
+                            "실제 한국어 GPT-SoVITS 합성 실패 (" + str(payload)
+                            + ") · 모델/서버/권리 확인 필요 · 미실증")
+                    else:
+                        seconds = payload.frame_count / payload.sample_rate
+                        self._tts_probe_status.set(
+                            f"실제 로컬 WAV 합성 확인 · {payload.sample_rate}Hz"
+                            f" · {seconds:.2f}초 · {payload.wav_bytes}바이트"
+                            " · 재생/Live2D/OBS/방송은 별도 검사")
+                    continue
                 if kind in ("pipeline_ok", "pipeline_error", "pipeline_cancelled"):
                     # A worker can queue success immediately before the GUI
                     # handles Stop. Check cancellation at the UI boundary too;
@@ -960,7 +1042,8 @@ class LocalChatTab(ttk.Frame):
             self._tts_status.set("음성 재생 중지를 요청했습니다.")
 
     def _clear_memory(self) -> None:
-        if (self._busy or self._pipeline_busy or self._twitch_session is not None
+        if (self._busy or self._pipeline_busy or getattr(self, "_tts_probe_busy", False)
+                or self._twitch_session is not None
                 or getattr(self, "_twitch_active_workers", None)):
             messagebox.showwarning("사용 중", "AI·채팅·실측 및 이전 응답의 기억 저장 종료 후에만 삭제할 수 있습니다.", parent=self)
             return

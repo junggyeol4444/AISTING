@@ -984,3 +984,23 @@ GitHub `junggyeol4444/AISTING`, **기존 main에만 빠른전진 반영**:
 - 한국어 GPT-SoVITS 합성 → 공식 Open-LLM-VTuber/Live2D Cubism 실제 발화 입 움직임 → OBS의 **동일 발화** 오디오/영상, 실제 시청자 송출, 4플랫폼 실수백명 1~3초 및 24시간 장기 운용은 아직 미실증/미완료.
 - 기존 원본 기획/100단계 중 최종 010 승인 대기·캐릭터/SQLite/사용자 설정 보존, 다른 프로젝트/예약/드라이브/방송·녹화/무단 로그인·채팅 발신/유료 API 또는 권리 없는 음성 훈련 미수행. 모든 이전 인수인계 1~50절 및 별도 보존 28~38절 유지.
 - 다른 회차는 먼저 위 전체 handoff + 모든 원본 계획/roadmap/main을 읽고, 잔여 여러 기능 묶음 실제 구현 후 **전체** 회귀/Windows EXE GUI/가능 연동 검증, 실패 시 수정 후 **전체** 재검증. SHA·HEAD는 외부 코드 덮어쓰기 방지 용도로만 확인하며 코드 성과로 보고하지 않음.
+
+## 52. 2026-10-21 — 핵심 기능 미실증 원인 실제 소스 조사 및 Windows GPT-SoVITS 실합성 GUI 직접 연결
+
+### 원인: 기존 코드가 있어도 최종 실증을 수행하지 않은 구간
+- 소유 YouTube OAuth API reader는 구현·격리 HTTP 검증됐지만 실제 승인 토큰과 소유 활성 방송이 GitHub CI에 없음. CI의 fake OAuth HTTP가 실계정 수신이나 시청자 인입의 증거일 수 없음.
+- 공식 `src/ai_broadcaster/original_plan_tts.py`에 `synthesize_local_gpt_sovits` 실제 `127.0.0.1:9880/tts` 요청·PCM WAV 검사 함수가 **이미 있었으나**, Windows 기존 네이티브 채팅 GUI의 별도 실제 합성 버튼과 저장된 기존 Open-LLM-VTuber `conf.yaml`에서 해당 함수까지 호출하는 경로가 없었음. 대화 중 무조건 음성 합성하는 임의 사용은 권리/승인 위반 가능.
+- 실제 GPT-SoVITS 모델·합법 참조 음성·사용자 Windows 실행 서버, 공식 WebView2 Live2D, OBS 선택 오디오 입력 동시 존재가 검증되지 않아 저장된 설정 문자열 검사와 OBS 미터 후보가 곧 동일 발화 실증은 아님. 현재 CI Windows runner의 Ollama·OBS read-only 작업은 이 전체 조합을 실제 소유 모델로 실행하지 않음.
+- CI 2,455+ 테스트와 Windows 5 jobs가 성공하더라도 실제 방송 100~500명/24시간, 외부 시청자 1~3초 종단 간 전체 지연 측정이 수행된 것이 아님. 기존 단일 AI worker FIFO는 각각 AI 실제 소요시간이 1초라면 500명 신규 메시지의 마지막 건은 약 500초 대기가 생길 수 있어 1~3초 보장은 현재 증명 불가. 사용자가 요청한 전부응답·중복보존을 임의 생략하지 않는다.
+
+### 이번 회차 실개발 — 기존 소스 파일을 함께 확장
+1. `src/ai_broadcaster/official_tts_readiness.py`: 기존 저장된 공식 프로젝트의 실제 `conf.yaml`에서 `GPT-SoVITS` 엔진·한국어/로컬 endpoint·실존 WAV/FLAC 참조·녹음 대사를 검증해 동일 실제 합성 API에 전달하는 `read_saved_korean_gpt_sovits_config` 및 권리·실행승인 2중 게이트 `synthesize_saved_korean_gpt_sovits` 추가. 기존 `require_saved_korean_gpt_sovits` 호출 계약·안전검사 그대로 유지.
+2. `src/ai_broadcaster/desktop_chat_tab.py`: **기존 Windows Tk 앱**에 `실제 GPT-SoVITS 음성 단독 합성` 버튼을 설치. 기존 공식 프로젝트·참조 파일을 확인하고 권리·1회 실제 합성 승인 후 사용자 입력 한국어 문장 1개를 로컬 엔진에서 실제 생성. 결과의 유효 WAV 프레임/재생 시간/Hz만 확인; 사용자 승인 없이 음성 모델 설치·훈련·파일기록·스피커 재생·방송·OBS 수정 안 함. 별도 worker 사용으로 Tk 메인 스레드 프리징 방지, 진행 중 다른 AI·Live2D·채팅/기억 삭제 동시 실행 방지. 합성 WAV만 성공해도 Live2D/OBS 동일발화가 검증됐다고 보고 금지. 시간 제한/오류 클래스만 화면 노출.
+3. `tests/test_aisting_real_tts_gui_probe.py` 신규 독립 6건: 승인 전 요청 없음, 사전 조건 실패시 승인 누르기 이전 차단, 실제 로컬 추론 호출 및 버튼 잠금, 실패시 경로 비노출, 권리 게이트, 실제 설정→기존 추론 전달·재생/저장 금지.
+4. `scripts/gui_official_pipeline_click_windows.py`: 실제 Windows 네이티브 Tk 페이지에 새로운 버튼이 화면 안에 표시되는지 및 승인 전 외부 음성 요청이 차단되는지 검증.
+
+### 사용자 지시/미실증/후속
+- 기존 1~51절 및 분리 보존 28~38절 원문 삭제·축약 금지, main 빠른전진만, 원본 100단계/캐릭터/SQLite/설정/예약·다른 프로젝트·드라이브 무변경.
+- 코드를 실제 main 반영 후 **전체** 2,455+ 회귀와 Windows 5-job EXE/GUI 테스트를 동시에 실행, 실패하면 수정 후 전체 재검증. 성공 테스트는 실제 소유 모델 음성 합성·동일발화 OBS 출력·실사용자 24시간 시청자 1~3초 증거가 아님.
+- 실제 GPT-SoVITS 합성은 권리 확인된 참조 음성/모델과 Windows 로컬 엔진이 연결되고 **운영자가 실제 버튼 승인**할 때만 가능. 가짜 모델·불명확한 음성 권리/사용자 PC 무단접근으로 성공 대신 채우지 않음. YouTube는 소유 방송의 읽기 OAuth 동의·토큰이 있어야 실증 가능.
+- 다음 회차: 실제 로컬 음성/Live2D/OBS 각 단계 결과와 전체 발화 상관성을 구분하는 진단, 동시에 100~500명 FIFO 실제 처리량과 1~3초 미달 원인을 수치화해 모두 보존하는 기존 코드 발전 필요.

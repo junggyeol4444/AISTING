@@ -109,6 +109,22 @@ def main():
             app.update()
             assert not tab._multi_fields.winfo_ismapped()
             print("GUI_NATIVE_MULTI_PLATFORM_FIELDS_ROUTE_NO_NETWORK_PASS")
+            # Same real Windows Tk page now exposes direct authorized
+            # GPT-SoVITS synthesis, not just a mocked Live2D/OBS preview.
+            voice_btn = tab._tts_probe_button
+            assert voice_btn.winfo_ismapped(), "실제 GPT-SoVITS 합성 버튼이 표시되지 않았습니다"
+            native_top = voice_btn.winfo_rooty() - app.winfo_rooty()
+            native_bottom = native_top + voice_btn.winfo_height()
+            assert 0 <= native_top < native_bottom <= app.winfo_height(), (
+                "1280x768 화면에서 실제 GPT-SoVITS 음성 버튼이 가려졌습니다")
+            # No rights or reference file in CI: clicking must refuse
+            # synthesis with no external request, no voice data, no broadcast.
+            with patch("ai_broadcaster.desktop_chat_tab.messagebox.askyesno") as authorize:
+                tab._tts_probe_button.invoke()
+                app.update()
+                authorize.assert_not_called()
+                assert not tab._tts_probe_busy
+            print("WINDOWS_REAL_TTS_BUTTON_VISIBLE_OFFLINE_FAIL_CLOSED_PASS")
             btn = tab._pipeline_button
             assert btn.winfo_ismapped(), "공식 AI·Live2D·OBS 버튼이 실제 표시되지 않았습니다"
             # A live operator has to be able to see/click the control, not

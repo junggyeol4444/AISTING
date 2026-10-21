@@ -15,7 +15,8 @@ from .original_plan_tts import (
 )
 
 
-def require_saved_korean_gpt_sovits(project: str | Path) -> None:
+def read_saved_korean_gpt_sovits_config(project: str | Path) -> tuple[str, Path, str]:
+    """Validated configuration for real local inference; no network or writes."""
     root = check_official_project(project)
     conf = root / "conf.yaml"
     if conf.is_symlink() or not conf.is_file():
@@ -84,3 +85,31 @@ def require_saved_korean_gpt_sovits(project: str | Path) -> None:
         raise StageOneUnavailable(
             "GPT-SoVITS 참조 음성이 실제 WAV/FLAC 파일인지 확인하지 못했습니다."
         ) from exc
+
+    return selected("api_url"), reference, spoken_words
+
+
+def require_saved_korean_gpt_sovits(project: str | Path) -> None:
+    """Original read-only readiness contract: never start synthesis."""
+    read_saved_korean_gpt_sovits_config(project)
+
+
+def synthesize_saved_korean_gpt_sovits(
+    project: str | Path, utterance: str, *,
+    operator_approved: bool = False, rights_confirmed: bool = False,
+    timeout: float = 90.0,
+):
+    """Real, one-shot LOCAL inference using the exact validated upstream config.
+
+    No audio files, playback, training, OBS changes, accounts or remote requests.
+    A successful WAV is a speech signal only, not proof of Live2D/OBS or audience.
+    """
+    if operator_approved is not True or rights_confirmed is not True:
+        raise PermissionError("참조 음성 권리와 이번 실제 합성 승인이 필요합니다.")
+    url, reference, spoken_words = read_saved_korean_gpt_sovits_config(project)
+    from .original_plan_tts import synthesize_local_gpt_sovits
+    return synthesize_local_gpt_sovits(
+        reference, spoken_words, utterance, api_url=url,
+        operator_approved=True, rights_confirmed=True,
+        play_to_speaker=False, return_audio_bytes=False, timeout=timeout,
+    )
