@@ -2,6 +2,7 @@
 import importlib.util
 import json
 import tempfile
+import threading
 import io
 import queue
 from pathlib import Path
@@ -116,6 +117,79 @@ class LoadRunnerContracts(unittest.TestCase):
             second = json.loads(file.read_text(encoding="utf-8"))
             self.assertEqual(second["completed"], 500)
             self.assertEqual(list(Path(folder).iterdir()), [file])
+
+    def test_parallel_checkpoint_writers_leave_only_complete_json(self):
+        # 여러 스레드의 동일 보고서 저장 경합에도 완전한 JSON만 남겨야 한다.
+        with tempfile.TemporaryDirectory() as folder:
+            file = Path(folder) / "aggregate.json"
+            failures = []
+            def writer(index):
+                try:
+                    SOAK._atomic_aggregate_checkpoint(file, {
+                        "writer": index, "completed": index + 1,
+                        "real_viewers": False})
+                except Exception as exc:
+                    failures.append(type(exc).__name__)
+            threads = [threading.Thread(target=writer, args=(i,))
+                       for i in range(12)]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join(timeout=10)
+            self.assertFalse(any(thread.is_alive() for thread in threads))
+            self.assertEqual(failures, [])
+            saved = json.loads(file.read_text(encoding="utf-8"))
+            self.assertIn(saved["writer"], range(12))
+            self.assertEqual(saved["completed"], saved["writer"] + 1)
+            self.assertEqual(list(Path(folder).iterdir()), [file])
+
+    def test_failed_checkpoint_replace_keeps_previous_report_and_cleans_temp(self):
+        with tempfile.TemporaryDirectory() as folder:
+            file = Path(folder) / "aggregate.json"
+            SOAK._atomic_aggregate_checkpoint(file, {"completed": 1})
+            with patch.object(SOAK.os, "replace", side_effect=OSError("disk unavailable")):
+                with self.assertRaises(OSError):
+                    SOAK._atomic_aggregate_checkpoint(file, {"completed": 2})
+            self.assertEqual(json.loads(file.read_text(encoding="utf-8")),
+                             {"completed": 1})
+            self.assertEqual(list(Path(folder).iterdir()), [file])
+
+    def test_checkpoint_failure_does_not_abandon_real_fifo_worker(self):
+        # 진행 파일 장애를 숨기지 않으면서 이미 접수한 모든 AI 요청은 처리한다.
+        attempts = []
+        def failed_progress(snapshot):
+            attempts.append(snapshot["completed"])
+            raise OSError("report destination unavailable")
+        with patch.object(SOAK, "real_ollama_chat",
+                          return_value=SimpleNamespace(reply="정상", remembered_count=1)) as llm:
+            result = SOAK.run_real_load(
+                model="installed-local-test", messages=36,
+                duration_seconds=5, queue_size=64,
+                progress_callback=failed_progress)
+        self.assertEqual(llm.call_count, 36)
+        self.assertEqual(result["accepted"], 36)
+        self.assertEqual(result["completed"], 36)
+        self.assertEqual(result["model_success"], 36)
+        self.assertEqual(result["unfinished"], 0)
+        self.assertTrue(result["worker_ended"])
+        self.assertEqual(result["processing_errors"], ["checkpoint_write_failed"])
+        self.assertFalse(result["passed_no_drops"])
+        self.assertGreaterEqual(len(attempts), 2)
+
+    def test_main_final_report_failure_is_nonzero_not_false_success(self):
+        # 기존 성공 집계가 있더라도 최종 파일 저장 실패를 성공으로 종료하지 않는다.
+        with tempfile.TemporaryDirectory() as folder:
+            report = Path(folder) / "aggregate.json"
+            report.write_text('{"completed": 3}', encoding="utf-8")
+            args = ["aisting_real_ollama_fifo_soak.py", "--model", "installed-local-test",
+                    "--operator-approved", "--report", str(report)]
+            with patch.object(SOAK.sys, "argv", args), \
+                 patch.object(SOAK, "run_real_load", return_value={
+                     "passed_no_drops": True, "completed": 5}), \
+                 patch.object(SOAK, "_atomic_aggregate_checkpoint",
+                              side_effect=OSError("disk unavailable")):
+                self.assertEqual(SOAK.main(), 2)
+            self.assertEqual(report.read_text(encoding="utf-8"), '{"completed": 3}')
 
     def test_deadline_partial_acceptance_is_failure_even_when_every_accepted_reply_succeeds(self):
         # A finite-duration paced test must NOT certify 500/500 after

@@ -124,27 +124,32 @@ def run_real_load(*, model: str, messages: int, duration_seconds: float,
                 or now - last_progress_at >= 60):
             return
         snap = metrics.snapshot(now)
-        progress_callback({
-            "status": "running" if not force else "checkpoint",
-            "real_model": True,
-            "real_viewers": False,
-            "target_messages": messages,
-            "accepted": emitted,
-            "not_accepted": messages - emitted,
-            "completed": snap.completed,
-            "success": real_reply["success"],
-            "model_failure": real_reply["error"],
-            "in_flight_or_queued": max(0, emitted - snap.completed),
-            "over_three_seconds": snap.over_three_seconds,
-            "p95_total_seconds": snap.total_p95,
-            "p95_wait_seconds": snap.wait_p95,
-            "p95_ai_seconds": snap.inference_p95,
-            "elapsed_seconds": round(now - start, 3),
-            "goal_three_seconds_met_so_far": (
-                snap.completed > 0 and snap.over_three_seconds == 0),
-            "actual_viewer_delivery_verified": False,
-            "actual_24h_broadcast_verified": False,
-        })
+        try:
+            progress_callback({
+                "status": "running" if not force else "checkpoint",
+                "real_model": True,
+                "real_viewers": False,
+                "target_messages": messages,
+                "accepted": emitted,
+                "not_accepted": messages - emitted,
+                "completed": snap.completed,
+                "success": real_reply["success"],
+                "model_failure": real_reply["error"],
+                "in_flight_or_queued": max(0, emitted - snap.completed),
+                "over_three_seconds": snap.over_three_seconds,
+                "p95_total_seconds": snap.total_p95,
+                "p95_wait_seconds": snap.wait_p95,
+                "p95_ai_seconds": snap.inference_p95,
+                "elapsed_seconds": round(now - start, 3),
+                "goal_three_seconds_met_so_far": (
+                    snap.completed > 0 and snap.over_three_seconds == 0),
+                "actual_viewer_delivery_verified": False,
+                "actual_24h_broadcast_verified": False,
+            })
+        except Exception:
+            # 보고서 저장 실패는 실제 모델 처리 중단 대신 명시적인 실패로 남긴다.
+            if "checkpoint_write_failed" not in errors:
+                errors.append("checkpoint_write_failed")
         last_progress_completed = finished
         last_progress_at = now
 
@@ -334,17 +339,23 @@ def run_real_load(*, model: str, messages: int, duration_seconds: float,
 
 
 def _atomic_aggregate_checkpoint(path: Path, record: dict) -> None:
-    """Operator-selected aggregate progress file, never chat text or tokens."""
+    """운영자가 지정한 집계 파일만 원자적으로 저장하며 채팅 원문은 기록하지 않는다."""
     destination = Path(path)
-    intermediate = destination.with_name(destination.name + ".inprogress.tmp")
+    intermediate = None
     try:
-        intermediate.write_text(
-            json.dumps(record, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8")
+        # 같은 보고서에 두 프로세스가 동시에 기록해도 임시 파일을 공유하지 않는다.
+        with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", delete=False,
+                dir=str(destination.parent),
+                prefix="." + destination.name + ".", suffix=".tmp") as output:
+            intermediate = Path(output.name)
+            output.write(json.dumps(record, ensure_ascii=False, indent=2) + "\n")
+            output.flush()
+            os.fsync(output.fileno())
         os.replace(intermediate, destination)
     finally:
-        if intermediate.exists():
-            intermediate.unlink()
+        if intermediate is not None:
+            intermediate.unlink(missing_ok=True)
 
 
 def main() -> int:
@@ -396,9 +407,14 @@ def main() -> int:
     rendered = json.dumps(result, ensure_ascii=False, indent=2)
     print(rendered)
     if args.report is not None:
-        # Explicit operator-requested aggregate report only. No content,
-        # sender names, voice data, model responses, credentials or tokens.
-        _atomic_aggregate_checkpoint(args.report, result)
+        # 보고서 저장 실패를 성공 종료로 표시하거나 실제 처리 결과를 숨기지 않는다.
+        # 원자적 저장 실패 시 이전 정상 보고서는 보존된다.
+        try:
+            _atomic_aggregate_checkpoint(args.report, result)
+        except OSError as exc:
+            print(f"[실제 모델 부하 보고서 저장 실패] {type(exc).__name__}",
+                  file=sys.stderr, flush=True)
+            return 2
     return 0 if result["passed_no_drops"] else 2
 
 
