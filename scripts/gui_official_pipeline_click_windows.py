@@ -125,6 +125,28 @@ def main():
                 authorize.assert_not_called()
                 assert not tab._tts_probe_busy
             print("WINDOWS_REAL_TTS_BUTTON_VISIBLE_OFFLINE_FAIL_CLOSED_PASS")
+            real_obs_button = tab._tts_obs_button
+            assert real_obs_button.winfo_ismapped(), (
+                "실제 GPT-SoVITS WAV→OBS 임시 음성 실측 버튼이 보이지 않습니다")
+            tab._input.set("안녕하세요. WAV에서 OBS 음성 확인")
+            tab._pipeline_obs_password.set("CI-NOT-A-USER-SECRET")
+            with patch("ai_broadcaster.original_plan_frontend._native_viewer_project",
+                       root / "isolated-native-project"), patch(
+                       "ai_broadcaster.official_tts_readiness.read_saved_korean_gpt_sovits_config",
+                       return_value=("http://127.0.0.1:9880/tts",
+                                     root / "not-a-real-licensed-voice.wav", "검사용 텍스트")), patch(
+                       "ai_broadcaster.desktop_chat_tab.messagebox.askyesno",
+                       return_value=False) as rights_popup, patch(
+                       "ai_broadcaster.original_plan_voice_obs_bridge.verify_gpt_sovits_to_obs"
+                       ) as external_obs:
+                real_obs_button.invoke()
+                app.update()
+                rights_popup.assert_called_once()
+                external_obs.assert_not_called()
+                assert not tab._tts_probe_busy
+            print("WINDOWS_ACTUAL_GPT_SOVITS_TO_OBS_BUTTON_DENY_NO_IO_PASS")
+            tab._input.set("")
+            tab._pipeline_obs_password.set("")
             # Actual Tk OAuth button: Google system-browser auth must be
             # explicitly approved and must never start on its own.
             owner_button = tab._youtube_oauth_button

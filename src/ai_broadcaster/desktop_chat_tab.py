@@ -208,6 +208,10 @@ class LocalChatTab(ttk.Frame):
             pipeline, text="실제 GPT-SoVITS 음성 단독 합성",
             command=self._start_official_tts_probe)
         self._tts_probe_button.pack(side="left", padx=(8, 0), pady=(5, 0))
+        self._tts_obs_button = ttk.Button(
+            pipeline, text="실제 GPT-SoVITS 음성 → OBS 입력 검사",
+            command=self._start_real_tts_obs_probe)
+        self._tts_obs_button.pack(side="left", padx=(8, 0), pady=(5, 0))
         ttk.Label(pipeline, textvariable=self._tts_probe_status,
                   wraplength=580).pack(anchor="w")
         ttk.Label(pipeline, textvariable=self._pipeline_status,
@@ -315,6 +319,8 @@ class LocalChatTab(ttk.Frame):
             return
         self._tts_probe_busy = True
         self._tts_probe_button.configure(state="disabled")
+        if getattr(self, "_tts_obs_button", None) is not None:
+            self._tts_obs_button.configure(state="disabled")
         self._pipeline_button.configure(state="disabled")
         self._send.configure(state="disabled")
         self._tts_probe_status.set("승인받은 로컬 GPT-SoVITS 실제 합성 중…")
@@ -333,6 +339,80 @@ class LocalChatTab(ttk.Frame):
             self._results.put(("tts_probe_error", type(exc).__name__))
         else:
             self._results.put(("tts_probe_ok", actual))
+
+    def _start_real_tts_obs_probe(self) -> None:
+        """Actually synthesize authorized Korean GPT-SoVITS -> OBS one-shot WAV.
+
+        Only the bridge's newly created, temporary OFFLINE audio source is
+        touched. An installed model and running OBS are needed; CI never
+        represents substitute audio as a model success.
+        """
+        if (self._closed or self._busy or self._pipeline_busy
+                or self._tts_probe_busy or getattr(self, "_oauth_busy", False)
+                or self._twitch_session is not None
+                or getattr(self, "_twitch_active_workers", None)):
+            self._tts_probe_status.set(
+                "다른 AI·채팅·음성 실측 작업을 종료한 뒤 다시 실행하세요.")
+            return
+        text = self._input.get().strip()
+        password = self._pipeline_obs_password.get()
+        if not 1 <= len(text) <= 200 or any(ord(c) < 32 for c in text):
+            self._tts_probe_status.set("한국어 시험 발화 1~200자를 입력하세요.")
+            return
+        if not password:
+            self._tts_probe_status.set("기존 OBS WebSocket 암호가 필요합니다.")
+            return
+        try:
+            from . import original_plan_frontend as frontend
+            from .official_tts_readiness import read_saved_korean_gpt_sovits_config
+            project = frontend._native_viewer_project
+            if project is None:
+                raise ValueError("공식 Live2D 프로젝트 미선택")
+            api_url, reference, reference_text = read_saved_korean_gpt_sovits_config(project)
+        except Exception as exc:
+            self._tts_probe_status.set(
+                "한국어 음성 설정·참조 음성을 확인하세요 ("
+                + type(exc).__name__ + ")")
+            return
+        if not messagebox.askyesno(
+            "실제 한국어 GPT-SoVITS → OBS 임시 입력 검사",
+            "실제 로컬 GPT-SoVITS 모델과 사용 권리가 확인된 참조 음성으로 "
+            "한국어 문장 한 건을 합성합니다. 현재 OBS가 방송/녹화 중이 "
+            "아닌 것을 확인한 뒤, OBS 현재 장면에 임시 음성 소스를 만들고 "
+            "실제 오디오 미터 신호를 확인한 후 소스를 제거합니다. "
+            "임시 WAV 파일도 삭제하며 기존 OBS 소스는 변경하지 않습니다. "
+            "실제 음성 합성·임시 OBS 입력 생성과 사용 권리를 이번 1회에 "
+            "승인합니까? Live2D 입 움직임과 최종 시청자 송출은 별도 실증입니다.",
+            parent=self):
+            self._tts_probe_status.set("미승인 · GPT-SoVITS/OBS 요청 없음")
+            return
+        self._tts_probe_busy = True
+        self._tts_probe_button.configure(state="disabled")
+        self._tts_obs_button.configure(state="disabled")
+        self._pipeline_button.configure(state="disabled")
+        self._send.configure(state="disabled")
+        self._tts_probe_status.set(
+            "승인된 실제 GPT-SoVITS 합성·OBS 임시 음성 미터 확인 중…")
+        threading.Thread(
+            target=self._work_real_tts_obs_probe,
+            args=(reference, reference_text, text, api_url, password),
+            daemon=True).start()
+
+    def _work_real_tts_obs_probe(
+        self, reference, reference_text: str, text: str,
+        api_url: str, obs_password: str,
+    ) -> None:
+        try:
+            from .original_plan_voice_obs_bridge import verify_gpt_sovits_to_obs
+            result = verify_gpt_sovits_to_obs(
+                reference, reference_text, text,
+                api_url=api_url, obs_password=obs_password,
+                operator_approved=True, rights_confirmed=True)
+        except Exception as exc:
+            # No model URL, local audio path, password or raw exception message.
+            self._results.put(("tts_obs_error", type(exc).__name__))
+        else:
+            self._results.put(("tts_obs_ok", result))
 
     def _start_official_pipeline(self) -> None:
         """Explicitly approved existing native Live2D + OBS observation."""
@@ -980,14 +1060,31 @@ class LocalChatTab(ttk.Frame):
                                 + str(self._twitch_replied) + "건 · AI 오류 "
                                 + str(self._twitch_ai_failures) + "건")
                     continue
-                if kind in ("tts_probe_ok", "tts_probe_error"):
+                if kind in ("tts_probe_ok", "tts_probe_error",
+                            "tts_obs_ok", "tts_obs_error"):
                     self._tts_probe_busy = False
                     self._tts_probe_button.configure(state="normal")
+                    if getattr(self, "_tts_obs_button", None) is not None:
+                        self._tts_obs_button.configure(state="normal")
                     if not self._pipeline_busy:
                         self._pipeline_button.configure(state="normal")
                     if not self._busy and not self._pipeline_busy:
                         self._send.configure(state="normal")
-                    if kind == "tts_probe_error":
+                    if kind == "tts_obs_error":
+                        self._tts_probe_status.set(
+                            "실제 GPT-SoVITS→OBS 신호 실증 실패 ("
+                            + str(payload) + ") · 음성/OBS/소스 정리 확인 필요")
+                    elif kind == "tts_obs_ok":
+                        if payload.actual_signal and payload.audio_input_events > 0:
+                            self._tts_probe_status.set(
+                                "실제 GPT-SoVITS WAV → OBS 임시 입력 미터 신호 확인 "
+                                f"· {payload.sample_rate}Hz "
+                                f"· 미터 이벤트 {payload.audio_input_events}건 "
+                                "· Live2D·시청자 송출은 별도 검사")
+                        else:
+                            self._tts_probe_status.set(
+                                "음성/OBS 실증 미충족 · 유효한 미터 신호 없음")
+                    elif kind == "tts_probe_error":
                         self._tts_probe_status.set(
                             "실제 한국어 GPT-SoVITS 합성 실패 (" + str(payload)
                             + ") · 모델/서버/권리 확인 필요 · 미실증")

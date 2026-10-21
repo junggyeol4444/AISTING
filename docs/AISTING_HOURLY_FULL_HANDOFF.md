@@ -1052,3 +1052,23 @@ GitHub `junggyeol4444/AISTING`, **기존 main에만 빠른전진 반영**:
 - 새 로컬 loopback 실제 HTTP 취소 시나리오와 잘못된 token_type 테스트 2건 추가, 비동기 로컬 응답 검증 race 줄이기 위해 테스트 스레드 join.
 - 변경 파일: src/ai_broadcaster/youtube_desktop_oauth.py, tests/test_aisting_owner_youtube_desktop_oauth_pkce.py, 본 누적 문서. 기존 소스/기획서/캐릭터/모든 단일 AI FIFO/4플랫폼/Windows/로컬 설정 및 1~55절 유지. main 빠른 전진만. full regression 및 Windows build 다시 검증.
 - 다음 핵심 실증: 유저 본인 소유 Google OAuth desktop client 및 본인 방송 동의, 실제 음성 권리확인 GPT-SoVITS 모델·Official Live2D·OBS 같은 발화, 100~500명·24시간·관객 1~3초. 실행을 허용받지 않은 실제 계정/음성/방송을 임의로 만지지 않음. 갱신 토큰 없는 Google online OAuth access token의 만료 이후 24시간 연속 소유 방송 수신을 보장할 수 없으므로 계속 미검증.
+
+## 57. 2026-10-21 실제 한국어 GPT-SoVITS WAV → 실제 OBS 오디오 입력 실행 버튼 누적 연결
+
+### 검증된 기존 요소와 외부 환경 경계
+- 이전 회차 main 3c3139347b7b433708c26a18d1f390fa749de786의 회귀 https://github.com/junggyeol4444/AISTING/actions/runs/39533463390 는 2,482건 통과, 2건 건너뜀. Windows EXE/GUI·Ollama·OBS 읽기전용·공개채팅 5개 작업 https://github.com/junggyeol4444/AISTING/actions/runs/39533463364 성공. 이를 실제 소유 음성 모델/실방송 성공으로 재해석하지 않음.
+- 원본 1~56절 전체 보존. docs/ORIGINAL_PLAN.txt와 docs/ROADMAP_100.md 및 config/roadmap.json 원본 유지, 캐릭터·SQLite 및 사용자 설정 변동 없음.
+- 이미 존재하던 src/ai_broadcaster/original_plan_voice_obs_bridge.py의 verify_gpt_sovits_to_obs는 **실제** 승인된 로컬 GPT-SoVITS /tts WAV를 수신한 뒤 OBS WebSocket의 방송·녹화 상태를 검사하고, 임시 파일과 고유한 ffmpeg 음성 소스를 만들어 실제 OBS 오디오 미터 신호를 관찰한 뒤 소스를 제거하는 구현임. 유효한 실제 모델과 사용권리/승인된 음성 파일/실행 중인 OBS가 없으면 성공할 수 없음.
+
+### 이번 실개발 변경 묶음
+1. src/ai_broadcaster/desktop_chat_tab.py 기존 Windows Tk GUI에 '실제 GPT-SoVITS 음성 → OBS 입력 검사' 명시적 버튼 추가. 현재 기존 공식 프로젝트의 저장된 한국어 모델·참조 WAV/FLAC·참조 대사를 읽고, 사용자 실제 한국어 입력/OBS 암호 준비/기존 사용 중인 AI 작업 차단·권리 확인/임시 OBS 오디오 입력 생성에 관한 개별 동의 후에만 기존 verify_gpt_sovits_to_obs를 비동기 단 한 번 호출. 기존 OBS 방송/녹화·씬 안전 검사/임시 소스 정리는 **기존 실제 브리지 구현**이 담당.
+2. 기존 GPT-SoVITS 음성만 테스트하는 버튼, 본래의 '공식 AI→Live2D→OBS 같은 발화 동시 실측' 버튼과 동일한 busy 상태를 공유해 동시 모델/OBS 충돌을 회피. 실증 신호 미확인/작업 실패 시 원본 경로·WebSocket 암호/예외 원문을 화면에 표시하지 않음. WAV→OBS 미터 신호 성공조차 **Live2D 립싱크 성공 또는 시청자 송출 성공이라고 표시하지 않음**.
+3. tests/test_aisting_real_tts_obs_native_gui.py 신규 8개: 없는 모델/OBS 암호/승인 거절 시 IO 0건, 실제 기존 브리지에 승인+WAV/음성·로컬 API 인자 정확히 전달, 오류 시 비밀정보 보호, 실제 미터 신호와 무신호 결과 분리, 타 작업 중 요청 거부.
+4. scripts/gui_official_pipeline_click_windows.py 기존 Windows 네이티브 Tk E2E 실클릭에 새 실제 음성→OBS 버튼 존재/승인 거부 시 외부 연결 없음 검사 추가.
+- **검증 결과**: 본 코드를 main에 보존형 적용한 뒤 전체 회귀 및 Windows EXE GUI/OBS/로컬 Ollama/공개 읽기 실제 CI를 실행해 확인하고, 실패 시 코드/테스트 수정 후 전체 재실행할 것.
+
+### 남은 핵심 실증
+- 이 버튼은 기존 공식 프로젝트에 합법 한국어 GPT-SoVITS 모델·참조 파일이 실제 설치되고 서버가 실행되며, 로컬 OBS가 일시 정지된 사용 허가 상태에 있을 때 *진짜 음성→OBS 입력 실증*을 실행 가능하게 함. GitHub runner는 사용자 소유 보이스 모델 파일을 갖고 있지 않음; 이를 임의 훈련·무허가 샘플/가짜 오디오로 대체하여 GPT-SoVITS 성공으로 주장하지 않음.
+- **전체 동일 발화**는 별도 기존 original_plan_full_pipeline.verify_official_chat_live2d_obs에서 이미 공식 Open-LLM-VTuber AI 한 세션, Cubism 입 + OBS 동일 미터 타임스탬프를 검사하며 이 기능과 임의 2중 TTS 호출하지 않음. 실제 모델·아바타·WebView2·OBS 경로의 동시 실증은 별도, 라이선스 명확한 자산 준비 필요.
+- 실제 시청자 수백 명·24시간 스트리밍·최종 도달 지연은 운영자가 통제하는 실계정/장치 방송 실행이 있어야 관측 가능. 개발된 500~10,000건 큐·p95 국소 측정은 방송 도달 보장 아님.
+- Google Drive 등 외부 드라이브 사용/요구 없음. 다른 프로젝트/예약/브랜치/전면 재개발/무단 방송·녹화·채팅 발신 없음.
