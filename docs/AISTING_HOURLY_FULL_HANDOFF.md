@@ -1206,3 +1206,22 @@ GitHub `junggyeol4444/AISTING`, **기존 main에만 빠른전진 반영**:
 ### 실제 500건 검증의 현재 진행 확인
 - 별도 https://github.com/junggyeol4444/AISTING/actions/runs/39547986524 는 공식 Ollama Windows qwen2.5:0.5b 모델을 사용한 500 synthetic chats 원본 FIFO 실처리 테스트로 실행 중이며 완료 성공 여부는 해당 run 최종 결과를 반드시 확인. **그 run은 기존 96토큰 미승인 설정을 포함한 옛 commit 기준**이므로 새 원본 응답 정책의 성공으로 해석하지 않음. 새 main에서도 별도 real 500 job 재검증한다.
 - 누적 변경을 main에 빠른전진으로 안전 추가하고 전체 회귀, Windows 원본 EXE+실제 GUI/OBS/Ollama/공개읽기, 별도 500건 실제 원본 동작 검증을 수행. 실패 시 수정 후 전체 검증. 사용자 프로젝트/예약/Google Drive·브랜치·인증·방송 발신·SQLite 무단 접근은 하지 않는다.
+
+## 67. 2026-10-21 — Windows 실제 Ollama 모델 500건 완주 측정 및 24h 검증 실시간 체크포인트 연결
+
+### 실제 500건 모델 경로 완료 결과 (구코드 기준, 정확하게 분리)
+- [실제 Windows Ollama 500 synthetic 원본 FIFO run 39547986524](https://github.com/junggyeol4444/AISTING/actions/runs/39547986524) 는 **completed/success**. job 로그 및 올린 aggregate artifact ID 12324023228 기준: 4플랫폼 각각 125건, accepted=500, model_success=500, completed=500, model_failure=0, unfinished=0, over_three_seconds=499. 실제 로컬 p95 전체 **2995.954초**, FIFO 대기 p95 **2989.844초**, 실제 모델 처리 p95 **7.922초**. `passed_no_drops=true`, `passed_three_second_local=false`, 방송 송출/실제 시청자 증거 아님.
+- 성능 문제는 단일 순차 AI worker에 500건 burst 입력할 때의 실제 FIFO 적체. 첫 실제 수백건 부하가 끝날 때까지 p95 측정이 없었다는 이전 문제를 보완. 사용자에게 96토큰 같은 미승인 생성 제한을 다시 추가하지 않음. 사용자가 요구한 중복·모든 채팅 보존의 원래 순서와 AI 기능 유지.
+- 66절에서 임의로 추가했던 96토큰·keep_alive 10m 설정은 원본 src/ai_broadcaster/local_llm.py로 되돌렸음. 이번 작업도 그 원본 계속 유지. 새로운 Windows 500건 run 39550394094는 이 제한 철회 후의 코드 기준이며 완료 전 성공이라고 하지 않음.
+
+### 이번 실제 개발
+1. scripts/aisting_real_ollama_fifo_soak.py에 실제 완료 건수/수신/실패/대기·AI·전체 p95/3초 초과/경과/정체 상태 **25건 완료마다 또는 작업 대기 60초마다** progress_callback. 개별 채팅 내용·계정·voice·token·개인정보가 아닌 집계 수치만 반환. 단일 모델 FIFO, 실제 원본 ChatPipeline/로컬 Ollama 경로 및 per-test isolated SQLite 유지.
+2. Windows/Python 별도 독립 AISTING-FIFO-Soak.exe에서 실행 중 사람이 검사 진행 상황을 알 수 있도록 UTF-8 한국어 콘솔 출력. 운영자가 `--report`를 명시한 경우에만 집계 JSON을 같은 경로에 **atomic replace** 방식으로 주기 갱신. 24h 도중 정지/오류라도 마지막 정확한 완료 수와 미처리 수가 남도록 개선, 단 최종 완료 판정은 끝난 run만 가능. 사용자 원래 AISTING.exe/SQLite/설정 파일은 쓰지 않음.
+3. tests/test_aisting_real_local_fifo_soak.py에 실제 한 작업자 FIFO를 통한 52건 mock contract에서 25/50/52 집계 체크포인트, 메시지/계정 노출 금지, 원자적 checkpoint 25→500 교체 테스트 2건 추가. 실제 모델 500건을 mock으로 성공 표시하지 않고 별도 실제 Windows Actions에서만 증빙.
+4. 66절의 Windows EXE/GUI 이전 build 성공 [39550394232](https://github.com/junggyeol4444/AISTING/actions/runs/39550394232) 5 jobs SUCCESS, 실 AISTING.exe 및 별도 Windows 500/24h Soak EXE 두 산출물 확인. full regression [39550394180](https://github.com/junggyeol4444/AISTING/actions/runs/39550394180) 2504 OK/skipped2.
+5. 이번 새 main commit 이후 반드시 전체 회귀 + Windows EXE 5-job + REAL 500 Windows 체크; Windows runner에서 실제 모델의 500 입력이 길면 새 진행/최종 보고서의 성공·실패를 구분. 24시간 elapsed를 아직 실행하지 않았으면 성공 주장 금지.
+
+### 절대 미완료를 완료로 바꾸지 않음
+- 실제 모델 부하 500건 완주는 사실이지만 1~3초 목표는 실패임. 단일 1-worker 순차 FIFO를 유지하는 구조로 동시 500건에 대해 3초 보장 불가; 사용자 명시 승인 없는 강제 토큰 상한/부분 메시지 폐기/자동 발신·병렬 페르소나 불일치를 임의 변경하지 않는다.
+- 소유 GPT-SoVITS 모델·합법 참조 한국어 WAV, 공식 Live2D Cubism 실제 해당 발화와 OBS 실제 비무음 미터의 사용자 PC 실증, 실제 24h 방송·최종 시청자 종단 간 지연은 여전히 별도 자산·허가된 운영 환경 필요. 프로그램이 가능한 구간 개발과 진짜 실증 증거 구분.
+- 원본 인수인계 1~66절 및 28~38절 분리 원문, ORIGINAL_PLAN/ROADMAP_100/config roadmap, 캐릭터/메모리/SQLite·전체 누적 소스 유지; 다른 프로젝트/예약/Drive·새 브랜치/force-push 안 함.

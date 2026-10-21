@@ -10,8 +10,10 @@ from __future__ import annotations
 
 import argparse
 from collections import Counter
+from collections.abc import Callable
 import json
 import math
+import os
 from pathlib import Path
 import queue
 import sys
@@ -58,7 +60,8 @@ def validate_parameters(messages: int, duration_seconds: float,
 def run_real_load(*, model: str, messages: int, duration_seconds: float,
                   port: int = 11434, queue_size: int = 10000,
                   duplicate: bool = False, arrival_rate: float = 0.0,
-                  hold_full_duration: bool = False) -> dict:
+                  hold_full_duration: bool = False,
+                  progress_callback: Callable[[dict], None] | None = None) -> dict:
     validate_parameters(messages, duration_seconds, queue_size, port)
     if (type(arrival_rate) not in (int, float)
             or not math.isfinite(arrival_rate) or arrival_rate < 0):
@@ -84,6 +87,43 @@ def run_real_load(*, model: str, messages: int, duration_seconds: float,
     session = type("_IsolatedSoakSession", (), {})()
     session._stop = stop_worker
     errors = []
+    last_progress_completed = 0
+    last_progress_at = start
+    def publish_progress(*, force: bool = False) -> None:
+        nonlocal last_progress_completed, last_progress_at
+        if progress_callback is None:
+            return
+        now = time.monotonic()
+        finished = metrics.completed
+        # Once per 25 completed messages or every 60 seconds of running,
+        # including long periods stuck in an Ollama request.
+        if not (force or finished - last_progress_completed >= 25
+                or now - last_progress_at >= 60):
+            return
+        snap = metrics.snapshot(now)
+        progress_callback({
+            "status": "running" if not force else "checkpoint",
+            "real_model": True,
+            "real_viewers": False,
+            "target_messages": messages,
+            "accepted": emitted,
+            "completed": snap.completed,
+            "success": real_reply["success"],
+            "model_failure": real_reply["error"],
+            "in_flight_or_queued": max(0, emitted - snap.completed),
+            "over_three_seconds": snap.over_three_seconds,
+            "p95_total_seconds": snap.total_p95,
+            "p95_wait_seconds": snap.wait_p95,
+            "p95_ai_seconds": snap.inference_p95,
+            "elapsed_seconds": round(now - start, 3),
+            "goal_three_seconds_met_so_far": (
+                snap.completed > 0 and snap.over_three_seconds == 0),
+            "actual_viewer_delivery_verified": False,
+            "actual_24h_broadcast_verified": False,
+        })
+        last_progress_completed = finished
+        last_progress_at = now
+
     actual_arrival_rate = (
         (messages - 1) / max(1.0, duration_seconds - 60.0)
         if hold_full_duration and arrival_rate == 0 and messages > 1
@@ -160,6 +200,7 @@ def run_real_load(*, model: str, messages: int, duration_seconds: float,
 
             while time.monotonic() < deadline:
                 if worker_finished.is_set() and observed.empty():
+                    publish_progress()
                     if hold_full_duration:
                         # This checks the Python process can stay alive, NOT
                         # that OBS streamed for 24 hours or viewers heard it.
@@ -169,6 +210,7 @@ def run_real_load(*, model: str, messages: int, duration_seconds: float,
                 try:
                     kind, value = observed.get(timeout=.25)
                 except queue.Empty:
+                    publish_progress()
                     continue
                 if kind == "twitch_scoped":
                     scope, kind, value = value
@@ -182,6 +224,7 @@ def run_real_load(*, model: str, messages: int, duration_seconds: float,
                 elif kind == "twitch_ai_timing":
                     if not metrics.terminal(*value):
                         real_reply["invalid_timing"] += 1
+                    publish_progress()
             # Collect completed events even if the worker stopped just before
             # the deadline. Never call remaining events successful.
             if not worker_finished.is_set():
@@ -211,6 +254,7 @@ def run_real_load(*, model: str, messages: int, duration_seconds: float,
                 elif kind == "twitch_ai_timing":
                     if not metrics.terminal(*value):
                         real_reply["invalid_timing"] += 1
+            publish_progress(force=True)
             current, peak = tracemalloc.get_traced_memory()
         finally:
             tracemalloc.stop()
@@ -249,6 +293,20 @@ def run_real_load(*, model: str, messages: int, duration_seconds: float,
     }
 
 
+def _atomic_aggregate_checkpoint(path: Path, record: dict) -> None:
+    """Operator-selected aggregate progress file, never chat text or tokens."""
+    destination = Path(path)
+    intermediate = destination.with_name(destination.name + ".inprogress.tmp")
+    try:
+        intermediate.write_text(
+            json.dumps(record, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8")
+        os.replace(intermediate, destination)
+    finally:
+        if intermediate.exists():
+            intermediate.unlink()
+
+
 def main() -> int:
     # Native Windows console/PowerShell often assigns cp1252 to frozen EXEs.
     # Force Korean UTF-8 *only* for the isolated test tool's console I/O.
@@ -274,19 +332,33 @@ def main() -> int:
     args = parser.parse_args()
     if not args.operator_approved:
         parser.error("--operator-approved로 실제 로컬 Ollama 호출을 승인해야 합니다")
+    def show_progress(record: dict) -> None:
+        # Periodic real totals are essential during 500/24h live-model runs.
+        print(
+            f"[실제 모델 부하 진행] 완료 {record['completed']}"
+            f"/접수 {record['accepted']}/목표 {record['target_messages']}건"
+            f" · 실패 {record['model_failure']}건"
+            f" · 3초 초과 {record['over_three_seconds']}건"
+            f" · 대기 p95 {record['p95_wait_seconds']}"
+            f" · 경과 {record['elapsed_seconds']}초",
+            flush=True)
+        if args.report is not None:
+            _atomic_aggregate_checkpoint(args.report, record)
+
     result = run_real_load(
         model=args.model, messages=args.messages,
         duration_seconds=args.duration_seconds,
         port=args.port, queue_size=args.queue_size,
         duplicate=args.duplicate,
         arrival_rate=args.arrival_rate,
-        hold_full_duration=args.hold_full_duration)
+        hold_full_duration=args.hold_full_duration,
+        progress_callback=show_progress)
     rendered = json.dumps(result, ensure_ascii=False, indent=2)
     print(rendered)
     if args.report is not None:
         # Explicit operator-requested aggregate report only. No content,
         # sender names, voice data, model responses, credentials or tokens.
-        args.report.write_text(rendered + "\n", encoding="utf-8")
+        _atomic_aggregate_checkpoint(args.report, result)
     return 0 if result["passed_no_drops"] else 2
 
 

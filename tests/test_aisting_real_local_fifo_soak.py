@@ -1,5 +1,7 @@
 """Validate the real (never canned-LLM) Windows load runner's controls."""
 import importlib.util
+import json
+import tempfile
 import io
 from pathlib import Path
 import unittest
@@ -77,6 +79,42 @@ class LoadRunnerContracts(unittest.TestCase):
         self.assertTrue(data["completed_full_local_duration"])
         self.assertTrue(data["passed_no_drops"])
         self.assertFalse(data["long_running_broadcast_verified"])
+
+    def test_actual_worker_reports_bounded_live_checkpoints_without_chat_text(self):
+        summaries = []
+        with patch.object(SOAK, "real_ollama_chat",
+                          return_value=SimpleNamespace(reply="한국어", remembered_count=1)):
+            result = SOAK.run_real_load(
+                model="installed-local-test", messages=52,
+                duration_seconds=6, queue_size=80,
+                progress_callback=summaries.append)
+        self.assertTrue(result["passed_no_drops"])
+        self.assertEqual(result["completed"], 52)
+        self.assertGreaterEqual(len(summaries), 3)
+        self.assertEqual(summaries[-1]["completed"], 52)
+        self.assertEqual(summaries[-1]["target_messages"], 52)
+        self.assertIn(25, [v["completed"] for v in summaries])
+        self.assertIn(50, [v["completed"] for v in summaries])
+        for record in summaries:
+            self.assertNotIn("synthetic-", json.dumps(record))
+            self.assertNotIn("안녕하세요", json.dumps(record))
+            self.assertFalse(record["actual_viewer_delivery_verified"])
+            self.assertFalse(record["actual_24h_broadcast_verified"])
+
+    def test_progress_checkpoint_replaces_atomically_without_sensitive_payload(self):
+        with tempfile.TemporaryDirectory() as folder:
+            file = Path(folder) / "aggregate.json"
+            SOAK._atomic_aggregate_checkpoint(file, {
+                "status":"running", "accepted":28,
+                "completed":25, "real_viewers":False})
+            first = json.loads(file.read_text(encoding="utf-8"))
+            self.assertEqual(first["completed"], 25)
+            SOAK._atomic_aggregate_checkpoint(file, {
+                "status":"complete", "accepted":500,
+                "completed":500, "real_viewers":False})
+            second = json.loads(file.read_text(encoding="utf-8"))
+            self.assertEqual(second["completed"], 500)
+            self.assertEqual(list(Path(folder).iterdir()), [file])
 
     def test_invalid_time_or_bounded_queue_rejected(self):
         for args in [(500, 0, 10000, 11434),
