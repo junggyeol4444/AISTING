@@ -1132,3 +1132,9 @@ GitHub `junggyeol4444/AISTING`, **기존 main에만 빠른전진 반영**:
 ### 미완료의 정확한 범위
 - GPT-SoVITS 한국어 실제 소유권 확인된 모델·참조 음성+Live2D·OBS 같은 발화 현장 실증 및 사용자 PC 실제 수백명·24h·시청자 1~3초는 아직 수행되지 않음. 새 OBS 시간 상관·실 Ollama 4건은 준비된 실행 가능한 도구/측정값이지 그 현장 증거가 아님. 사용자가 제공하지 않은 저작권 있는 보이스·계정에 접근하거나 모델 무단 훈련/방송·채팅 발신 금지.
 - 기존 handoff 원문 1~60절 및 분리 보존 28~38절, ORIGINAL_PLAN/ROADMAP/roadmap.json, Windows 네이티브 GUI/모든 사용자 설정·SQLite 유지. only main fast-forward, 신규 브랜치/force push/rollback/Drive 연결 없음.
+
+## 62. 2026-10-21 Twitch 읽기 OAuth 신규 검사 1건 실패 수정·실제 전체 재검증
+
+- 첫 인증 코드 통합 main 98212d31029a6b50965cf592ac1e6601cca26bc8의 전체 https://github.com/junggyeol4444/AISTING/actions/runs/39545322611 은 2,501 tests, failures=1/skipped=2. Windows https://github.com/junggyeol4444/AISTING/actions/runs/39545322615 에서 windows-exe job도 동일 회귀 fail. Twitch 실제 public IRC 실수신 job은 이 시각 success였지만 OAuth 사용자 실제 토큰 실수신을 의미하지 않음.
+- 신규 tests/test_aisting_twitch_owner_readonly_auth.py에서 빈 token 문자열 ''이 보안오류 메시지에 없다는 assertNotIn은 항상 실패하므로 비어있지 않은 token에 한해서 실제 노출 차단을 검증하도록 정정. src/ai_broadcaster/twitch_readonly.py의 token ASCII 형식 검증 강화(이상 Unicode 자격증명 방지); chat:read 자격증명은 운영자가 승인받아 입력하고 읽기 전용 WebSocket으로만 전달, 채팅 발신 없음. 익명 원본 경로 유지.
+- 수정된 정확한 최신 main에서 전체 회귀와 Windows 네이티브 EXE/Ollama/OBS/CHZZK-SOOP/Twitch job 5개를 다시 검사하고 결과 미확정이면 완료라 보고 금지. 61절 외 기존 1~61절 모두 원문 보존.

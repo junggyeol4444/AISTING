@@ -59,6 +59,7 @@ class TwitchReadOnlySession:
             raise ValueError("트위치 채팅 읽기 승인 정보 형식이 올바르지 않습니다.")
         if oauth_token or oauth_login:
             if (not 12 <= len(oauth_token) <= 400
+                    or not oauth_token.isascii()
                     or not all(ch.isalnum() for ch in oauth_token)
                     or not _CHANNEL.fullmatch(oauth_login)):
                 raise ValueError("트위치 읽기 전용 OAuth 토큰·계정 이름을 확인하세요.")

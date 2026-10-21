@@ -76,7 +76,8 @@ class AuthenticatedTwitchReadonly(unittest.TestCase):
                         TwitchReadOnlySession(
                             "streamer", lambda *_: None,
                             oauth_token=token, oauth_login=name)
-                self.assertNotIn(token, str(error.exception))
+                if token:
+                    self.assertNotIn(token, str(error.exception))
 
     def test_four_platform_session_passes_token_only_to_twitch(self):
         seen = []
