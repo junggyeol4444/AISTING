@@ -20,7 +20,6 @@ import threading
 import time
 import tracemalloc
 from types import SimpleNamespace
-from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
@@ -79,9 +78,17 @@ def run_real_load(*, model: str, messages: int, duration_seconds: float,
     real_reply = Counter()
     platform_counts = Counter()
     emitted = 0
-    producer_finished = threading.Event()
     worker_finished = threading.Event()
+    stop_worker = threading.Event()
+    # Hashable identity is used by the existing worker lifecycle set.
+    session = type("_IsolatedSoakSession", (), {})()
+    session._stop = stop_worker
     errors = []
+    actual_arrival_rate = (
+        (messages - 1) / max(1.0, duration_seconds - 60.0)
+        if hold_full_duration and arrival_rate == 0 and messages > 1
+        else arrival_rate
+    )
 
     # This wrapper changes ONLY the test memory/settings location. Every AI
     # generation invokes the REAL production LocalOllamaReplyGenerator and
@@ -98,25 +105,29 @@ def run_real_load(*, model: str, messages: int, duration_seconds: float,
 
         ui = SimpleNamespace(
             _results=observed, _ai_arrival_times=arrivals,
-            _live_latency_metrics=metrics)
+            _live_latency_metrics=metrics, _twitch_active_workers={session})
         def consumer():
             try:
-                LocalChatTab._work_twitch_ai(ui, model, input_fifo)
+                # Injection only in the isolated load harness. Do NOT
+                # monkeypatch the global production function while a daemon
+                # could still be running after a timeout.
+                LocalChatTab._work_twitch_ai(
+                    ui, model, input_fifo, session=session,
+                    reply_function=real_isolated_chat)
             except Exception as exc:
                 errors.append(type(exc).__name__)
             finally:
                 worker_finished.set()
 
         tracemalloc.start()
-        with patch("ai_broadcaster.desktop_chat_tab.run_local_chat",
-                   side_effect=real_isolated_chat):
+        try:
             worker = threading.Thread(target=consumer, daemon=True)
             worker.start()
             for index in range(messages):
-                if arrival_rate > 0:
+                if actual_arrival_rate > 0:
                     # Harness-only paced arrival; this pacing NEVER touches
                     # AISTING's production chat handling or adds AI delay.
-                    planned = start + index / arrival_rate
+                    planned = start + index / actual_arrival_rate
                     while time.monotonic() < planned:
                         if time.monotonic() >= deadline:
                             break
@@ -139,7 +150,6 @@ def run_real_load(*, model: str, messages: int, duration_seconds: float,
                 emitted += 1
                 platform_counts[getattr(event, "platform", "twitch")] += 1
 
-            producer_finished.set()
             # Do not force a sentinel behind a saturated queue for ever.
             while time.monotonic() < deadline:
                 try:
@@ -160,6 +170,11 @@ def run_real_load(*, model: str, messages: int, duration_seconds: float,
                     kind, value = observed.get(timeout=.25)
                 except queue.Empty:
                     continue
+                if kind == "twitch_scoped":
+                    scope, kind, value = value
+                    if scope is not session:
+                        errors.append("unexpected_session_scope")
+                        continue
                 if kind == "twitch_ai_ok":
                     real_reply["success"] += 1
                 elif kind == "twitch_ai_error":
@@ -169,8 +184,26 @@ def run_real_load(*, model: str, messages: int, duration_seconds: float,
                         real_reply["invalid_timing"] += 1
             # Collect completed events even if the worker stopped just before
             # the deadline. Never call remaining events successful.
+            if not worker_finished.is_set():
+                # The deadline stops a *test*, not the user's live chat.
+                # Abort ONLY this synthetic session and wait for the
+                # current Ollama HTTP request to finish before destroying
+                # its temp SQLite. The real reader's Stop semantics remain.
+                stop_worker.set()
+                try:
+                    input_fifo.put_nowait(None)
+                except queue.Full:
+                    pass
+                worker.join(timeout=45)
+                if worker.is_alive():
+                    errors.append("local_model_worker_unresponsive_after_stop")
             while not observed.empty():
                 kind, value = observed.get_nowait()
+                if kind == "twitch_scoped":
+                    scope, kind, value = value
+                    if scope is not session:
+                        errors.append("unexpected_session_scope")
+                        continue
                 if kind == "twitch_ai_ok":
                     real_reply["success"] += 1
                 elif kind == "twitch_ai_error":
@@ -179,6 +212,7 @@ def run_real_load(*, model: str, messages: int, duration_seconds: float,
                     if not metrics.terminal(*value):
                         real_reply["invalid_timing"] += 1
             current, peak = tracemalloc.get_traced_memory()
+        finally:
             tracemalloc.stop()
 
     ended = time.monotonic()
@@ -189,7 +223,7 @@ def run_real_load(*, model: str, messages: int, duration_seconds: float,
         "model_name": model,
         "duration_seconds": round(ended - start, 3),
         "requested_duration_seconds": duration_seconds,
-        "synthetic_arrival_rate_per_second": arrival_rate,
+        "synthetic_arrival_rate_per_second": actual_arrival_rate,
         "completed_full_local_duration": bool(
             hold_full_duration and ended - start >= duration_seconds),
         "accepted": emitted,

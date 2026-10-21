@@ -776,7 +776,8 @@ class LocalChatTab(ttk.Frame):
             self._results.put(("twitch_scoped", (session, "twitch_finished", session)))
 
     def _work_twitch_ai(self, model: str, inbox: queue.SimpleQueue,
-                        official: bool = False, session=None) -> None:
+                        official: bool = False, session=None, *,
+                        reply_function=None) -> None:
         # Old direct-call regression contracts still use unscoped result
         # events; real UI connections always provide their unique session.
         def report(kind, value):
@@ -833,7 +834,8 @@ class LocalChatTab(ttk.Frame):
                         report_measured_elapsed()
                     continue
                 try:
-                    result = run_local_chat(
+                    model_reply = run_local_chat if reply_function is None else reply_function
+                    result = model_reply(
                         model, chat.text, sender="[" + {"twitch":"트위치","chzzk":"치지직",
                             "soop":"SOOP","youtube":"유튜브"}.get(
                                 getattr(chat, "platform", "twitch"), "트위치") + "] " + chat.sender,

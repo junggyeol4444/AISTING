@@ -2,6 +2,8 @@
 import importlib.util
 from pathlib import Path
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 
 
 PATH = Path(__file__).resolve().parents[1] / "scripts" / "aisting_real_ollama_fifo_soak.py"
@@ -28,6 +30,37 @@ class LoadRunnerContracts(unittest.TestCase):
 
     def test_actual_24_hour_duration_supported(self):
         SOAK.validate_parameters(500, 86400, 10000, 11434)
+
+    def test_500_production_fifo_events_no_loss_using_only_test_reply(self):
+        # This test deliberately mocks the model for a fast CONTRACT check.
+        # Independent Windows Actions perform ALL 500 with real Ollama.
+        with patch.object(SOAK, "real_ollama_chat",
+                          return_value=SimpleNamespace(reply="한국어", remembered_count=1)) as llm:
+            data = SOAK.run_real_load(
+                model="installed-test-model", messages=500,
+                duration_seconds=8, queue_size=128)
+        self.assertEqual(data["accepted"], 500)
+        self.assertEqual(data["model_success"], 500)
+        self.assertEqual(data["completed"], 500)
+        self.assertEqual(data["unfinished"], 0)
+        self.assertTrue(data["passed_no_drops"])
+        self.assertTrue(data["worker_ended"])
+        self.assertEqual(llm.call_count, 500)
+        self.assertEqual(data["platform_event_counts"], {
+            "twitch":125, "chzzk":125, "soop":125, "youtube":125})
+        self.assertFalse(data["real_viewers"])
+        self.assertFalse(data["long_running_broadcast_verified"])
+
+    def test_hold_full_duration_still_uses_real_worker_path_not_viewer_claim(self):
+        with patch.object(SOAK, "real_ollama_chat",
+                          return_value=SimpleNamespace(reply="응답", remembered_count=1)):
+            data = SOAK.run_real_load(
+                model="installed-test-model", messages=4,
+                duration_seconds=2, queue_size=4,
+                hold_full_duration=True)
+        self.assertTrue(data["completed_full_local_duration"])
+        self.assertTrue(data["passed_no_drops"])
+        self.assertFalse(data["long_running_broadcast_verified"])
 
     def test_invalid_time_or_bounded_queue_rejected(self):
         for args in [(500, 0, 10000, 11434),

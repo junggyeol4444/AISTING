@@ -95,7 +95,19 @@ class TestLocalModel(unittest.TestCase):
         self.assertEqual(path, "/api/chat")
         self.assertEqual(payload["model"], "qwen2.5:7b")
         self.assertIs(payload["stream"], False)
+        self.assertEqual(payload["keep_alive"], "10m")
+        self.assertEqual(payload["options"]["num_predict"], 96)
         self.assertIn("시청자: 안녕", payload["messages"][1]["content"])
+
+    def test_bounded_response_and_persistent_model_are_configurable(self):
+        self.assertEqual(LocalModelConfig("qwen2.5:0.5b").num_predict, 96)
+        self.assertEqual(LocalModelConfig("qwen2.5:0.5b").keep_alive, "10m")
+        for length in (0, 7, 2049, True, -5):
+            with self.subTest(length=length), self.assertRaises(ValueError):
+                LocalModelConfig("qwen2.5:0.5b", num_predict=length)
+        for duration in ("", "unlimited", "-1m", "0s", "1000m", "10minutes"):
+            with self.subTest(duration=duration), self.assertRaises(ValueError):
+                LocalModelConfig("qwen2.5:0.5b", keep_alive=duration)
 
     def test_paid_api_permission_cannot_be_enabled(self):
         self.settings["operation"]["allow_paid_api"] = True

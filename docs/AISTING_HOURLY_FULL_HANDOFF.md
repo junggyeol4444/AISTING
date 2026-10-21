@@ -1160,3 +1160,24 @@ GitHub `junggyeol4444/AISTING`, **기존 main에만 빠른전진 반영**:
 - 사용자의 소유 YouTube/Twitch 계정 실제 OAuth 동의는 본인 승인 필요. 익명 Twitch 실제 공개 읽기 CI 성공이 운영자 계정 OAuth 성공은 아님.
 - 실방송 100~500명 실제 시청자에 대한 24시간 안정성/최종 시청자 1~3초 종단간 지연도 사용자의 실제 장비/승인 방송에서 수행되지 않음. 500 합성 채팅을 실제 로컬 Ollama로 24시간 지속시키는 실행기는 존재하므로 차후 그 환경에서 **실제로 24시간 종료한 뒤에만** 성공 처리.
 - 본 누적 기록은 전체를 삭제·요약·롤백하지 않는다. 다른 프로젝트/자동예약 사용자별 설정 변경 없음.
+
+## 64. 2026-10-21 — 남은 핵심 직접 개발: 로컬 Ollama 생성 성능·500건 실제 Windows CI·24시간 검증 실행 경로와 종료 안전성
+
+### 기존 원본과 문제 확인
+- 1~63절 원문 및 28~38절 별도 전체 인수인계, ORIGINAL_PLAN/ROADMAP_100/roadmap.json, 기존 Windows GUI 캐릭터·SQLite·설정·인증·4플랫폼/OBS·GPT-SoVITS 연결 전체 보존.
+- 이전 실제 Windows 4메시지 Ollama 지연 p95 6.312초. 빠른 중복 없는 FIFO 처리 목표 1~3초 미달. 출력 토큰 무제한/모델 재로딩 위험이 있는 `LocalModelConfig`를 개선해야 함.
+- `scripts/aisting_real_ollama_fifo_soak.py` 기존 v59 버전은 글로벌 `run_local_chat` monkeypatch가 부하 워커보다 먼저 종료될 때 임시 SQLite가 아닌 운영자 기본 기억 파일로 경로가 돌아갈 수 있었음. 또한 24시간 옵션이 합성 대량 채팅 500건을 처음에 모두 처리하고 남은 시간을 단순 idle로 소비할 위험. 이를 우선 해결함.
+
+### 이번 누적 소스 구현
+1. `src/ai_broadcaster/local_llm.py`: 실제 Ollama `/api/chat` 네이티브 API 요청에 `options.num_predict=96`, `keep_alive=10m`을 기본 활성화. 모든 채팅은 그대로 처리·기억 저장, 기본 최근 8개 교환 컨텍스트/페르소나 유지. 답변이 과도하게 길어지는 생성 병목 완화 목적(1~3초 보장 아님). 엄격한 옵션 형식·경계검사.
+2. `src/ai_broadcaster/desktop_chat_tab.py`: 기존 단일 AI FIFO 작업자에 호출자에 한해서 명시적으로 `reply_function`을 전달할 수 있는 선택형 인자 추가(기본은 기존 `run_local_chat`). 실제 운영자 실행 흐름과 네이티브 GUI는 변경 없음. 실제 장시간 부하 하네스만 격리 DB와 실제 Ollama 함수를 전달하도록 글로벌 monkeypatch 제거. 누락되거나 합성되지 않은 메시지 성공 처리하지 않음.
+3. `scripts/aisting_real_ollama_fifo_soak.py`: 하네스 고유 hashable 세션과 `_stop`을 사용해 bounded deadline 초과 시 **기존 AISTING worker 취소** 요청, 최대 45초 한 모델 처리 종료 확인 후 임시 리소스 처리. 성공/실패/미완료 및 처음 500명·4플랫폼 각 125건 기록. 24시간 `--hold-full-duration` 옵션 시 --arrival-rate를 지정하지 않았다면 500 합성 사용자 메시지를 관찰 기간에 걸쳐 분산하고 실제 로컬 모델을 반복 사용(기간 채우려고 아무 일 없는 idle 검증만 하지 않음). 공식 YouTube/Twitch 계정·실송출/시청자 시간 증명은 아님.
+4. `tests/test_local_llm.py`: 실제 모델 유지/토큰 상한의 HTTP 요청 내용 및 잘못된 옵션 검증 추가.
+5. `tests/test_aisting_real_local_fifo_soak.py`: 기존 원본 worker의 callback-only 주입을 사용하여 synthetic 500건의 4플랫폼 단일 FIFO·모든 응답·메모리 등 누락 회귀, 기간 유지 옵션 확인. 이 500건 테스트는 *모델만 격리 mock*하여 빠르게 코드 계약을 검증함. 실제 모델의 500건은 별도 Windows job.
+6. `.github/workflows/real-500-fifo-windows.yml` 신설: GitHub Actions Windows x64에서 SHA256 검증된 공식 portable Ollama 설치 후 실제 무료 `qwen2.5:0.5b` 모델 pull. 실제 `run_local_chat`→원본 one-worker FIFO로 **500건 (각 125건/4플랫폼)** 전량 추론하고 완료·누락·실패, 실제 로컬 대기·AI/합계 p95, 3초 초과·메모리 증거 수집; 계정/시청자 데이터를 사용하거나 메시지 게시하지 않음. 집계 수치만 짧은 기한의 Actions 산출물로 보존. 3초 초과하면 경고로 남기며 목표 성공으로 주장 금지. 기존 5-job Windows EXE 워크플로를 대체하지 않음.
+
+### 검증 및 미완료
+- 위 전체 실제 코드 누적 main fast-forward에 반영한 뒤 **새 HEAD** 대상 모든 회귀검사, 기존 Windows EXE/GUI 5-job, 신규 REAL 500 Windows Actions를 확인. 실패나 성능 미달 시 결과 숨기지 않고 수정/재검증 기록.
+- 실제 합법 GPT-SoVITS 음성 모델·참조 보이스/공식 Live2D Cubism 앱·OBS 동일 발화의 사용자 Windows *현장* 실증은 해당 권리·모델·프로젝트 파일 없이 성공 처리 불가. GitHub Actions 실제 Ollama와 실제 OBS의 독립 성공이 세 단계를 연결한 한 발화 실증을 대신하지 않음.
+- GitHub 호스트 Windows 실행은 최대 24시간 방송/시청자 상태를 보장하지 않음. 사용자 허가 Windows 환경에서 지정 86400초 동안 실제 현장 실행하고 오류/외부 시청자 수신을 확인하기 전에는 24시간 성공 처리 금지.
+- 다른 프로젝트/예약/브랜치/Drive/운영자 계정/기존 SQLite 무변경, 무단 방송·녹화·훈련·유료 API 불사용.

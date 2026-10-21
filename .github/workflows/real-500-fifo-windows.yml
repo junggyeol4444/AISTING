@@ -1,0 +1,107 @@
+name: AISTING REAL 500 Chat FIFO Windows Soak
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/ai_broadcaster/**"
+      - "scripts/aisting_real_ollama_fifo_soak.py"
+      - ".github/workflows/real-500-fifo-windows.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  real-500-ollama-fifo:
+    runs-on: windows-latest
+    timeout-minutes: 150
+    env:
+      PYTHONPATH: src
+      PYTHONUTF8: "1"
+      OLLAMA_NUM_GPU: "0"
+      OLLAMA_HOST: "127.0.0.1:11434"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          architecture: x64
+      - name: Download authentic official Ollama Windows build with pinned SHA256
+        shell: pwsh
+        timeout-minutes: 15
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $zip = Join-Path $env:RUNNER_TEMP 'ollama-windows-amd64.zip'
+          $url = 'https://github.com/ollama/ollama/releases/download/v0.20.2/ollama-windows-amd64.zip'
+          Invoke-WebRequest -Uri $url -OutFile $zip -MaximumRedirection 5
+          $actual = (Get-FileHash $zip -Algorithm SHA256).Hash
+          if ($actual -ne 'F26EAD8BAA55E919828FFE88CDDF3E588444891E43E19A059F1D6C933FB1A5B6') {
+            throw 'Ollama official portable Windows SHA256 mismatch'
+          }
+          $folder = Join-Path $env:RUNNER_TEMP 'ollama-portable'
+          Expand-Archive -Path $zip -DestinationPath $folder -Force
+          if (-not (Test-Path (Join-Path $folder 'ollama.exe'))) {
+            throw 'Official Ollama CLI missing'
+          }
+      - name: Actually process 500 chats via original AISTING FIFO and real Ollama model
+        shell: pwsh
+        timeout-minutes: 125
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = Join-Path $env:RUNNER_TEMP 'ollama-portable/ollama.exe'
+          $env:OLLAMA_MODELS = Join-Path $env:RUNNER_TEMP 'ollama-models'
+          $env:LOCALAPPDATA = Join-Path $env:RUNNER_TEMP 'aisting-500-safe-temp-profile'
+          New-Item -ItemType Directory -Path $env:LOCALAPPDATA -Force | Out-Null
+          python -m pip install "websocket-client==1.9.0"
+          if ($LASTEXITCODE -ne 0) { throw 'Local Python transport dependencies failed' }
+          $server = Start-Process -FilePath $exe -ArgumentList 'serve' -PassThru -WindowStyle Hidden
+          try {
+            $ready = $false
+            for ($i=0; $i -lt 45; $i++) {
+              try {
+                $tags = Invoke-RestMethod 'http://127.0.0.1:11434/api/tags' -TimeoutSec 2
+                $ready = $true
+                break
+              } catch {
+                Start-Sleep -Seconds 2
+              }
+            }
+            if (-not $ready) { throw 'Ollama real local service not running' }
+            & $exe pull qwen2.5:0.5b
+            if ($LASTEXITCODE -ne 0) { throw 'Authentic free 0.5B model unavailable' }
+            $report = Join-Path $env:RUNNER_TEMP 'AISTING_real_500_Ollama_FIFO.json'
+            python scripts/aisting_real_ollama_fifo_soak.py --operator-approved --model qwen2.5:0.5b --messages 500 --duration-seconds 6900 --queue-size 1024 --report $report
+            if ($LASTEXITCODE -ne 0) { throw 'REAL 500-message original single FIFO failed' }
+            $data = Get-Content $report -Raw | ConvertFrom-Json
+            if ($data.accepted -ne 500 -or $data.completed -ne 500 -or
+                $data.model_success -ne 500 -or -not $data.passed_no_drops) {
+              throw '500 real local Ollama replies did NOT all complete'
+            }
+            foreach ($category in @('twitch','chzzk','soop','youtube')) {
+              if ($data.platform_event_counts.$category -ne 125) {
+                throw ('500 real FIFO has missing/reordered platform: ' + $category)
+              }
+            }
+            Write-Host ('REAL_500_OLLAMA_CHAT_COMPLETED=' + $data.completed)
+            Write-Host ('REAL_500_OLLAMA_LOCAL_P95_SECONDS=' + $data.local_p95_seconds)
+            Write-Host ('REAL_500_OLLAMA_WAIT_P95_SECONDS=' + $data.local_wait_p95_seconds)
+            Write-Host ('REAL_500_OLLAMA_AI_P95_SECONDS=' + $data.local_ai_p95_seconds)
+            Write-Host ('REAL_500_OLLAMA_OVER_3_SECONDS=' + $data.over_three_seconds)
+            Write-Host 'NOTE: Synthetic chat, real local model, NOT 500 real viewers or 24h broadcasts.'
+            if (-not $data.passed_three_second_local) {
+              Write-Warning '1-3 second local goal NOT MET. Never claim it passed.'
+            }
+          } finally {
+            if ($server -and -not $server.HasExited) {
+              Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
+            }
+          }
+      - name: Upload aggregate benchmark only (no message content or voice)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: AISTING-Windows-REAL-500-FIFO-METRICS
+          path: ${{ runner.temp }}/AISTING_real_500_Ollama_FIFO.json
+          if-no-files-found: ignore
+          retention-days: 7
