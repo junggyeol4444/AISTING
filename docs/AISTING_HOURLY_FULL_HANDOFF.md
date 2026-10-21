@@ -1138,3 +1138,25 @@ GitHub `junggyeol4444/AISTING`, **기존 main에만 빠른전진 반영**:
 - 첫 인증 코드 통합 main 98212d31029a6b50965cf592ac1e6601cca26bc8의 전체 https://github.com/junggyeol4444/AISTING/actions/runs/39545322611 은 2,501 tests, failures=1/skipped=2. Windows https://github.com/junggyeol4444/AISTING/actions/runs/39545322615 에서 windows-exe job도 동일 회귀 fail. Twitch 실제 public IRC 실수신 job은 이 시각 success였지만 OAuth 사용자 실제 토큰 실수신을 의미하지 않음.
 - 신규 tests/test_aisting_twitch_owner_readonly_auth.py에서 빈 token 문자열 ''이 보안오류 메시지에 없다는 assertNotIn은 항상 실패하므로 비어있지 않은 token에 한해서 실제 노출 차단을 검증하도록 정정. src/ai_broadcaster/twitch_readonly.py의 token ASCII 형식 검증 강화(이상 Unicode 자격증명 방지); chat:read 자격증명은 운영자가 승인받아 입력하고 읽기 전용 WebSocket으로만 전달, 채팅 발신 없음. 익명 원본 경로 유지.
 - 수정된 정확한 최신 main에서 전체 회귀와 Windows 네이티브 EXE/Ollama/OBS/CHZZK-SOOP/Twitch job 5개를 다시 검사하고 결과 미확정이면 완료라 보고 금지. 61절 외 기존 1~61절 모두 원문 보존.
+
+## 63. 2026-10-21 최종 누적 통합 개발 검증 — 같은 발화 OBS 실제 이벤트·4플랫폼 실 Ollama·Twitch 허가 수신·Windows EXE 성공
+
+### 완료하고 검증한 실개발
+- **현재 실제 코드 커밋 5e6747c963b5a1b81f5a58429f6338b2521f0d18**: OBS 실제 InputVolumeMeters non-silent 이벤트의 첫/마지막 monotonic 시각 기록과 공식 Live2D Cubism 실제 입 변화/오디오 RMS 시각 겹침 검증, 기존 넓은 OBS 관찰창만 겹치면 성공하던 거짓 후보 차단.
+- 기존 run_local_chat / LocalOllamaReplyGenerator / ChatPipeline / 하나의 AI FIFO로 실제 로컬 Ollama 추론을 실행하는 scripts/aisting_real_ollama_fifo_soak.py 추가. 합성 4플랫폼 각 건수·중복·500건 및 최대 24h 실행 옵션·로컬 대기/실제 모델 처리 p95·실패/3초 초과·미처리·Python 메모리 진단. 별도 실제 모델 런타임과 격리 temp SQLite 사용. AI 성능 실측에서 플랫폼→시청자 도달을 절대 성공 주장 금지.
+- Twitch 공식 IRC chat:read User Access Token으로 WSS PASS oauth 인증 및 NICK 로그인 ID 입력 지원. 기존 익명 호환 유지하지만 익명 JOIN은 PRIVMSG 실수신 성공과 동치가 아님. 운영자 승인받은 토큰은 원본 Tk 메모리 입력/서버만 사용, 종료시 UI 비움. 사용자 계정 무단 로그인/채팅 발신·stream/edit 권한 사용 없음.
+- 이번 실제 코드 변경은 기존 원본 기획·100단계 상태·기존 1~62절 인수인계/28~38절 별도 원문, 캐릭터/SQLite/나머지 3개 플랫폼 보존. main 빠른전진만, 다른 프로젝트·예약·Drive·브랜치 변경 없음.
+
+### 첫 실패 → 수정 → 전체 재검증
+- OBS 시간 관련 두 개의 신규 fixture에 Python import 순서 및 80ms 관찰 중 비무음 1ms만 남기도록 만드는 테스트 입력 오류가 있어서 **첫 GitHub 전체 회귀 39544322528와 Windows build 39544322580는 FAIL**. tests/test_aisting_official_chat_obs_pipeline.py 실제 테스트를 수정한 후 **39544602085 full regression 2,496 PASS / 2 skipped**. Windows 39544602255에서는 4개 성공, Twitch 공개 실채팅 0건으로 1개 FAIL.
+- Twitch 공식 문서 https://dev.twitch.tv/docs/chat/irc 상의 chat:read 권한 요구를 대조해 허가받은 User Access Token을 사용하는 코드/GUI/5 tests를 추가. 첫 신규 검사에 빈 토큰 문자열의 assertNotIn 검사 오류가 있어 첫 전체/Windows run 39545322611, 39545322615 FAIL. 빈 문자열에는 검사 생략, nonempty token 누출 거부와 ASCII 검증을 강화.
+- **최신 실제 코드 통합 최종 회귀** https://github.com/junggyeol4444/AISTING/actions/runs/39545547954 : **2,501 tests, 2 skipped, 실패 0**.
+- **최신 Windows 네이티브 EXE·GUI/실제 Ollama/OBS/공개 채팅 최종** https://github.com/junggyeol4444/AISTING/actions/runs/39545547991 : 5/5 jobs success: windows-exe, obs-real-readonly, twitch-public-readonly, korean-public-chat-readonly, ollama-real-local-e2e.
+- 실제 Windows EXE artifact: AISTING-Windows-EXE-integrated, ID **12321383424**, ZIP **19,844,818 bytes**, sha256 **b58c51be8570a7dfd750fba744b5bf012b1d25f436c84aa8a7c7a9fdabd5a45d**.
+- 최초 Windows 실제 로컬 4플랫폼 각 1개씩 단일 Ollama 모델 처리 테스트에서 4/4 완료했지만 **로컬 p95 = 6.312초**인 사례가 있었음. 1~3초 목표를 달성했다는 증거가 아니고 실제 성능 개선의 필요 수치. 최종 Windows run에서의 실제 4채팅 처리 로그 또한 별도 확인 가능. Windows 이격리 런은 500명·24h **실사용** 검증이 아니라 실제 모델의 짧은 CI 소요 수치.
+
+### 미완료의 물리적 실증과 다음 작업
+- 사용자 소유한 합법 한국어 GPT-SoVITS 훈련 모델·참조 음성이 CI/내부 런타임에 제공되지 않음. 한국어 음성→Live2D 공식 Cubism 실제 입/OBS 실제 같은 발화 신호 동시 성공을 실제 모델·실사용 Windows 환경에서 아직 관측하지 못함. 그러나 실제 호출·동일 시각 판정 구현과 네이티브 EXE 버튼/권리게이트/OBS 읽기 검증은 구현됨.
+- 사용자의 소유 YouTube/Twitch 계정 실제 OAuth 동의는 본인 승인 필요. 익명 Twitch 실제 공개 읽기 CI 성공이 운영자 계정 OAuth 성공은 아님.
+- 실방송 100~500명 실제 시청자에 대한 24시간 안정성/최종 시청자 1~3초 종단간 지연도 사용자의 실제 장비/승인 방송에서 수행되지 않음. 500 합성 채팅을 실제 로컬 Ollama로 24시간 지속시키는 실행기는 존재하므로 차후 그 환경에서 **실제로 24시간 종료한 뒤에만** 성공 처리.
+- 본 누적 기록은 전체를 삭제·요약·롤백하지 않는다. 다른 프로젝트/자동예약 사용자별 설정 변경 없음.
