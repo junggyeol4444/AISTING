@@ -1326,5 +1326,12 @@ F) 원본 100단계 roadmap.json status는 completed=9, pending=91이며 **코�
 - 2026-10-21 Asia/Seoul 기준 hourly exact_schedule 예약 `AISTING 매시간 누적 개발` 등록 완료 (FREQ=HOURLY, 다음 실행은 예약 실행 간격에 따름). 예약 메시지가 실행할 때 GitHub 위 파일을 새 대화에 가져와 바로 소스를 개발·테스트·수정하고 해당 차수 누적 handoff를 append. 사용자에게 백그라운드에서 했다고 임의 추정하지 말고 실제 예약 실행 결과/증거만 보고.
 - 자동 실행은 실제 개인 Windows PC를 제어하거나 소유 Google 계정 로그인/권리 없는 음성 파일을 획득하지 못하므로 해당 실제 자산 전제는 정직하게 분리한다. 그래도 코드 개발 자체는 가능한 한 멈추지 않는다.
 - 기본 모델을 특정 강제 설정으로 바꾸거나 thinking 모드를 예약 도구에서 제어할 수 있다는 근거 없이 주장하지 않는다. 사용자가 선택한 원본 프로젝트 내용이 우선.
-- 전면 소스 덮어쓰기, HEAD만 확인하고 개발 종료, 모의 결과를 실제 WAV/Live2D/OBS/최종 시청자 입증으로 재해석, GitHub 무단 force push/branch·Drive 접근 금지. 진행보고는 사용자 요청의 기능 결과·테스트·실패·다음 실제 개발 단계를 중심으로 간결하게. 
+- 전면 소스 덮어쓰기, HEAD만 확인하고 개발 종료, 모의 결과를 실제 WAV/Live2D/OBS/최종 시청자 입증으로 재해석, GitHub 무단 force push/branch·Drive 접근 금지. 진행보고는 사용자 요청의 기능 결과·테스트·실패·다음 실제 개발 단계를 중심으로 간결하게.
 
+## 70. 2026-10-21 — 68절 소스 기반 최종 실제 Windows 500건 모델 결과 및 1시간 예약 점검
+
+- 최신 구독후재생 GPT-SoVITS→OBS 변경 main e9cbcf46659c72c193bf830a37ec2cc65759d85d 실제 모델 500건 [39554567985](https://github.com/junggyeol4444/AISTING/actions/runs/39554567985) 완료 SUCCESS. 4플랫폼 각각 125건 총 **500/500 실제 로컬 Ollama 모델 완료**, model_failure=0, unfinished=0, passed_no_drops=true. 총 로컬 p95=**1962.984초**, FIFO wait p95=**1959.265초**, AI p95=**5.344초**; **499/500건 3초 초과**. 숫자는 CPU Ollama/원래 single-AI-worker burst 시험 수치, 기존 토큰 제한/keep_alive 임의 설정을 재도입하지 않음. 수백명 실제 시청자/24h/시청자 최종 1~3초 인증 아님. 더 빠른/느린 기존 run의 성능 수치를 최신으로 혼동하지 않음.
+- 최신 68절 [39554568025](https://github.com/junggyeol4444/AISTING/actions/runs/39554568025) 전체 2508 tests PASS/skipped 2. [39554567958](https://github.com/junggyeol4444/AISTING/actions/runs/39554567958) Windows 통합 3 success / 2 failure: Windows EXE, OBS 실제 읽기, CHZZK/SOOP 공개읽기 성공; Twitch 실 PRIVMSG 0건 및 Ollama GUI 실제 viewer chat 0건 때문에 외부 라이브 실증 2 failed. 확인된 실제 로컬 Ollama Tk 한글 답변 20문자/합성 FIFO 1건과 실제 실사용 viewer의 성공을 혼동하지 않음.
+- 사용자 요청에 따라 이 파일 원문 1~70절과 다음 대화용 `docs/AISTING_NEXT_CONVERSATION_HANDOFF.md`에 모든 기존 원문을 복사 보존했다. docs/hourly-handoff-appendices/의 14개 이전 인수인계, ORIGINAL_PLAN.txt, ROADMAP_100.md, roadmap.json, main 누적 코드는 삭제·덮어쓰기·재해석하지 않음.
+- 매시간 AISTING 누적 개발 예약 `AISTING 매시간 누적 개발`을 **2026-10-21 15:52 KST 설정**하고 FREQ=HOURLY / exact_schedule / enabled 상태 확인함. 자동화는 다음 실행에서 전체 자료를 읽고 사용자 마지막 지시 GPT-SoVITS→Live2D→OBS, 500건/24h/1~3초 핵심 개발과 Windows 전체 실검증을 이어받음. 임의로 사용자 개인 계정을 로그인하거나 Windows 개인 PC에 접근하는 일을 성공한 듯 보고하지 않음.
+- 이 최신 원문 저장을 위한 문서 전용 main commit이 새 Actions run을 생성할 수 있음. 이 신규 run은 끝난 뒤 실제 status를 별도로 확인; 문서 변경만으로 Windows 실사용 검증 완료라고 주장하지 않음.
