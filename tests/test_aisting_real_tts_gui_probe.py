@@ -42,13 +42,17 @@ class RunnerThread:
 
 class RealTTSNativeGuiTests(unittest.TestCase):
     def tab(self, text="한국어 실제 음성 합성 검사"):
-        return SimpleNamespace(
+        fake = SimpleNamespace(
             _closed=False, _busy=False, _pipeline_busy=False, _tts_probe_busy=False,
             _twitch_session=None, _twitch_active_workers=set(), _input=Value(text),
             _tts_probe_status=Value(), _tts_probe_button=Button(),
             _pipeline_button=Button(), _send=Button(),
             _results=queue.SimpleQueue(), _poll=lambda: None, after=lambda *_: None,
         )
+        fake._work_official_tts_probe = (
+            lambda project, text:
+                LocalChatTab._work_official_tts_probe(fake, project, text))
+        return fake
 
     def test_denied_rights_never_call_real_tts(self):
         tab = self.tab()

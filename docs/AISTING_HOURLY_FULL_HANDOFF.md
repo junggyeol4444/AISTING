@@ -1004,3 +1004,9 @@ GitHub `junggyeol4444/AISTING`, **기존 main에만 빠른전진 반영**:
 - 코드를 실제 main 반영 후 **전체** 2,455+ 회귀와 Windows 5-job EXE/GUI 테스트를 동시에 실행, 실패하면 수정 후 전체 재검증. 성공 테스트는 실제 소유 모델 음성 합성·동일발화 OBS 출력·실사용자 24시간 시청자 1~3초 증거가 아님.
 - 실제 GPT-SoVITS 합성은 권리 확인된 참조 음성/모델과 Windows 로컬 엔진이 연결되고 **운영자가 실제 버튼 승인**할 때만 가능. 가짜 모델·불명확한 음성 권리/사용자 PC 무단접근으로 성공 대신 채우지 않음. YouTube는 소유 방송의 읽기 OAuth 동의·토큰이 있어야 실증 가능.
 - 다음 회차: 실제 로컬 음성/Live2D/OBS 각 단계 결과와 전체 발화 상관성을 구분하는 진단, 동시에 100~500명 FIFO 실제 처리량과 1~3초 미달 원인을 수치화해 모두 보존하는 기존 코드 발전 필요.
+
+## 53. 2026-10-21 — 실제 TTS 버튼 묶음 최초 회귀검사 실패 수정
+
+- 52절 기능 개발 `main` commit `9fa47b03969e2448404d1d6f08f5da677e4a0ed3`의 첫 전체 Actions https://github.com/junggyeol4444/AISTING/actions/runs/39530009832 : **2,461 검사, 오류 1, 건너뜀 2**. 오류는 새 `tests/test_aisting_real_tts_gui_probe.py`의 `SimpleNamespace` 테스트 GUI에 `_work_official_tts_probe` bound callback 누락(`AttributeError`). 실제 GPT-SoVITS 서버의 음성 합성 오류와는 별개.
+- 테스트 fake에 실제 기존 GUI worker 메서드를 명시적으로 바인딩하여 테스트가 사용자 승인 이후 호출·메시지 큐 상태를 검증하도록 수정. 기존 프로그램 코드/권리 게이트·캐릭터·설정·SQLite 변경 없음.
+- 수정 후 전체 회귀, 기존 Windows 네이티브 EXE/GUI 및 5-job 검증을 동일 최신 코드로 재실행한다. 반드시 결과를 추가 기록하고 모의 테스트만으로 실제 GPT-SoVITS/Live2D/OBS 합성을 성공 주장하지 않는다.
