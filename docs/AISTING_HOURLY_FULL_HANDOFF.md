@@ -1238,3 +1238,33 @@ GitHub `junggyeol4444/AISTING`, **기존 main에만 빠른전진 반영**:
 - tests/test_aisting_gpt_sovits_obs_integration.py: 실제 호출 순서 `create → meter subscribed → authorized restart only own source → meter → remove` 확인, 송출이 시작됐을 때 소스 재생 거절 및 정리, 지정된 입력명과 운영자 승인 없는 callback 차단, EventClient 실제 등록 이후 이벤트 시각 측정·selected audio signal 검증. 기존 미터 read-only 검사/타 프로젝트/SQLite/캐릭터/인증·OBS 원본 전체 보존.
 - 코드를 main 누적으로 빠른전진 추가한 뒤 전체 회귀/Windows EXE/OBS/로컬 Ollama/공개읽기 5job 검증. 오류 시 수정 후 전체 재검사. 이 모의 API 계약 검사는 사용권리 확인된 실제 GPT-SoVITS 모델이나 사용자 Live2D/OBS의 실제 동일 발화 성공 증거가 아니며, 해당 런타임에서 완주 전 절대 완료 처리하지 않음.
 - 1~67절 및 별도 28~38절 원문, ORIGINAL_PLAN/ROADMAP_100/config/roadmap 사용자 승인 정책 변경 없음. 임의 `num_predict=96`, `keep_alive=10m` 절대 재추가하지 않음.
+
+## 69. 2026-10-21 — 다음 대화·매시간 자동 예약 인수인계 최종 확정
+
+### 이번 사용자 직접 지시
+- "지금까지의 대화 다음 대화로 넘기고", "내가 마지막에 시킨거 진행하도록", "내가 시킨것만 하고", "니 자아 니생각 니 판단 하나도 넣지 말고", "지금까지 한거 / 해야할거 / 하다가 만거 / 다 넣고 / 1시간 마다 돌아가게 하고".
+- 이전부터 사용자가 명시: 개발 먼저 전체 여러 핵심 항목 실구현 → 전체 검증 → 발견 오류 수정 → 전체 재검증. 완료하지 않은 실증을 검증됐다고 보고하지 않음. AISTING main 누적만 갱신, 다른 저장소/예약/프로젝트/Drive 변경 없음, 기존 캐릭터/SQLite/설정/원본 기획/선행 코드 보존, 임의 model num_predict=96/keep_alive=10m 재도입 금지. Windows 10/11 x64 실제 네이티브 EXE, 한국어 UI/검사/README/보고. 기존 모든 원문 1~68절 그대로 아래 남김.
+- 다음 대화에서 제일 먼저 docs/AISTING_NEXT_CONVERSATION_HANDOFF.md (전체 기존 원문을 포함한 독립 인수인계), docs/AISTING_HOURLY_FULL_HANDOFF.md, docs/hourly-handoff-appendices의 과거 원문, docs/ORIGINAL_PLAN.txt, docs/ROADMAP_100.md, config/roadmap.json 및 main 누적 소스 전체를 읽고 사용자 마지막 개발을 이어서 실행한다. 파일이 없거나 접근 불가한 경우 다른 GitHub 연결 경로를 찾아본 뒤 진짜 실패만 정직하게 보고한다.
+
+### 마지막 진행 및 검증의 정확한 상태
+- 최신 핵심 GPT-SoVITS WAV→OBS input 소스 타이밍 main 코드 commit e9cbcf46659c72c193bf830a37ec2cc65759d85d. 기존 0.4초 지연 구독 때문에 짧은 발화 미터 신호가 유실될 수 있는 오류를 변경: 실제 OBS INPUTVOLUMEMETERS 구독 등록 이후에만 operator-approved 새 고유 임시 ffmpeg_source를 RESTART 하여 WAV 첫 소리부터 미터 측정. 기존 소스/방송/녹화는 변경·재시작 금지. 소스 정리/상태 재검증 코드 보존.
+- 최신 회귀 [39554568025](https://github.com/junggyeol4444/AISTING/actions/runs/39554568025): Ran 2508 tests, OK(skipped=2), 성공.
+- 최신 Windows [39554567958](https://github.com/junggyeol4444/AISTING/actions/runs/39554567958): windows-exe SUCCESS, obs-real-readonly SUCCESS, korean-public-chat-readonly SUCCESS. twitch-public-readonly FAIL: 공개 IRC JOIN은 성공했지만 xqc/ow_esports/valorant 중 실제 PRIVMSG 0건; 실채팅 성공 아님. ollama-real-local-e2e FAIL: 실제 로컬 Ollama 기반 Tk 답변 20글자, synthetic FIFO reply 1건은 성공했으나 CI가 요구한 외부 **실제 시청자 채팅 이벤트 0건**으로 `AssertionError: No real live viewer message arrived`. 사용자 계정 없는 외부 실제 채팅 부재는 단독 LLM/GUI 동작 실패와 구별하되 CI 전체는 실패 기록 보존. 이 두 외부 채팅 실패를 테스트 기대치 변경으로 거짓 PASS 처리 금지.
+- 이전 통합 commit c06e48276d85dcae43e40d1d29903aaa4bbbd4b1는 [39553762593](https://github.com/junggyeol4444/AISTING/actions/runs/39553762593) 전체 2506 passed/skipped2, [39553762863](https://github.com/junggyeol4444/AISTING/actions/runs/39553762863) Windows 5/5 success, 두 독립 artifacts: AISTING-Windows-EXE-integrated 및 AISTING-Windows-Real-Ollama-FIFO-500-24h-EXE. 최신 커밋에서는 Windows 3/5 success로 다운그레이드 없이 정직하게 보고할 것.
+- **실제** Windows Ollama qwen2.5:0.5b 500건 입력 결과 [39547986524](https://github.com/junggyeol4444/AISTING/actions/runs/39547986524): 500/500 accepted/completed/model_success, 0 failed/unfinished, 125건×4 플랫폼, 499/500 총 로컬 응답 >3초, 전체 p95 2995.954초, FIFO wait p95 2989.844초, AI p95 7.922초; 당시 **사용자 미승인 96 토큰 옵션을 포함한 구버전**이라는 점 잊지 말 것. 이는 메시지 누락 없이 처리한 증거이지 1~3초 목표 증거 아님.
+- **사용자 임의 설정 철회 후의 실모델 500건** [39550394094](https://github.com/junggyeol4444/AISTING/actions/runs/39550394094): 실제 500/500 완료, 0 model failure, 500건 3초 초과, 총 p95 3292.688초, FIFO 대기 p95 3285.891초, AI p95 8.719초, 1~3초 실패. [39553762562](https://github.com/junggyeol4444/AISTING/actions/runs/39553762562) 개선된 집계 실행기의 500/500 완료, 497건 3초 초과, 총 p95 1280.437초, 대기 p95 1277.687초, AI p95 2.953초, 목표 실패(런타임 및 모델 성능 편차로 일반화 금지). 최신 [39554567985](https://github.com/junggyeol4444/AISTING/actions/runs/39554567985) 실모델 500건 진행 중이므로 최종 상태 확인 필요.
+- 67절에 추가한 scripts/aisting_real_ollama_fifo_soak.py는 실제 모델 500건 이상·최대 24시간 하네스, 25건/60초 체크포인트 및 운영자 명시 report 경로 atomic 갱신. 기존 Windows GUI/실사용 캐릭터·SQLite에 기록 안 함; 실제 수백 명 플랫폼 송출/24시간 성공과 구분.
+
+### 남은 핵심 작업 / 하다가 만 작업 (꼭 다음 회차 바로 이어서)
+A) 실제 권리 명확한 한국어 GPT-SoVITS weights/voice ref + Windows 모델 엔진 실행→진짜 합성 WAV→ 공식 Live2D Cubism의 실제 입·RMS→ OBS 동일 발화의 실제 음성 입력/영상, 전체 연결의 실제 실증. 소유 모델/라이선스가 없어도 모델 없는 경로/바이너리/실험 준비 가능한 개발을 진행하고 실제 없음을 핑계로 주변 버튼만 반복 제작 금지. 실제 증거 없이 가짜 성공 금지. 68절 OBS 구독 시각 수정 코드에 대한 원본 Windows EXE+OBS full 실행은 다음 회차 이어서.
+B) 실제 Ollama 500건 이상/4개 플랫폼 동일 원본 FIFO 처리에서 모델 p95 및 대기 p95를 분석해 사용자 명시 정책에 어긋나지 않는 범위로 병목 원인을 해결; 채팅 임의 건너뛰기, 중복 병합·일부만 답하기, 96토큰 길이 제한, 임의 답변 정책 변경 금지. 수백 건 burst와 지속 24h 부하의 서로 다른 의미 설명 및 둘 다 실측. 실제 시청자/최종 도달 단계의 1~3초는 별도.
+C) Windows native 프로그램의 진짜 장시간 24시간 통합 테스트/재연결/메모리/OBS/WebView2/로컬 AI 자원 오류, 각 지점의 상태/로그 검증; 하네스 `--hold-full-duration --duration-seconds 86400`의 구현과 실제 24h 완료를 구별. 실제 실행가능 환경 확보 범위 내 코드 개발·검증 계속.
+D) 소유 Google YouTube OAuth 동의/채팅 수신 사용자만 승인 가능; token read-only 코드 이미 존재, 본인 인증을 대신하거나 실제 OAuth 실증이라 주장 금지. 승인받은 Twitch chat:read 사용 시 실제 수신 확인. 공개 IRC 채팅 0건은 성능 코드 전체 FAIL과 명확히 구분하되 실패 은폐 금지.
+E) 실제 모델→음성→공식 Cubism→OBS 동일 발화 1회 생성과 OBS 동일 audio meter 시간 겹침 검사. 전용 브리지에서는 승인 후 새 임시 소스만 재시작, 사용자 송출/녹화/장면/기존 소스 무단 조작 금지. 수백 명·24h·3초 병목도 코드 개발 먼저 몰아서 진행, 전체 Windows regression 후 실패 수정·전체 다시 검사.
+F) 원본 100단계 roadmap.json status는 completed=9, pending=91이며 **코드로 일부 구현되어도 원본 운영자 승인/Windows 실증 요건 미달로 pending 남은 단계가 포함**. 사용자 허가 없이 목록 임의 수정/완료 표시/기획 축약 금지.
+
+### 운용·예약
+- 2026-10-21 Asia/Seoul 기준 hourly exact_schedule 예약 `AISTING 매시간 누적 개발` 등록 완료 (FREQ=HOURLY, 다음 실행은 예약 실행 간격에 따름). 예약 메시지가 실행할 때 GitHub 위 파일을 새 대화에 가져와 바로 소스를 개발·테스트·수정하고 해당 차수 누적 handoff를 append. 사용자에게 백그라운드에서 했다고 임의 추정하지 말고 실제 예약 실행 결과/증거만 보고.
+- 자동 실행은 실제 개인 Windows PC를 제어하거나 소유 Google 계정 로그인/권리 없는 음성 파일을 획득하지 못하므로 해당 실제 자산 전제는 정직하게 분리한다. 그래도 코드 개발 자체는 가능한 한 멈추지 않는다.
+- 기본 모델을 특정 강제 설정으로 바꾸거나 thinking 모드를 예약 도구에서 제어할 수 있다는 근거 없이 주장하지 않는다. 사용자가 선택한 원본 프로젝트 내용이 우선.
+- 전면 소스 덮어쓰기, HEAD만 확인하고 개발 종료, 모의 결과를 실제 WAV/Live2D/OBS/최종 시청자 입증으로 재해석, GitHub 무단 force push/branch·Drive 접근 금지. 진행보고는 사용자 요청의 기능 결과·테스트·실패·다음 실제 개발 단계를 중심으로 간결하게. 
