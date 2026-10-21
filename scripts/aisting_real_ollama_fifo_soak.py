@@ -250,6 +250,12 @@ def run_real_load(*, model: str, messages: int, duration_seconds: float,
 
 
 def main() -> int:
+    # Native Windows console/PowerShell often assigns cp1252 to frozen EXEs.
+    # Force Korean UTF-8 *only* for the isolated test tool's console I/O.
+    # Do not modify the main AISTING GUI encoding or user settings.
+    for output in (sys.stdout, sys.stderr):
+        if output is not None and hasattr(output, "reconfigure"):
+            output.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(
         description="실제 로컬 Ollama 모델·AISTING 원본 FIFO 장시간 부하실증")
     parser.add_argument("--model", required=True, help="설치된 실제 로컬 Ollama 모델")

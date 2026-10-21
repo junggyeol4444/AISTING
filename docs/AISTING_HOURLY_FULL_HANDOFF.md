@@ -1189,3 +1189,20 @@ GitHub `junggyeol4444/AISTING`, **기존 main에만 빠른전진 반영**:
 - Python 설치를 유저에게 강제하지 않고 기존 Windows AISTING.exe를 그대로 보존하면서, 기존 sources `scripts/aisting_real_ollama_fifo_soak.py`를 독립 네이티브 Windows x64 `AISTING-FIFO-Soak.exe`로 PyInstaller onefile 빌드하는 단계를 기존 `.github/workflows/build-windows.yml`에 추가. 별도 `AISTING-Windows-Real-Ollama-FIFO-500-24h-EXE` 산출물 업로드, CI에서 EXE --help 직접 실행 확인. 원본 AISTING.exe와 분리된 실제 모델 부하검사용 EXE이며 user login/OBS stream/Google account/write API는 자동 호출 안 함.
 - 운영자는 해당 EXE를 Windows에서 `AISTING-FIFO-Soak.exe --operator-approved --model <installed-local-ollama-model> --messages 500 --duration-seconds 86400 --hold-full-duration --report <desired_path>`처럼 사용 가능. 이는 승인된 로컬 Ollama/500 합성 요청을 24시간 동안 분배·계측하는 옵션이고 실제 방송 수백 시청자/관객 오디오 24시간 실증 성공과 구별해야 함.
 - Windows EXE 추가 빌드와 원본 GUI 통합검사를 최종 CI에서 실제 확인하고 실패 시 소스·워크플로를 수정해 전체 재검사할 것. 기존 1~64절/별도 28~38절/프로젝트 100단계 원문 보존. 사용자 자산·다른 프로젝트·기존 예약/Google Drive·브랜치 변경 없음.
+
+## 66. 2026-10-21 — 운영자 승인 없는 96토큰·10분 기본값 철회 및 Windows 부하 EXE 콘솔 오류 수정
+
+### 사용자 지시 위반 바로잡기
+- 64절에서 사용자 요청 없이 src/ai_broadcaster/local_llm.py에 추가한 `options.num_predict=96` 와 `keep_alive=10m`을 **모두 철회**. 이것들은 원본 기능의 의도된 동작이 아니며 사용자에게 제한에 관한 결정을 요청하거나 승인받지 않았다. 이 설정을 빠르다는 주장과 함께 넣은 것은 잘못.
+- 해당 파일의 실제 원본(임의 제한 도입 전, main commit 2e638c7003134ff6e7d43bfc3198f68934471c53)을 해당 파일에서만 복원. 1~65절 다른 모든 누적 개발은 보존; 원래 LocalModelConfig와 /api/chat 메시지의 시스템+캐릭터/최근 8교환을 변경하지 않음. 사용자 방송 캐릭터·DB·프로젝트 설정·나머지 플랫폼은 무변경.
+- tests/test_local_llm.py에서도 미승인 기본 설정을 정당화한 96/10m 테스트를 제거하고, 원래 기본 payload에 임의 `options`/`keep_alive`가 없는지 명시적으로 회귀검증.
+- 이전 run 39548814256은 **2,504 tests passed, skipped=2**였지만 이 결과가 임의 변경을 합리화하지 않음.
+
+### 실제 Windows EXE 빌드 실패 수정
+- 직전 빌드 https://github.com/junggyeol4444/AISTING/actions/runs/39548814306 은 windows-exe 작업 FAIL. 독립 AISTING-FIFO-Soak.exe 자체 PyInstaller 빌드는 성공했으나 Windows cp1252 콘솔에서 `--help` 한국어 설명 출력시 UnicodeEncodeError 발생함(외부 자산 부재 문제가 아닌 실제 프로그램 버그). scripts/aisting_real_ollama_fifo_soak.py의 `main()` 진입 때 별도 이 테스트 EXE stdout/stderr를 UTF-8로 설정. 원본 AISTING Windows GUI 인코딩/글꼴/UI는 변경하지 않음.
+- tests/test_aisting_real_local_fifo_soak.py에서 실제 cp1252 text stream을 흉내 내고 `--help` 한국어 출력 성공을 확인하는 회귀 추가.
+- 해당 Windows run의 Twitch 공개 채팅 읽기 job도 3개 공개 채널에서 메시지 0건으로 FAIL; 실제 소유자의 승인한 chat:read Token/채널이 없는 무메시지 현상은 실제 수신 성공으로 날조하지 않음. 같은 run에서 다른 Korean-public, OBS, real Ollama job은 success.
+
+### 실제 500건 검증의 현재 진행 확인
+- 별도 https://github.com/junggyeol4444/AISTING/actions/runs/39547986524 는 공식 Ollama Windows qwen2.5:0.5b 모델을 사용한 500 synthetic chats 원본 FIFO 실처리 테스트로 실행 중이며 완료 성공 여부는 해당 run 최종 결과를 반드시 확인. **그 run은 기존 96토큰 미승인 설정을 포함한 옛 commit 기준**이므로 새 원본 응답 정책의 성공으로 해석하지 않음. 새 main에서도 별도 real 500 job 재검증한다.
+- 누적 변경을 main에 빠른전진으로 안전 추가하고 전체 회귀, Windows 원본 EXE+실제 GUI/OBS/Ollama/공개읽기, 별도 500건 실제 원본 동작 검증을 수행. 실패 시 수정 후 전체 검증. 사용자 프로젝트/예약/Google Drive·브랜치·인증·방송 발신·SQLite 무단 접근은 하지 않는다.

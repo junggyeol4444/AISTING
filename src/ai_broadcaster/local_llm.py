@@ -36,9 +36,6 @@ class LocalModelConfig:
     timeout_seconds: float = 30.0
     max_reply_chars: int = 6000
     max_context_exchanges: int = 8
-    # Real latency control: bound response tokens, keep the selected model warm.
-    num_predict: int = 96
-    keep_alive: str = "10m"
 
     def __post_init__(self) -> None:
         if not isinstance(self.model, str) or not re.fullmatch(
@@ -54,12 +51,6 @@ class LocalModelConfig:
             raise ValueError("응답 길이 제한이 잘못됐습니다.")
         if type(self.max_context_exchanges) is not int or not 0 <= self.max_context_exchanges <= 40:
             raise ValueError("최근 대화 수는 0~40이어야 합니다.")
-        if type(self.num_predict) is not int or not 8 <= self.num_predict <= 2048:
-            raise ValueError("Ollama 답변 생성 토큰 수는 8~2048 사이여야 합니다.")
-        if not isinstance(self.keep_alive, str) or not re.fullmatch(
-            r"(?:0|[1-9][0-9]{0,2}[smh])", self.keep_alive
-        ):
-            raise ValueError("Ollama 모델 유지시간은 0 또는 1~999s/m/h 형식이어야 합니다.")
 
     @property
     def endpoint(self) -> str:
@@ -108,13 +99,7 @@ class LocalOllamaReplyGenerator:
                 })
                 messages.append({"role": "assistant", "content": exchange.reply})
         messages.append({"role": "user", "content": f"{message.sender}: {message.text}"})
-        payload = {
-            "model": self.config.model,
-            "stream": False,
-            "messages": messages,
-            "keep_alive": self.config.keep_alive,
-            "options": {"num_predict": self.config.num_predict},
-        }
+        payload = {"model": self.config.model, "stream": False, "messages": messages}
         request = Request(
             self.config.endpoint,
             data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),

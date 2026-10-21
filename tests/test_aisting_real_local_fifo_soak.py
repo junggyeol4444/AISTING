@@ -1,5 +1,6 @@
 """Validate the real (never canned-LLM) Windows load runner's controls."""
 import importlib.util
+import io
 from pathlib import Path
 import unittest
 from types import SimpleNamespace
@@ -27,6 +28,21 @@ class LoadRunnerContracts(unittest.TestCase):
         messages = [SOAK.make_message(i, duplicate=True) for i in range(8)]
         self.assertEqual(len(messages), 8)
         self.assertEqual(len({m.text for m in messages}), 1)
+
+    def test_frozen_windows_cp1252_console_can_print_korean_help(self):
+        # Simulates the real native Windows EXE failure: cp1252 output
+        # cannot encode the Korean command descriptions in --help.
+        stdout_bytes, stderr_bytes = io.BytesIO(), io.BytesIO()
+        out = io.TextIOWrapper(stdout_bytes, encoding="cp1252")
+        err = io.TextIOWrapper(stderr_bytes, encoding="cp1252")
+        with patch.object(SOAK.sys, "stdout", out), patch.object(
+                SOAK.sys, "stderr", err), patch.object(
+                SOAK.sys, "argv", ["AISTING-FIFO-Soak.exe", "--help"]):
+            with self.assertRaises(SystemExit) as exited:
+                SOAK.main()
+        self.assertEqual(exited.exception.code, 0)
+        out.flush()
+        self.assertIn("실제 로컬 Ollama", stdout_bytes.getvalue().decode("utf-8"))
 
     def test_actual_24_hour_duration_supported(self):
         SOAK.validate_parameters(500, 86400, 10000, 11434)
