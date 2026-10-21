@@ -928,3 +928,13 @@ GitHub `junggyeol4444/AISTING`, **기존 main에만 빠른전진 반영**:
 - 두 검사 가짜 객체에 명시적 `_poll` 무동작 콜백을 추가하며 기존 코드 4플랫폼/AI FIFO/캐릭터·SQLite·설정/원본 로드맵은 변경하지 않는다.
 - 새 commit에 대해 전량 회귀, Windows EXE 네이티브 GUI, OBS/로컬 Ollama/공개 읽기 전용 5-job 전체를 **다시** 실행하고 결과를 확인한다.
 - 1~3초는 실제 외부 시청자 종단 간 보장이 아닌 GUI 접수 이후 로컬 앱 AI 소요 측정. 실제 GPT-SoVITS/공식 Cubism/OBS 동일 발화, 소유 YouTube 활성 API, 수백명 24시간 실증은 여전히 미완료.
+
+## 48. 2026-10-21 09시 이후 — 46~47절 코드 최종 전체 회귀 성공 / Windows EXE 실검사 성공
+
+- 이전 46절 코드 개발에서 첫 회귀 run `39518672472`는 2,446 tests 중 오류 2개로 실패했으며 Windows run `39518672484`도 같은 격리 테스트 문제로 실패. 오류는 mock Tk `SimpleNamespace`의 `_poll` 누락, 사용자 앱 기능 오류가 아님. 47절에서 실패 원인 수정, `tests/test_aisting_ai_latency_readonly.py`의 fake GUI 두 곳에 누락 속성 추가 후 전체 재검증 실행.
+- **최신 코드 기준 전체 성공** https://github.com/junggyeol4444/AISTING/actions/runs/39518871127 : `Ran 2446 tests in 21.742s`, `OK (skipped=2)`, 실패 0.
+- **같은 최신 코드 기준 Windows 5/5 성공** https://github.com/junggyeol4444/AISTING/actions/runs/39518871004 : `windows-exe`, `ollama-real-local-e2e`, `twitch-public-readonly`, `obs-real-readonly`, `korean-public-chat-readonly` 각각 `success`.
+- GitHub Windows EXE artifact `AISTING-Windows-EXE-integrated`, ID `12310106821`, zip artifact 19,806,375 bytes, digest `sha256:25a99f726362e287f09e9dd1e02652ddf4a3aac8d5ba0ea2aabaf5b9c3e8a531`.
+- 이번에 구현한 **AI 처리시간 계측**은 Windows GUI 접수 이후 대기 및 기존 AI 요청·응답 구간만 측정하고 별도 소요 시간 부하/3초 초과 표시를 제공한다. 플랫폼→GUI 네트워크/AI 실제 생성 오디오→OBS→시청자 지연은 아직 미측정이다. 검증된 Windows 경로도 공식 GPT-SoVITS 실제 음성 합성·Cubism 실제 입·OBS 동일 발화는 별도 실증 대기. 소유 API 키가 없어 YouTube의 실제 개인 활성 방송에서 채팅 수신도 미실증.
+- 다음 작업: 권리 확인된 참조 보이스·소유 플랫폼 인증·Windows 실사용 PC가 준비되는 대로 실제 GPT-SoVITS 한국어 합성 → 공식 Open-LLM-VTuber/Live2D 같은 발화 립싱크 → OBS 영상/음성 한 발화, 소유 YouTube 방송 채팅, 24시간/수백명 AI FIFO/1~3초 실시간 성능을 실측. 준비되지 않은 항목은 미실증 유지하고 무단 방송·계정접근·외부 송출·유료 API·보이스 훈련 하지 않음.
+- 기존 1~27절, 독립 28~38절 전체 원문, 39~47절 전체 원문 삭제·축약 없이 보존; 캐릭터/설정/SQLite/기획 로드맵 사용자 최종 승인 변경 없음. 문서만 후속으로 커밋하면 새 Actions가 재실행될 수 있으므로 위 성공은 명시한 실제 코드 커밋 기준임.
