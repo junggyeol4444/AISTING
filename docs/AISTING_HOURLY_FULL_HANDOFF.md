@@ -938,3 +938,26 @@ GitHub `junggyeol4444/AISTING`, **기존 main에만 빠른전진 반영**:
 - 이번에 구현한 **AI 처리시간 계측**은 Windows GUI 접수 이후 대기 및 기존 AI 요청·응답 구간만 측정하고 별도 소요 시간 부하/3초 초과 표시를 제공한다. 플랫폼→GUI 네트워크/AI 실제 생성 오디오→OBS→시청자 지연은 아직 미측정이다. 검증된 Windows 경로도 공식 GPT-SoVITS 실제 음성 합성·Cubism 실제 입·OBS 동일 발화는 별도 실증 대기. 소유 API 키가 없어 YouTube의 실제 개인 활성 방송에서 채팅 수신도 미실증.
 - 다음 작업: 권리 확인된 참조 보이스·소유 플랫폼 인증·Windows 실사용 PC가 준비되는 대로 실제 GPT-SoVITS 한국어 합성 → 공식 Open-LLM-VTuber/Live2D 같은 발화 립싱크 → OBS 영상/음성 한 발화, 소유 YouTube 방송 채팅, 24시간/수백명 AI FIFO/1~3초 실시간 성능을 실측. 준비되지 않은 항목은 미실증 유지하고 무단 방송·계정접근·외부 송출·유료 API·보이스 훈련 하지 않음.
 - 기존 1~27절, 독립 28~38절 전체 원문, 39~47절 전체 원문 삭제·축약 없이 보존; 캐릭터/설정/SQLite/기획 로드맵 사용자 최종 승인 변경 없음. 문서만 후속으로 커밋하면 새 Actions가 재실행될 수 있으므로 위 성공은 명시한 실제 코드 커밋 기준임.
+
+## 49. 2026-10-21 10:10 KST 이후 이어받은 실제 개발 — 사용자 승인 YouTube 소유 활성 방송 읽기 전용 OAuth 경로
+
+### 원본 보존
+- 기존 GitHub `main` 누적 모든 코드, 기존 인수인계 원문 1~27절과 39~48절, 별도 `docs/hourly-handoff-appendices/`의 28~38절 전체 원문 유지.
+- `docs/ORIGINAL_PLAN.txt`, `docs/ROADMAP_100.md`, `config/roadmap.json` 사전 확인. 원본 100단계 상태 9 completed/91 pending, 캐릭터·SQLite 및 방송 설정/다른 프로젝트/예약/브랜치/Google Drive 변동 없음.
+- 48절 기준 코드 전체 성공 GitHub Actions 39518871127 (2,446 tests 2 skipped), Windows 39518871004 (5 jobs success). 이후 문서만 갱신한 Windows run 39519247961은 `obs-real-readonly`의 CI 일회용 가상머신 OBS Studio 설치 단계 실패; 기존 코드 실패 또는 GPT-SoVITS 실증이라고 왜곡하지 않는다.
+
+### 복수 기존 기능 누적 개발
+1. `src/ai_broadcaster/multiplatform_readonly.py`: 기존 YouTube API 키 기반 공개 읽기를 그대로 유지. 사용자가 **직접 입력한 이미 승인받은 OAuth 2.0 읽기 액세스 토큰**을 메모리 내에서만 받아 `Authorization: Bearer` 헤더로 `https://www.googleapis.com/youtube/v3/`에만 전달하고 URL·설정·로그·SQLite에 기록하지 않는다. 토큰 기반 소유 활성 방송 선택(`내 활성 방송`)시 공식 `liveBroadcasts.list?mine=true&broadcastType=all&part=snippet,status`에서 `lifeCycleStatus=live` 및 `snippet.liveChatId`를 확인하고 모호한 복수 채팅/없는 채팅/페이지 초과는 명시적으로 거부. 이후 기존 `liveChatMessages.list` FIFO·중복문자 보존·페이지 재전송 방지·쿼터 간격 정책 그대로 유지. 인증 거절 401/403에서 토큰이나 요청 URL이 들어있는 예외 원문을 노출하지 않는다. **자동 OAuth 로그인/refresh-token 갱신·쓰기 API 호출 없음**.
+2. `src/ai_broadcaster/multi_platform_session.py`: 기존 4플랫폼 단일 AI FIFO 코디네이터에서 YouTube에만 사전 승인 OAuth 읽기 액세스 토큰 전달. Twitch/CHZZK/SOOP 읽기 경로 및 중복 보존 유지.
+3. `src/ai_broadcaster/desktop_chat_tab.py`: 기존 Windows Tk 채팅 GUI에 가려진 OAuth 1회 입력란(운영자 승인 완료 토큰·메모리만 사용)과 `내 활성 방송` 입력 안내 추가. 기존 유튜브 채널 단독/4플랫폼 `전체` 선택 모두 연동; 창 종료 시 API 키와 OAuth 토큰을 모두 비우며 실제 계정 자동 로그인·방송/녹화/채팅 게시 없음.
+4. `tests/test_aisting_youtube_owner_oauth_readonly.py` 신규 7개 격리 검사: 생성 시 네트워크 미접속, 올바른 소유 채팅 ID 찾기 및 같은 문장 중복 유지, 토큰 오류 비노출 및 무재시도, 활성/중복/다중페이지 실패 차단, 토큰 유효성/키만으로 소유 API 차단, 기존 키 모드 호환, 코디네이터 동시연결 전달.
+5. `tests/test_aisting_multiplatform_gui_routing.py` 기존 격리 테스트 2개 추가: 실제 Tk 콜백의 소유 OAuth 단독/전체 수신기 인자 전달 및 예외 원문 토큰 비노출 확인. 사용자 로그·키 및 PC 데이터 읽기/저장 없는 테스트만 수행.
+
+### 공식 API 문서 대조
+- https://developers.google.com/youtube/data/live/reference/rest/v3/liveBroadcasts/list (OAuth scope `youtube.readonly`, `mine=true` 조회, `snippet` 및 `status`).
+- https://developers.google.com/youtube/data/live/reference/rest/v3/liveChatMessages/list (실제 `liveChatId`, FIFO 및 nextPageToken, pollingIntervalMillis 준수).
+- 실제 소유 계정의 OAuth 토큰을 받거나 계정 인증/로그인을 실시하지 않았으며 테스트는 전부 가짜 HTTP 응답. Google 실제 연결·소유 방송/YouTube 실채팅 성공은 반드시 **미실증**.
+
+### 전체 회귀 및 Windows 검증
+- 위 5개 실질 파일 묶음을 커밋한 뒤 전체 테스트/Windows EXE·GUI/읽기 전용 연동 GitHub Actions 실행. 실패 시 오류 수정 후 전체 재실행, 결과 정확히 후속 절에 기록. CI 성공 여부와 실제 방송 성공은 절대 동일시하지 않는다.
+- 실제 소유 GPT-SoVITS 한국어 음성 합성→공식 Live2D Cubism 해당 발화 립싱크→OBS 동일 발화 화면/음성, 수백 명 1~3초/24시간 실측, 로드맵 소유자 승인 상태는 별도 미실증이며 무단 훈련·녹화·스트리밍 금지.

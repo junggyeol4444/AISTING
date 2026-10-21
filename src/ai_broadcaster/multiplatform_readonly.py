@@ -27,9 +27,16 @@ class PlatformChat:
     platform: str
 
 
-def _json_get(url: str, *, timeout: float = 10) -> dict:
-    request = Request(url, headers={"User-Agent": "AISTING/1.0 (read-only chat)",
-                                    "Accept": "application/json"})
+def _json_get(url: str, *, timeout: float = 10, headers: dict | None = None) -> dict:
+    # Authentication, when explicitly supplied, travels only via HTTPS
+    # Authorization headers, never an API URL, print, saved file or log.
+    request_headers = {"User-Agent": "AISTING/1.0 (read-only chat)",
+                       "Accept": "application/json"}
+    if headers is not None:
+        if not url.startswith("https://www.googleapis.com/youtube/v3/"):
+            raise ValueError("인증된 유튜브 읽기 주소가 올바르지 않습니다.")
+        request_headers.update(headers)
+    request = Request(url, headers=request_headers)
     with urlopen(request, timeout=timeout) as response:
         if response.status != 200:
             raise RuntimeError("공개 방송 메타정보 HTTP 오류")
@@ -368,12 +375,27 @@ def _youtube_video_id_or_none(value: str) -> str | None:
 
 
 class YouTubeReadOnlySession(ReadOnlySession):
-    def __init__(self, channel: str, emit, api_key: str):
+    def __init__(self, channel: str, emit, api_key: str = "",
+                 *, oauth_access_token: str = ""):
         super().__init__(channel, emit)
-        if not isinstance(api_key, str) or not 20 <= len(api_key) <= 240:
-            raise ValueError("유튜브 Data API 키를 프로그램에서 입력하세요.")
-        self._video_id = _youtube_video_id_or_none(self.channel)
-        self._key = api_key
+        if type(oauth_access_token) is not str:
+            raise ValueError("유튜브 OAuth 읽기 인증 형식이 잘못되었습니다.")
+        if oauth_access_token:
+            if (not 30 <= len(oauth_access_token) <= 4096
+                    or oauth_access_token != oauth_access_token.strip()
+                    or any(ord(ch) <= 32 or ord(ch) >= 127
+                           for ch in oauth_access_token)):
+                raise ValueError("유튜브 OAuth 읽기 인증 형식이 잘못되었습니다.")
+        elif not isinstance(api_key, str) or not 20 <= len(api_key) <= 240:
+            raise ValueError("유튜브 API 키 또는 승인받은 OAuth 읽기 인증이 필요합니다.")
+        self._owner_active = self.channel == "내 활성 방송"
+        if self._owner_active and not oauth_access_token:
+            raise ValueError("내 활성 방송 조회에는 승인받은 OAuth 읽기 인증이 필요합니다.")
+        self._video_id = (None if self._owner_active
+                          else _youtube_video_id_or_none(self.channel))
+        self._key = "" if oauth_access_token else api_key
+        # No refresh token, OAuth login, token save, automatic consent or write access.
+        self._oauth_access_token = oauth_access_token
 
     def run(self, *, max_seconds=None):
         if self._stop.is_set():
@@ -404,6 +426,10 @@ class YouTubeReadOnlySession(ReadOnlySession):
                 if self._stop.is_set():
                     return None
                 try:
+                    if self._oauth_access_token:
+                        return _json_get(
+                            url, timeout=remaining_timeout(),
+                            headers={"Authorization": "Bearer " + self._oauth_access_token})
                     return _json_get(url, timeout=remaining_timeout())
                 except HTTPError:
                     raise
@@ -418,11 +444,41 @@ class YouTubeReadOnlySession(ReadOnlySession):
             raise RuntimeError("유튜브 연결 복구 시도 제한 초과")
 
         live_chat_id = self.channel
+        if self._owner_active:
+            # Official read-only owner scope. List ONLY the authenticated
+            # owner's broadcasts. Avoid ambiguous first-result selection.
+            params = {"part": "snippet,status", "mine": "true",
+                      "broadcastType": "all", "maxResults": "50"}
+            try:
+                result = guarded_get(
+                    "https://www.googleapis.com/youtube/v3/liveBroadcasts?"
+                    + urlencode(params))
+            except Exception:
+                raise RuntimeError("유튜브 소유 방송 조회 또는 OAuth 권한 오류") from None
+            if self._stop.is_set():
+                return
+            rows = result.get("items") if isinstance(result, dict) else None
+            if not isinstance(rows, list):
+                raise RuntimeError("유튜브 소유 방송 목록 응답 형식 오류")
+            if result.get("nextPageToken"):
+                raise RuntimeError("활성 방송 목록이 여러 페이지입니다. 채팅 ID를 직접 입력하세요.")
+            active = [item.get("snippet", {}).get("liveChatId")
+                      for item in rows if isinstance(item, dict)
+                      and isinstance(item.get("snippet"), dict)
+                      and isinstance(item.get("status"), dict)
+                      and item["status"].get("lifeCycleStatus") == "live"
+                      and isinstance(item["snippet"].get("liveChatId"), str)
+                      and item["snippet"]["liveChatId"].strip()]
+            if len(active) != 1:
+                raise RuntimeError("소유한 활성 방송 채팅이 없거나 여러 개입니다. 정확한 채팅 ID를 입력하세요.")
+            live_chat_id = active[0]
         if self._video_id is not None:
             # Public videos.list only. Do not access an account, perform OAuth,
             # or attempt to infer a chat ID from a video ID string.
             lookup = {"part":"liveStreamingDetails",
-                      "id":self._video_id, "key":self._key}
+                      "id":self._video_id}
+            if not self._oauth_access_token:
+                lookup["key"] = self._key
             try:
                 details = guarded_get("https://www.googleapis.com/youtube/v3/"
                                       "videos?" + urlencode(lookup))
@@ -456,7 +512,9 @@ class YouTubeReadOnlySession(ReadOnlySession):
             if max_seconds is not None and time.monotonic() - start >= max_seconds:
                 break
             params = {"part":"id,snippet,authorDetails",
-                      "liveChatId":live_chat_id, "key":self._key}
+                      "liveChatId":live_chat_id}
+            if not self._oauth_access_token:
+                params["key"] = self._key
             if cursor:
                 params["pageToken"] = cursor
             try:

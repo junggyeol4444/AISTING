@@ -21,7 +21,8 @@ SUPPORTED = ("twitch", "chzzk", "soop", "youtube")
 class MultiPlatformReadOnlySession:
     """Run selected read-only transports concurrently, preserving each FIFO."""
 
-    def __init__(self, channels: dict[str, str], emit, *, youtube_api_key: str = ""):
+    def __init__(self, channels: dict[str, str], emit, *, youtube_api_key: str = "",
+                 youtube_oauth_token: str = ""):
         if (type(channels) is not dict or not channels or len(channels) > 4
                 or not callable(emit)):
             raise ValueError("동시 채팅 플랫폼과 채널을 확인하세요.")
@@ -62,7 +63,9 @@ class MultiPlatformReadOnlySession:
             "chzzk": lambda channel, cb: ChzzkReadOnlySession(channel, cb),
             "soop": lambda channel, cb: SoopReadOnlySession(channel, cb),
             "youtube": lambda channel, cb: YouTubeReadOnlySession(
-                channel, cb, youtube_api_key),
+                channel, cb, youtube_api_key, oauth_access_token=youtube_oauth_token)
+                if youtube_oauth_token else YouTubeReadOnlySession(
+                    channel, cb, youtube_api_key),
         }
         # Construct and validate every reader before starting any network I/O.
         for code, channel in channels.items():

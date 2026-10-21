@@ -97,6 +97,42 @@ class NativeChatRouting(unittest.TestCase):
         self.assertNotIn("secret-test-api-key", str(notice.call_args))
         self.assertIsNone(tab._twitch_session)
 
+    def test_owner_oauth_connect_button_forwards_only_to_approved_youtube_reader(self):
+        tab = self.fake()
+        secret = "ya29." + "Z" * 90
+        tab._chat_platform = Value("유튜브")
+        tab._twitch_channel = Value("내 활성 방송")
+        tab._youtube_oauth_token = Value(secret)
+        with patch("ai_broadcaster.desktop_chat_tab.load_settings",
+                   return_value={"platforms":["youtube"]}), patch(
+                   "ai_broadcaster.desktop_chat_tab.YouTubeReadOnlySession",
+                   side_effect=ValueError("PRIVATE_YOUTUBE_ACCESS_TOKEN")) as reader, patch(
+                   "ai_broadcaster.desktop_chat_tab.messagebox.showinfo") as notice:
+            LocalChatTab._start_twitch(tab)
+        reader.assert_called_once()
+        self.assertEqual(reader.call_args.kwargs["oauth_access_token"], secret)
+        self.assertNotIn(secret, str(notice.call_args))
+        self.assertNotIn("PRIVATE_YOUTUBE_ACCESS_TOKEN", str(notice.call_args))
+        self.assertIsNone(tab._twitch_session)
+
+    def test_multi_oauth_fan_in_forwards_secret_only_to_coordinator(self):
+        tab = self.fake()
+        secret = "ya29." + "Z" * 90
+        tab._youtube_oauth_token = Value(secret)
+        for key, value in (("twitch","tester"),("chzzk","a"*32),
+                           ("soop","tester/123"),("youtube","내 활성 방송")):
+            tab._multi_channels[key] = Value(value)
+        with patch("ai_broadcaster.desktop_chat_tab.load_settings",
+                   return_value={"platforms":["twitch","chzzk","soop","youtube"]}), patch(
+                   "ai_broadcaster.desktop_chat_tab.MultiPlatformReadOnlySession",
+                   side_effect=ValueError("PRIVATE_YOUTUBE_ACCESS_TOKEN")) as session, patch(
+                   "ai_broadcaster.desktop_chat_tab.messagebox.showinfo") as notice:
+            LocalChatTab._start_twitch(tab)
+        session.assert_called_once()
+        self.assertEqual(session.call_args.kwargs["youtube_oauth_token"], secret)
+        self.assertNotIn(secret, str(notice.call_args))
+        self.assertNotIn("PRIVATE_YOUTUBE_ACCESS_TOKEN", str(notice.call_args))
+
     def test_transport_and_local_ai_errors_hide_credentials(self):
         secret = "never-output-this-secret"
         rows = queue.SimpleQueue()

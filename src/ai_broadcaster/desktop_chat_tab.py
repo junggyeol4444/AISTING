@@ -52,6 +52,7 @@ class LocalChatTab(ttk.Frame):
         self._multi_channels = {name: tk.StringVar() for name in ('twitch','chzzk','soop','youtube')}
         self._official_live2d = tk.BooleanVar(value=False)
         self._youtube_api_key = tk.StringVar()
+        self._youtube_oauth_token = tk.StringVar()
         self._pipeline_busy = False
         self._pipeline_cancel: threading.Event | None = None
         self._pipeline_audio_input = tk.StringVar()
@@ -142,6 +143,13 @@ class LocalChatTab(ttk.Frame):
         keyline = ttk.Frame(self)
         keyline.pack(fill="x", before=model_row)
         self._chat_keyline = keyline
+        oauth_line = ttk.Frame(self)
+        oauth_line.pack(fill="x", before=model_row)
+        ttk.Label(oauth_line, text="유튜브 OAuth 읽기 토큰 (승인 완료분·메모리에만 보관)").pack(side="left")
+        ttk.Entry(oauth_line, textvariable=self._youtube_oauth_token,
+                  show="*", width=34).pack(side="left", padx=5)
+        ttk.Label(oauth_line, text="내 활성 방송: 채널 입력란에 '내 활성 방송' 입력"
+                                      " · 자동 로그인/계정 변경 없음").pack(side="left", padx=2)
         ttk.Label(keyline, text="YouTube API 키 (실행 중 메모리만 사용)").pack(side="left")
         ttk.Entry(keyline, textvariable=self._youtube_api_key, width=46,
                   show="*").pack(side="left", padx=5)
@@ -463,7 +471,8 @@ class LocalChatTab(ttk.Frame):
                 session = MultiPlatformReadOnlySession(
                     {name: self._multi_channels[name].get().strip()
                      for name in saved_platforms}, emit,
-                    youtube_api_key=self._youtube_api_key.get())
+                    youtube_api_key=self._youtube_api_key.get(),
+                    youtube_oauth_token=self._youtube_oauth_token.get())
             elif code == "twitch":
                 session = TwitchReadOnlySession(channel, emit)
             elif code == "chzzk":
@@ -471,8 +480,13 @@ class LocalChatTab(ttk.Frame):
             elif code == "soop":
                 session = SoopReadOnlySession(channel, emit)
             else:
-                session = YouTubeReadOnlySession(
-                    channel, emit, self._youtube_api_key.get())
+                if self._youtube_oauth_token.get():
+                    session = YouTubeReadOnlySession(
+                        channel, emit, self._youtube_api_key.get(),
+                        oauth_access_token=self._youtube_oauth_token.get())
+                else:
+                    session = YouTubeReadOnlySession(
+                        channel, emit, self._youtube_api_key.get())
         
         except (ValueError, TypeError, OSError, RuntimeError) as exc:
             messagebox.showinfo("채팅 채널",
@@ -630,6 +644,7 @@ class LocalChatTab(ttk.Frame):
         self._pipeline_obs_password.set("")
         # YouTube API key is memory-only, and must not survive GUI shutdown.
         self._youtube_api_key.set("")
+        self._youtube_oauth_token.set("")
         self._stop_twitch()
         if self._twitch_ai_inbox is not None:
             self._twitch_ai_inbox.put(None)
