@@ -968,3 +968,19 @@ GitHub `junggyeol4444/AISTING`, **기존 main에만 빠른전진 반영**:
 - 원인: 기존 4플랫폼 GUI 격리검사의 `tests/test_aisting_multiplatform_gui_routing.py` 내 `self.fake()`가 새 OAuth GUI 입력 `_youtube_oauth_token`을 제공하지 않아 `AttributeError`. OAuth 기능 자체를 실제 YouTube로 실행한 것이 아니며, 원본 설정/SQLite/사용자 계정 접근 없음.
 - 수정: 같은 검사 파일의 격리 fake 객체에 `_youtube_oauth_token=Value()`을 명시적으로 추가한다. 동작 API의 OAuth 토큰 메모리 전용 사용/연결·공식 API 키 기존 경로를 그대로 보존한다.
 - 전체 회귀 및 Windows EXE 5-job 전체를 수정된 새 `main`으로 재실행, 실패 시 수정→전체 재검증하고 결과를 후속 절에 사실대로 남긴다.
+
+## 51. 2026-10-21 10시 이후 — 소유 YouTube OAuth 읽기 경로 통합 개발·오류 수정·전체 최종 재검증
+
+### 최신 실제 코드 및 회귀검사
+- 49절에서 기존 Windows AISTING Tk 채팅 탭과 4플랫폼 코디네이터/유튜브 리더에 **사용자가 직접 발급받아 입력한 읽기 전용 OAuth 토큰의 메모리 전용 사용**, `mine=true` 보유 방송 열람, 활성 `snippet.liveChatId` 확인, 채팅 읽기 API Bearer 헤더 전송 기능을 누적 구현. 기존 API 키 공개 채팅·중복문자 보존·단일 AI FIFO 유지.
+- 첫 코드 Actions run `39526560892`의 전체 회귀는 **2,455 검사 중 오류 1·건너뜀 2**. 50절의 기존 가짜 GUI 입력 객체 누락(`_youtube_oauth_token`) 수정 후 전체 재실행. 이전 실패를 완료로 표기하거나 삭제하지 않는다.
+- **최종 수정 코드 전체 회귀 성공** https://github.com/junggyeol4444/AISTING/actions/runs/39526713351 : `Ran 2455 tests`, `OK (skipped=2)`, 실패·오류 0.
+- **동일 코드 Windows 통합 성공 5/5** https://github.com/junggyeol4444/AISTING/actions/runs/39526713350 : `windows-exe`, `ollama-real-local-e2e`, `obs-real-readonly`, `twitch-public-readonly`, `korean-public-chat-readonly` 모두 `success`.
+- 실제 Windows EXE 산출물: `AISTING-Windows-EXE-integrated`, artifact ID `12312943437`, ZIP 크기 `19,811,468 bytes`, artifact digest `sha256:c49df0a7e08f90d14dc7c4e9f5179e5220b119528637aaab6cc6fa9539171d1c`. 이 산출물은 GitHub Actions Windows 빌드 결과이며 사용자 PC/실방송 검증과 다르다.
+- 실행 전 제약: 사용자가 실제로 읽기 전용 OAuth를 승인/발급해야 하며, GUI에는 이미 승인된 액세스 토큰만 입력 가능. **자동 로그인·OAuth 신규 발급·갱신/저장 없음**. 계정·키 실정보 없이 테스트는 모두 가짜 네트워크 응답이었다.
+
+### 다음 기능 및 실증
+- 소유 계정의 실제 OAuth 토큰으로 **읽기 전용 소유 활성 방송 채팅 수신**은 아직 미실증. OAuth 토큰 만료 시에는 인증 오류를 표시하고 임의 자동 재승인/재시도하지 않는다.
+- 한국어 GPT-SoVITS 합성 → 공식 Open-LLM-VTuber/Live2D Cubism 실제 발화 입 움직임 → OBS의 **동일 발화** 오디오/영상, 실제 시청자 송출, 4플랫폼 실수백명 1~3초 및 24시간 장기 운용은 아직 미실증/미완료.
+- 기존 원본 기획/100단계 중 최종 010 승인 대기·캐릭터/SQLite/사용자 설정 보존, 다른 프로젝트/예약/드라이브/방송·녹화/무단 로그인·채팅 발신/유료 API 또는 권리 없는 음성 훈련 미수행. 모든 이전 인수인계 1~50절 및 별도 보존 28~38절 유지.
+- 다른 회차는 먼저 위 전체 handoff + 모든 원본 계획/roadmap/main을 읽고, 잔여 여러 기능 묶음 실제 구현 후 **전체** 회귀/Windows EXE GUI/가능 연동 검증, 실패 시 수정 후 **전체** 재검증. SHA·HEAD는 외부 코드 덮어쓰기 방지 용도로만 확인하며 코드 성과로 보고하지 않음.
