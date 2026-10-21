@@ -134,6 +134,53 @@ class CoordinatorLifecycle(unittest.TestCase):
         self.assertTrue(session._stop.is_set())
         self.assertTrue(all(r.stopped.wait(1) for r in MockReader.instances))
 
+    def test_unbounded_transport_failure_reconnects_and_preserves_duplicate_events(self):
+        # Transport and events are mocked; no live platform or account.
+        events, created = [], []
+        class RecoveringReader(MockReader):
+            def __init__(self, channel, callback, *args):
+                super().__init__(channel, callback, *args)
+                created.append(self)
+            def run(self, *, max_seconds=None):
+                self.callback("chat", PlatformChat(
+                    self.channel, "viewer", "같은 문장", "twitch"))
+                if len(created) == 1:
+                    raise ConnectionResetError("secret-do-not-log")
+        with patch.object(module, "TwitchReadOnlySession", RecoveringReader):
+            session = module.MultiPlatformReadOnlySession(
+                {"twitch": "testchannel"},
+                lambda kind, item: events.append((kind, item)))
+            session.run()
+        self.assertEqual(len(created), 2)
+        self.assertEqual([v.text for kind, v in events if kind == "chat"],
+                         ["같은 문장", "같은 문장"])
+        self.assertTrue(any(kind == "error" and "공백" in value
+                            for kind, value in events))
+        self.assertNotIn("secret-do-not-log", repr(events))
+
+    def test_operator_stop_during_reconnect_wait_prevents_new_reader(self):
+        events, created = [], []
+        failed = threading.Event()
+        class BrokenReader(MockReader):
+            def __init__(self, channel, callback, *args):
+                super().__init__(channel, callback, *args)
+                created.append(self)
+            def run(self, *, max_seconds=None):
+                failed.set()
+                raise ConnectionError("secret-token")
+        with patch.object(module, "TwitchReadOnlySession", BrokenReader):
+            session = module.MultiPlatformReadOnlySession(
+                {"twitch": "testchannel"},
+                lambda kind, item: events.append((kind, item)))
+            thread = threading.Thread(target=session.run, daemon=True)
+            thread.start()
+            self.assertTrue(failed.wait(2))
+            session.stop()
+            thread.join(3)
+        self.assertFalse(thread.is_alive())
+        self.assertEqual(len(created), 1)
+        self.assertNotIn("secret-token", repr(events))
+
     def test_events_preserve_duplicates_and_disappear_after_stop(self):
         events = []
         session = self.session(events)

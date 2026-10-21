@@ -33,6 +33,29 @@ from ai_broadcaster.multiplatform_readonly import PlatformChat
 from ai_broadcaster.twitch_readonly import TwitchChatLine
 
 
+class _TimestampedInputQueue(queue.Queue):
+    """검증용 이벤트와 도착 시각을 같은 큐 잠금 안에서 접수한다.
+
+    포화로 접수에 실패한 이벤트의 시각이 남아 다음 이벤트의
+    AI 대기시간을 왜곡하지 않는다. 실제 방송 큐는 변경하지 않는다.
+    """
+
+    def put_chat(self, item, arrivals, *, timeout: float) -> None:
+        if type(timeout) not in (int, float) or not math.isfinite(timeout) or timeout < 0:
+            raise ValueError("검증 큐 대기 시간이 올바르지 않습니다.")
+        with self.not_full:
+            deadline = time.monotonic() + timeout
+            while self._qsize() >= self.maxsize:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise queue.Full
+                self.not_full.wait(remaining)
+            arrivals.put(time.monotonic())
+            self._put(item)
+            self.unfinished_tasks += 1
+            self.not_empty.notify()
+
+
 def make_message(index: int, *, duplicate: bool = False):
     platform = ("twitch", "chzzk", "soop", "youtube")[index % 4]
     text = "안녕하세요. 한 문장으로 답하세요." if duplicate else (
@@ -72,7 +95,7 @@ def run_real_load(*, model: str, messages: int, duration_seconds: float,
             or any(ord(ch) < 33 for ch in model)):
         raise ValueError("실제로 설치한 로컬 Ollama 모델 이름을 입력하세요.")
 
-    input_fifo = queue.Queue(maxsize=queue_size)
+    input_fifo = _TimestampedInputQueue(maxsize=queue_size)
     observed = queue.Queue()
     arrivals = queue.SimpleQueue()
     start = time.monotonic()
@@ -210,8 +233,9 @@ def run_real_load(*, model: str, messages: int, duration_seconds: float,
                 try:
                     # Timestamp must precede the worker dequeue. Existing
                     # GUI uses a second FIFO with exactly this ordering.
-                    arrivals.put(time.monotonic())
-                    input_fifo.put(event, timeout=min(3, max(.01, deadline-time.monotonic())))
+                    input_fifo.put_chat(
+                        event, arrivals,
+                        timeout=min(3, max(.01, deadline-time.monotonic())))
                 except queue.Full:
                     errors.append("bounded_test_backpressure_timeout")
                     break
@@ -289,6 +313,7 @@ def run_real_load(*, model: str, messages: int, duration_seconds: float,
         "model_success": real_reply["success"],
         "model_failure": real_reply["error"],
         "unfinished": emitted - snap.completed,
+        "invalid_timing": snap.invalid,
         "over_three_seconds": snap.over_three_seconds,
         "local_p95_seconds": snap.total_p95,
         "local_wait_p95_seconds": snap.wait_p95,

@@ -71,9 +71,13 @@ class MultiPlatformReadOnlySession:
                 if youtube_oauth_token else YouTubeReadOnlySession(
                     channel, cb, youtube_api_key),
         }
+        # Only an explicitly running session may reconnect after a failure.
+        self._factories = factories
+        self._channels = {code: channel.strip() for code, channel in channels.items()}
+        self._callbacks = {code: callback_for(code) for code in channels}
         # Construct and validate every reader before starting any network I/O.
         for code, channel in channels.items():
-            self._readers[code] = factories[code](channel.strip(), callback_for(code))
+            self._readers[code] = factories[code](channel.strip(), self._callbacks[code])
 
     def stop(self) -> None:
         """Close every transport without blocking Tk on a broken reader."""
@@ -124,14 +128,55 @@ class MultiPlatformReadOnlySession:
         try:
             def read_one(code, reader):
                 try:
-                    reader.run(max_seconds=max_seconds)
-                except Exception as exc:
-                    if not self._stop.is_set():
-                        with self._emit_lock:
-                            if not self._stop.is_set():
-                                # Exception text may contain an API key.
-                                self._emit("error", code + " 읽기 실패 (" +
-                                           type(exc).__name__ + ")")
+                    failures = 0
+                    while not self._stop.is_set():
+                        connected_at = time.monotonic()
+                        try:
+                            reader.run(max_seconds=max_seconds)
+                            break
+                        except Exception as exc:
+                            if self._stop.is_set():
+                                break
+                            with self._emit_lock:
+                                if not self._stop.is_set():
+                                    # Do not reveal transport credentials.
+                                    self._emit("error", code + " 읽기 실패 (" +
+                                               type(exc).__name__ + ")")
+                            # Finite Windows probes must not retry after failure.
+                            if max_seconds is not None:
+                                break
+                            if time.monotonic() - connected_at >= 30:
+                                failures = 0
+                            failures += 1
+                            if failures > 3:
+                                with self._emit_lock:
+                                    if not self._stop.is_set():
+                                        self._emit("error", code +
+                                                   " 재연결 3회 실패 · 수신 공백 확인 필요")
+                                break
+                            with self._emit_lock:
+                                if not self._stop.is_set():
+                                    self._emit("error", code +
+                                               " 수신 연결 끊김 · 재연결 대기 중 (공백 가능)")
+                            if self._stop.wait(min(2 ** (failures - 1), 4)):
+                                break
+                            try:
+                                replacement = self._factories[code](
+                                    self._channels[code], self._callbacks[code])
+                            except Exception as reconnect_error:
+                                with self._emit_lock:
+                                    if not self._stop.is_set():
+                                        self._emit("error", code + " 재연결 준비 실패 (" +
+                                                   type(reconnect_error).__name__ + ")")
+                                break
+                            with self._run_lock:
+                                stopped = self._stop.is_set()
+                                if not stopped:
+                                    self._readers[code] = replacement
+                            if stopped:
+                                replacement.stop()
+                                break
+                            reader = replacement
                 finally:
                     # A single transport may end while other reader threads
                     # continue. Never silently imply all four remain online.

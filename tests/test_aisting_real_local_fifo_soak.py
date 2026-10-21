@@ -3,6 +3,7 @@ import importlib.util
 import json
 import tempfile
 import io
+import queue
 from pathlib import Path
 import unittest
 from types import SimpleNamespace
@@ -177,6 +178,21 @@ class LoadRunnerContracts(unittest.TestCase):
         self.assertEqual(result["model_success"], 16)
         self.assertFalse(result["viewer_end_to_end_verified"])
         self.assertFalse(result["long_running_broadcast_verified"])
+
+    def test_saturated_load_queue_does_not_leave_orphan_arrival_timestamp(self):
+        # A rejected synthetic message must not corrupt FIFO timing.
+        inbox = SOAK._TimestampedInputQueue(maxsize=1)
+        arrivals = queue.SimpleQueue()
+        inbox.put_chat("첫 번째", arrivals, timeout=0.01)
+        with self.assertRaises(queue.Full):
+            inbox.put_chat("미접수", arrivals, timeout=0.01)
+        self.assertEqual(inbox.get_nowait(), "첫 번째")
+        self.assertGreater(arrivals.get_nowait(), 0)
+        with self.assertRaises(queue.Empty):
+            arrivals.get_nowait()
+        inbox.put_chat("다음", arrivals, timeout=0.01)
+        self.assertEqual(inbox.get_nowait(), "다음")
+        self.assertGreater(arrivals.get_nowait(), 0)
 
     def test_invalid_time_or_bounded_queue_rejected(self):
         for args in [(500, 0, 10000, 11434),
