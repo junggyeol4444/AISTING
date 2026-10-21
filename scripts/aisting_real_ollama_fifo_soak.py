@@ -23,6 +23,9 @@ import time
 import tracemalloc
 from types import SimpleNamespace
 
+# 동시 보고서 저장 시 Windows 공유 잠금 경합을 방지한다.
+_checkpoint_write_lock = threading.Lock()
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
@@ -341,21 +344,31 @@ def run_real_load(*, model: str, messages: int, duration_seconds: float,
 def _atomic_aggregate_checkpoint(path: Path, record: dict) -> None:
     """운영자가 지정한 집계 파일만 원자적으로 저장하며 채팅 원문은 기록하지 않는다."""
     destination = Path(path)
-    intermediate = None
-    try:
-        # 같은 보고서에 두 프로세스가 동시에 기록해도 임시 파일을 공유하지 않는다.
-        with tempfile.NamedTemporaryFile(
-                mode="w", encoding="utf-8", delete=False,
-                dir=str(destination.parent),
-                prefix="." + destination.name + ".", suffix=".tmp") as output:
-            intermediate = Path(output.name)
-            output.write(json.dumps(record, ensure_ascii=False, indent=2) + "\n")
-            output.flush()
-            os.fsync(output.fileno())
-        os.replace(intermediate, destination)
-    finally:
-        if intermediate is not None:
-            intermediate.unlink(missing_ok=True)
+    # 12개 병렬 CI 쓰기에서도 하나의 프로세스는 단일 순서로 파일을 교체한다.
+    with _checkpoint_write_lock:
+        intermediate = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                    mode="w", encoding="utf-8", delete=False,
+                    dir=str(destination.parent),
+                    prefix="." + destination.name + ".", suffix=".tmp") as output:
+                intermediate = Path(output.name)
+                output.write(json.dumps(record, ensure_ascii=False, indent=2) + "\n")
+                output.flush()
+                os.fsync(output.fileno())
+            # 외부 프로그램/다른 프로세스의 일시적 Windows 파일 잠금에만
+            # 제한된 재시도를 수행한다. 영구 실패는 숨기지 않는다.
+            for attempt in range(8):
+                try:
+                    os.replace(intermediate, destination)
+                    break
+                except PermissionError:
+                    if attempt == 7:
+                        raise
+                    time.sleep(0.02 * (attempt + 1))
+        finally:
+            if intermediate is not None:
+                intermediate.unlink(missing_ok=True)
 
 
 def main() -> int:

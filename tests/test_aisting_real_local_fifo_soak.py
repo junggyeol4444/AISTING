@@ -143,6 +143,38 @@ class LoadRunnerContracts(unittest.TestCase):
             self.assertEqual(saved["completed"], saved["writer"] + 1)
             self.assertEqual(list(Path(folder).iterdir()), [file])
 
+    def test_temporary_windows_permission_error_is_retried(self):
+        # 일시적인 파일 잠금 뒤에도 전체 JSON 저장을 성공시킨다.
+        with tempfile.TemporaryDirectory() as folder:
+            file = Path(folder) / "aggregate.json"
+            original_replace = SOAK.os.replace
+            attempts = []
+            def briefly_locked(src, dst):
+                attempts.append((src, dst))
+                if len(attempts) == 1:
+                    raise PermissionError("temporary windows sharing violation")
+                return original_replace(src, dst)
+            with patch.object(SOAK.os, "replace", side_effect=briefly_locked):
+                SOAK._atomic_aggregate_checkpoint(file, {"completed": 7})
+            self.assertEqual(len(attempts), 2)
+            self.assertEqual(json.loads(file.read_text(encoding="utf-8")),
+                             {"completed": 7})
+            self.assertEqual(list(Path(folder).iterdir()), [file])
+
+    def test_permanent_windows_permission_error_preserves_report(self):
+        # 복구할 수 없는 잠금은 보고서 원본을 보존하고 오류를 전파한다.
+        with tempfile.TemporaryDirectory() as folder:
+            file = Path(folder) / "aggregate.json"
+            SOAK._atomic_aggregate_checkpoint(file, {"completed": 3})
+            with patch.object(SOAK.os, "replace",
+                              side_effect=PermissionError("persistent locking")) as attempt:
+                with self.assertRaises(PermissionError):
+                    SOAK._atomic_aggregate_checkpoint(file, {"completed": 4})
+            self.assertEqual(attempt.call_count, 8)
+            self.assertEqual(json.loads(file.read_text(encoding="utf-8")),
+                             {"completed": 3})
+            self.assertEqual(list(Path(folder).iterdir()), [file])
+
     def test_failed_checkpoint_replace_keeps_previous_report_and_cleans_temp(self):
         with tempfile.TemporaryDirectory() as folder:
             file = Path(folder) / "aggregate.json"
