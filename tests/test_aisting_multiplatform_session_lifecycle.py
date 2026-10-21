@@ -76,6 +76,19 @@ class CoordinatorLifecycle(unittest.TestCase):
         self.assertIn("error", [kind for kind, _ in events])
         self.assertNotIn("DO_NOT_EXPOSE_SECRET_CREDENTIAL", repr(events))
 
+    def test_last_reader_does_not_falsely_claim_other_live_channels(self):
+        events = []
+        session = self.session(events)
+        for reader in MockReader.instances:
+            reader.release.set()
+        session.run(max_seconds=1)
+        rows = [message for kind, message in events
+                if kind == "reader_stopped"]
+        self.assertEqual(len(rows), 4)
+        self.assertIn("선택한 모든 채널의 읽기 작업 종료", rows[-1])
+        self.assertEqual(len(session._finished_readers), 4)
+        self.assertFalse(session._stop.is_set())
+
     def test_whole_session_timeout_closes_all_four(self):
         session = self.session()
         before = time.monotonic()

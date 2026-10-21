@@ -37,6 +37,7 @@ class MultiPlatformReadOnlySession:
         self._running = False
         self._emit = emit
         self._readers = {}
+        self._finished_readers = set()
 
         def callback_for(code):
             def callback(kind, item):
@@ -130,8 +131,17 @@ class MultiPlatformReadOnlySession:
                     if not self._stop.is_set():
                         with self._emit_lock:
                             if not self._stop.is_set():
+                                self._finished_readers.add(code)
+                                remaining = len(self._readers) - len(self._finished_readers)
+                                # Do not claim continued chat reception merely
+                                # because a reader was selected at startup.
+                                if remaining:
+                                    detail = (" · 나머지 " + str(remaining)
+                                              + "개 채널은 상태 개별 확인")
+                                else:
+                                    detail = " · 선택한 모든 채널의 읽기 작업 종료"
                                 self._emit("reader_stopped",
-                                           code + " 채팅 수신 종료 · 다른 플랫폼은 계속 수신")
+                                           code + " 채팅 수신 종료" + detail)
             workers = [
                 threading.Thread(target=read_one, args=(code, reader),
                                  name="aisting-public-" + code, daemon=True)

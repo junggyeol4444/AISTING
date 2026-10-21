@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import queue
 import threading
+import math
+import time
 from collections import deque
 import tkinter as tk
 from tkinter import ttk, messagebox
@@ -60,6 +62,9 @@ class LocalChatTab(ttk.Frame):
         self._twitch_replied = 0
         self._twitch_ai_failures = 0
         self._twitch_ai_inbox: queue.SimpleQueue | None = None
+        # Wall-clock at native GUI acceptance; one FIFO timestamp per
+        # accepted chat. No text copies, storage, logging, or deduplication.
+        self._ai_arrival_times: queue.SimpleQueue = queue.SimpleQueue()
         # Reader EOF is distinct from operator Stop; keep accepted AI work alive.
         self._twitch_reader_finished = False
         self._twitch_reader_error = None
@@ -482,6 +487,7 @@ class LocalChatTab(ttk.Frame):
         self._twitch_reader_error = None
         inbox = queue.SimpleQueue()
         self._twitch_ai_inbox = inbox
+        self._ai_arrival_times = queue.SimpleQueue()
         self._twitch_active_workers.add(session)
         # One worker calls the EXISTING local Ollama conversation in order.
         # No extra model service, intentional delay or platform chat posting.
@@ -544,6 +550,18 @@ class LocalChatTab(ttk.Frame):
                 chat = inbox.get()
                 if chat is None or (session is not None and session._stop.is_set()):
                     break
+                arrivals = getattr(self, "_ai_arrival_times", None)
+                try:
+                    accepted_at = (arrivals.get_nowait()
+                                   if arrivals is not None else None)
+                except queue.Empty:
+                    accepted_at = None
+
+                def report_measured_elapsed():
+                    if accepted_at is not None:
+                        elapsed = time.monotonic() - accepted_at
+                        if math.isfinite(elapsed) and elapsed >= 0:
+                            report("twitch_ai_latency", elapsed)
                 if official:
                     # Official WebView2 owns the AI, GPT-SoVITS audio and Cubism
                     # model in ONE upstream conversation. Never duplicate this
@@ -556,6 +574,8 @@ class LocalChatTab(ttk.Frame):
                         report("twitch_ai_error", (chat, type(exc).__name__))
                     else:
                         report("twitch_live2d_ok", (chat, evidence))
+                    finally:
+                        report_measured_elapsed()
                     continue
                 try:
                     result = run_local_chat(
@@ -567,6 +587,8 @@ class LocalChatTab(ttk.Frame):
                     report("twitch_ai_error", (chat, type(exc).__name__))
                 else:
                     report("twitch_ai_ok", (chat, result))
+                finally:
+                    report_measured_elapsed()
             # The reader can reach EOF while the serial model is still replying.
             # This marker follows EVERY accepted AI result in the same results FIFO.
             if session is not None and not session._stop.is_set():
@@ -668,6 +690,9 @@ class LocalChatTab(ttk.Frame):
                         # Every incoming message, including duplicates, is
                         # queued regardless of the status of previous replies.
                         if self._twitch_ai_inbox is not None:
+                            arrivals = getattr(self, "_ai_arrival_times", None)
+                            if arrivals is not None:
+                                arrivals.put(time.monotonic())
                             self._twitch_ai_inbox.put(payload)
                         self._twitch_status.set(
                             "실제 채팅 " + str(self._twitch_received)
@@ -711,6 +736,14 @@ class LocalChatTab(ttk.Frame):
                         self._twitch_status.set(
                             "AI 처리 실패 " + str(self._twitch_ai_failures)
                             + "건 · 성공 응답으로 계산하지 않음")
+                    elif kind == "twitch_ai_latency":
+                        # This is *not* transport-to-viewer latency. It is
+                        # GUI acceptance + local queue wait + model processing.
+                        if type(payload) in (int, float) and math.isfinite(payload) and payload >= 0:
+                            flag = " · 3초 초과" if payload > 3 else ""
+                            self._twitch_status.set(
+                                f"AI 대기·처리 {payload:.2f}초 (GUI 접수부터){flag}"
+                                " · 네트워크·시청자 전달 시간은 미측정")
                     elif kind == "twitch_reader_stopped":
                         # A single channel can disconnect without terminating
                         # other transports or dropping queued AI replies.
