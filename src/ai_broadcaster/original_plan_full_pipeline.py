@@ -66,7 +66,12 @@ class OfficialChatObsEvidence:
             + str(getattr(self.lip, "official_pcm_first_channels", None) or "미측정")
             + " / 공식 WAV 수신 예상 음성창 안 Cubism 입·RMS 표본 "
             + str(getattr(self.lip, "official_pcm_mouth_window_samples", 0))
-            + "건 / 시청자 E2E 별도 미검증"
+            + "건 / 입·OBS 근접 표본 쌍 "
+            + str(self.pcm_obs_near_pair_count)
+            + "쌍 / 콜백시각 차이 절댓값 p95 "
+            + (f"{self.pcm_obs_near_abs_p95_ms:.1f}ms"
+               if self.pcm_obs_near_abs_p95_ms is not None else "미측정")
+            + " / 시청자 E2E 별도 미검증"
         )
 
     @property
@@ -127,41 +132,52 @@ class OfficialChatObsEvidence:
             and first < audio_last and last > audio_first
         )
 
-    @property
-    def same_session_pcm_sample_pair_candidate(self) -> bool:
-        """실제 Cubism 입·RMS와 OBS 미터의 근접 관측 표본을 서로 다른 2쌍으로 연결.
 
-        두 독립 관찰자의 Python monotonic 시계를 비교한다. 각각의
-        첫/마지막 시각 범위만 겹치는 경우는 이 후보가 될 수 없다.
-        이 판정도 WAV 파형 동일성이나 방송 인코더/시청자 수신 증거는 아니다.
-        """
+    def _pcm_obs_near_deltas_seconds(self) -> tuple[float, ...]:
+        """동일 검사에서 얻은 입·OBS 콜백시각 근접 쌍. 시청자 지연 아님."""
         if not self.same_session_pcm_mouth_audio_video_candidate:
-            return False
-        mouth = getattr(self.lip, 'official_pcm_mouth_sample_times', ())
-        audio = getattr(getattr(self.obs, 'audio', None),
-                        'selected_signal_sample_times', ())
+            return ()
+        mouth = getattr(self.lip, "official_pcm_mouth_sample_times", ())
+        audio = getattr(getattr(self.obs, "audio", None), "selected_signal_sample_times", ())
         if (not isinstance(mouth, tuple) or not isinstance(audio, tuple)
                 or len(mouth) < 2 or len(audio) < 2):
-            return False
+            return ()
         if (any(type(v) not in (int, float) or not math.isfinite(v) or v <= 0
                 for v in mouth + audio)
-                or any(a >= b for times in (mouth, audio)
-                       for a, b in zip(times, times[1:]))):
-            return False
-        i = j = matched = 0
+                or any(x >= y for times in (mouth, audio)
+                       for x, y in zip(times, times[1:]))):
+            return ()
+        i = j = 0
+        deltas: list[float] = []
         while i < len(mouth) and j < len(audio):
             difference = mouth[i] - audio[j]
             if abs(difference) <= 0.2:
-                matched += 1
-                if matched >= 2:
-                    return True
+                deltas.append(audio[j] - mouth[i])
                 i += 1
                 j += 1
             elif difference < 0:
                 i += 1
             else:
                 j += 1
-        return False
+        return tuple(deltas)
+
+    @property
+    def pcm_obs_near_pair_count(self) -> int:
+        """실제 근접 관측 표본의 중복 없는 쌍 개수."""
+        return len(self._pcm_obs_near_deltas_seconds())
+
+    @property
+    def pcm_obs_near_abs_p95_ms(self) -> float | None:
+        """콜백시각 차이 절댓값 p95(ms). 전송 지연으로 간주하지 않는다."""
+        values = sorted(abs(v) * 1000 for v in self._pcm_obs_near_deltas_seconds())
+        if len(values) < 2:
+            return None
+        return round(values[math.ceil(len(values) * 0.95) - 1], 3)
+
+    @property
+    def same_session_pcm_sample_pair_candidate(self) -> bool:
+        """Cubism 입·OBS 미터의 서로 다른 근접 표본 2쌍 이상 후보."""
+        return self.pcm_obs_near_pair_count >= 2
 
     @property
     def verified_observation(self) -> bool:
@@ -417,7 +433,14 @@ def verify_official_chat_live2d_obs(
 
     matching = [sample for began, ended, sample in observation
                 if same_utterance_window(began, ended, sample)]
-    selected = matching[0] if matching else next(
+    # 연속 관찰 구간 중 실제 근접 표본이 가장 많은 후보를 선택한다.
+    def candidate_quality(sample) -> tuple[int, int]:
+        candidate = OfficialChatObsEvidence(
+            lip=lip, obs=sample, temporal_overlap_candidate=True)
+        return (candidate.pcm_obs_near_pair_count,
+                int(bool(sample.program_video_change_candidate)))
+
+    selected = max(matching, key=candidate_quality) if matching else next(
         (sample for _, _, sample in observation if sample.coherent_media_candidate),
         observation[-1][2],
     )
@@ -429,7 +452,7 @@ def verify_official_chat_live2d_obs(
         else None
     )
     matched_first_audio = getattr(
-        getattr(matching[0], "audio", None), "first_selected_signal_monotonic", None
+        getattr(selected, "audio", None), "first_selected_signal_monotonic", None
     ) if matching else None
     first_obs_latency = (
         round(matched_first_audio - prompt_started_at, 6)

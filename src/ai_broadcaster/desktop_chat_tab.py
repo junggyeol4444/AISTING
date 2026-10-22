@@ -96,6 +96,14 @@ class LocalChatTab(ttk.Frame):
         # 4플랫폼별 실제 AI FIFO 등록·종결·대기/추론 시간을 분리한다.
         # 본문/닉네임/계정 정보는 별도 저장하지 않으며 시청자 E2E와 다르다.
         self._platform_live_metrics: dict[str, LiveLatencyMetrics] = {}
+        # 로컬 수신큐 백프레셔와 AI·GUI 적체의 실측값만 메모리에 보관한다.
+        self._live_queue_block_events = 0
+        self._live_queue_block_total_seconds = 0.0
+        self._live_queue_block_max_seconds = 0.0
+        self._live_peak_ai_backlog = 0
+        self._live_peak_gui_backlog = 0
+        # 116회차: 4플랫폼별 실제 수신큐 대기 완료 사건을 분리한다.
+        self._live_queue_block_by_platform: dict[str, dict[str, float | int]] = {}
         # Reader EOF is distinct from operator Stop; keep accepted AI work alive.
         self._twitch_reader_finished = False
         self._twitch_reader_error = None
@@ -759,6 +767,16 @@ class LocalChatTab(ttk.Frame):
             name: LiveLatencyMetrics(started_at)
             for name in session._channels
         }
+        with self._live_ingress_lock:
+            self._live_queue_block_events = 0
+            self._live_queue_block_total_seconds = 0.0
+            self._live_queue_block_max_seconds = 0.0
+            self._live_peak_ai_backlog = 0
+            self._live_peak_gui_backlog = 0
+            self._live_queue_block_by_platform = {
+                name: {"건수": 0, "총초": 0.0, "최장초": 0.0, "3초초과": 0}
+                for name in session._channels
+            }
         self._twitch_active_workers.add(session)
         # One worker calls the EXISTING local Ollama conversation in order.
         # No extra model service, intentional delay or platform chat posting.
@@ -787,6 +805,7 @@ class LocalChatTab(ttk.Frame):
         # 나중에 새로 찍지 않는다. 네트워크 수신기 콜백에서 한 번만 찍는다.
         stamped_item = (_ReaderTimestampedChat(item, time.monotonic())
                         if kind == "chat" else item)
+        blocked_since = None
         while not getattr(self, "_closed", False):
             if session is None or session._stop.is_set():
                 return False
@@ -810,6 +829,24 @@ class LocalChatTab(ttk.Frame):
                         if inbox is None or arrivals is None:
                             return False
                         if self._results.qsize() < limit and inbox.qsize() < limit:
+                            if blocked_since is not None:
+                                waited = max(0.0, time.monotonic() - blocked_since)
+                                self._live_queue_block_events += 1
+                                self._live_queue_block_total_seconds += waited
+                                self._live_queue_block_max_seconds = max(
+                                    self._live_queue_block_max_seconds, waited)
+                                platform = getattr(item, "platform", None)
+                                stats = self._live_queue_block_by_platform.get(platform)
+                                if stats is not None:
+                                    stats["건수"] += 1
+                                    stats["총초"] += waited
+                                    stats["최장초"] = max(stats["최장초"], waited)
+                                    if waited > 3.0:
+                                        stats["3초초과"] += 1
+                            self._live_peak_ai_backlog = max(
+                                self._live_peak_ai_backlog, inbox.qsize() + 1)
+                            self._live_peak_gui_backlog = max(
+                                self._live_peak_gui_backlog, self._results.qsize() + 1)
                             arrivals.put(stamped_item.reader_received_at)
                             self._results.put(("twitch_scoped", (
                                 session, "twitch_chat", _ReaderTimestampedChat(
@@ -822,6 +859,8 @@ class LocalChatTab(ttk.Frame):
                     self._results.put(("twitch_scoped", (
                         session, "twitch_" + kind, stamped_item)))
                     return True
+            if kind == "chat" and blocked_since is None:
+                blocked_since = time.monotonic()
             session._stop.wait(0.02)
         return False
 
@@ -994,8 +1033,15 @@ class LocalChatTab(ttk.Frame):
         self._platform_health_updated_at = now
         labels = {"twitch": "트위치", "chzzk": "치지직",
                   "soop": "SOOP", "youtube": "유튜브"}
+        with self._live_ingress_lock:
+            block_snapshots = {
+                code: dict(stats)
+                for code, stats in self._live_queue_block_by_platform.items()
+            }
         lines = []
         for code, state in snapshot.items():
+            block_stats = block_snapshots.get(code, {
+                "건수": 0, "총초": 0.0, "최장초": 0.0, "3초초과": 0})
             if state["수신기종료"]:
                 phase = "읽기종료"
             elif state["현재공백"]:
@@ -1044,15 +1090,29 @@ class LocalChatTab(ttk.Frame):
                 f" / 완료 공백 최장 {state['완료공백최장초']:.1f}초"
                 f" / 복구 공백 3초 초과 {state['완료공백3초초과']}건"
                 f" / {gap_label} / {ratio_label} / {idle_label}"
+                f" / 수신큐 완료대기 {block_stats['건수']}건"
+                f" / 대기 누적 {block_stats['총초']:.2f}초"
+                f" / 최장 {block_stats['최장초']:.2f}초"
+                f" / 3초 초과 {block_stats['3초초과']}건"
                 + ai_status
             )
         inbox = self._twitch_ai_inbox
         pending = inbox.qsize() if inbox is not None else 0
+        with self._live_ingress_lock:
+            blocked_count = self._live_queue_block_events
+            blocked_total = self._live_queue_block_total_seconds
+            blocked_max = self._live_queue_block_max_seconds
+            peak_ai = self._live_peak_ai_backlog
+            peak_gui = self._live_peak_gui_backlog
         self._platform_health_status.set(
             "플랫폼별 실제 수신 진단 (무누락·24시간·시청자 지연 미검증):\n"
             + "\n".join(lines)
             + f"\nGUI 이벤트 대기 {self._results.qsize()}건"
             + f" / 로컬 AI FIFO 대기 {pending}건"
+            + f" / 수신 큐 대기 완료 {blocked_count}건"
+            + f" / 누적 {blocked_total:.2f}초 / 최장 {blocked_max:.2f}초"
+            + f" / 최대 AI 적체 {peak_ai}건 / GUI 적체 {peak_gui}건"
+            + " · 네트워크 이전 누락·시청자 E2E 미검증"
         )
 
     def _poll(self) -> None:
