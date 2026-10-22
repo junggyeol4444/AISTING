@@ -70,6 +70,16 @@ class LoadRunnerContracts(unittest.TestCase):
             "twitch":125, "chzzk":125, "soop":125, "youtube":125})
         self.assertFalse(data["real_viewers"])
         self.assertFalse(data["long_running_broadcast_verified"])
+        # 실제 모델이 아닌 계약검사. 각 125건의 측정 순서도 보존.
+        self.assertEqual(data["platform_completed_timing_counts"], {
+            "twitch":125, "chzzk":125, "soop":125, "youtube":125})
+        self.assertEqual(sum(data["platform_over_three_seconds"].values()),
+                         data["over_three_seconds"])
+        self.assertEqual(data["platform_model_failures"], {})
+        self.assertGreaterEqual(data["max_observed_fifo_backlog"], 0)
+        self.assertLessEqual(data["max_observed_fifo_backlog"], 128)
+        self.assertTrue(all(isinstance(value, (int, float)) and value >= 0
+                            for value in data["platform_p95_total_seconds"].values()))
 
     def test_hold_full_duration_still_uses_real_worker_path_not_viewer_claim(self):
         with patch.object(SOAK, "real_ollama_chat",
@@ -81,6 +91,35 @@ class LoadRunnerContracts(unittest.TestCase):
         self.assertTrue(data["completed_full_local_duration"])
         self.assertTrue(data["passed_no_drops"])
         self.assertFalse(data["long_running_broadcast_verified"])
+
+    def test_platform_fifo_duplicate_message_latency_breakdown(self):
+        # 합성된 동일 채팅 40건도 플랫폼별 측정 10건씩 보존한다.
+        with patch.object(SOAK, "real_ollama_chat",
+                          return_value=SimpleNamespace(reply="응답", remembered_count=1)):
+            result = SOAK.run_real_load(
+                model="installed-test-model", messages=40,
+                duration_seconds=5, queue_size=64, duplicate=True)
+        self.assertEqual(result["platform_completed_timing_counts"], {
+            "twitch":10, "chzzk":10, "soop":10, "youtube":10})
+        self.assertTrue(result["passed_no_drops"])
+        self.assertEqual(result["model_failure"], 0)
+        self.assertFalse(result["real_viewers"])
+        self.assertFalse(result["viewer_end_to_end_verified"])
+
+    def test_timing_measurement_error_blocks_false_success(self):
+        # AI 응답 성공만으로 시간·플랫폼 회계 오류를 덮어쓰면 안 된다.
+        with patch.object(SOAK, "real_ollama_chat",
+                          return_value=SimpleNamespace(reply="응답", remembered_count=1)), patch.object(
+                          SOAK.LiveLatencyMetrics, "terminal", return_value=False):
+            result = SOAK.run_real_load(
+                model="installed-test-model", messages=8,
+                duration_seconds=3, queue_size=16)
+        self.assertEqual(result["model_success"], 8)
+        self.assertEqual(result["invalid_timing"], 0)
+        self.assertEqual(result["completed"], 0)
+        self.assertFalse(result["passed_no_drops"])
+        self.assertFalse(result["passed_three_second_local"])
+        self.assertFalse(result["viewer_end_to_end_verified"])
 
     def test_ollama_stage_p95_uses_real_response_metadata_without_text(self):
         # 단위 테스트 답변은 모의지만 실제 작업자의 성공 이벤트 통로를 사용한다.

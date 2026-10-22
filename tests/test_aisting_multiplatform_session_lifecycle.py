@@ -160,6 +160,56 @@ class CoordinatorLifecycle(unittest.TestCase):
                             for kind, value in events))
         self.assertNotIn("secret-do-not-log", repr(events))
 
+    def test_broken_transport_is_closed_before_replacement_runs(self):
+        # 끊긴 전송의 소켓은 재접속 전에 stop(), 새 전송은 계속 실행.
+        events, created, holder, prior_closed = [], [], {}, []
+        class RetiredReader(MockReader):
+            def __init__(self, channel, callback, *args):
+                super().__init__(channel, callback, *args)
+                created.append(self)
+            def run(self, *, max_seconds=None):
+                if len(created) == 1:
+                    raise ConnectionResetError("secret-not-for-report")
+                prior_closed.append(created[0].stopped.is_set())
+                holder["session"].stop()
+        with patch.object(module, "TwitchReadOnlySession", RetiredReader):
+            session = module.MultiPlatformReadOnlySession(
+                {"twitch":"testchannel"},
+                lambda kind, value: events.append((kind, value)))
+            holder["session"] = session
+            session.run()
+        self.assertEqual(len(created), 2)
+        self.assertEqual(prior_closed, [True])
+        self.assertNotIn("secret-not-for-report", repr(events))
+
+    def test_retired_transport_stop_exception_does_not_block_recovery(self):
+        # 이전 전송 정리가 예외를 던져도 보안 문구를 노출하거나
+        # 전체 채팅 연결을 영구 종료하지 않는다.
+        created, holder, resumed, events = [], {}, [], []
+        class FailingCloseReader(MockReader):
+            def __init__(self, channel, callback, *args):
+                super().__init__(channel, callback, *args)
+                created.append(self)
+            def run(self, *, max_seconds=None):
+                if len(created) == 1:
+                    raise ConnectionResetError("private-transport-string")
+                resumed.append(True)
+                holder["session"].stop()
+            def stop(self):
+                if self is created[0]:
+                    raise RuntimeError("private-close-string")
+                super().stop()
+        with patch.object(module, "TwitchReadOnlySession", FailingCloseReader):
+            session = module.MultiPlatformReadOnlySession(
+                {"twitch":"testchannel"},
+                lambda kind, value: events.append((kind, value)))
+            holder["session"] = session
+            session.run()
+        self.assertEqual(len(created), 2)
+        self.assertEqual(resumed, [True])
+        self.assertNotIn("private-close-string", repr(events))
+        self.assertNotIn("private-transport-string", repr(events))
+
     def test_operator_stop_during_reconnect_wait_prevents_new_reader(self):
         events, created = [], []
         failed = threading.Event()

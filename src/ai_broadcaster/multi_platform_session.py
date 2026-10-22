@@ -140,6 +140,14 @@ class MultiPlatformReadOnlySession:
                         except Exception as exc:
                             if self._stop.is_set():
                                 break
+                            # 전송 오류 뒤 다음 수신기를 만들기 전에 실패한
+                            # 소켓/네트워크 세션을 해제한다. 사용자 전체 Stop과
+                            # 달리 다른 3개 수신기의 처리는 계속된다.
+                            try:
+                                reader.stop()
+                            except Exception:
+                                # 토큰·연결 URL 등 원본 예외 본문을 노출하지 않는다.
+                                pass
                             with self._emit_lock:
                                 if not self._stop.is_set():
                                     # Do not reveal transport credentials.

@@ -119,6 +119,22 @@ def run_real_load(*, model: str, messages: int, duration_seconds: float,
         return values[math.ceil(len(values) * .95) - 1]
 
     platform_counts = Counter()
+    # 수신 사건과 결과의 순서가 원본 단일 AI FIFO를 통과해도
+    # 4개 플랫폼별 완료/지연이 뒤섞이지 않았는지 별도로 검증한다.
+    platform_names = ("twitch", "chzzk", "soop", "youtube")
+    pending_timing_platforms = deque()
+    platform_latency_samples = {
+        code: deque(maxlen=1024) for code in platform_names}
+    platform_timing_counts = Counter()
+    platform_over_three = Counter()
+    platform_model_failures = Counter()
+    max_observed_fifo_backlog = 0
+
+    def platform_p95(code):
+        samples = sorted(platform_latency_samples[code])
+        return (samples[math.ceil(len(samples) * .95) - 1]
+                if samples else None)
+
     emitted = 0
     worker_finished = threading.Event()
     stop_worker = threading.Event()
@@ -156,6 +172,12 @@ def run_real_load(*, model: str, messages: int, duration_seconds: float,
                 "p95_total_seconds": snap.total_p95,
                 "p95_wait_seconds": snap.wait_p95,
                 "p95_ai_seconds": snap.inference_p95,
+                "max_observed_fifo_backlog": max_observed_fifo_backlog,
+                "platform_completed_timing_counts": dict(platform_timing_counts),
+                "platform_over_three_seconds": dict(platform_over_three),
+                "platform_model_failures": dict(platform_model_failures),
+                "platform_p95_total_seconds": {
+                    code: platform_p95(code) for code in platform_names},
                 "ollama_server_stage_p95_seconds": {
                     name: server_stage_p95(name) for name in server_stage_names},
                 "ollama_server_stage_sample_counts": dict(server_stage_counts),
@@ -216,6 +238,11 @@ def run_real_load(*, model: str, messages: int, duration_seconds: float,
                     return
             if kind == "twitch_ai_ok":
                 real_reply["success"] += 1
+                if isinstance(value, tuple) and len(value) == 2:
+                    pending_timing_platforms.append(
+                        getattr(value[0], "platform", "twitch"))
+                else:
+                    errors.append("invalid_platform_reply_pair")
                 # 원래 성공 이벤트의 ChatResult에서 서버 계측만 추출한다.
                 # 실제 채팅 문장·송신자·모델 출력은 보고서에 기록하지 않는다.
                 reply = value[1] if isinstance(value, tuple) and len(value) == 2 else None
@@ -229,9 +256,24 @@ def run_real_load(*, model: str, messages: int, duration_seconds: float,
                             server_stage_counts[name] += 1
             elif kind == "twitch_ai_error":
                 real_reply["error"] += 1
+                if isinstance(value, tuple) and len(value) == 2:
+                    pending_timing_platforms.append(
+                        getattr(value[0], "platform", "twitch"))
+                else:
+                    errors.append("invalid_platform_error_pair")
             elif kind == "twitch_ai_timing":
+                platform = (pending_timing_platforms.popleft()
+                            if pending_timing_platforms else None)
                 if not metrics.terminal(*value):
                     real_reply["invalid_timing"] += 1
+                elif platform not in platform_latency_samples:
+                    errors.append("missing_platform_timing_pair")
+                else:
+                    elapsed = float(value[2])
+                    platform_latency_samples[platform].append(elapsed)
+                    platform_timing_counts[platform] += 1
+                    platform_over_three[platform] += int(elapsed > 3)
+                    platform_model_failures[platform] += int(value[3])
                 # 결과를 한 묶음으로 회수해도 25/50건 체크포인트를 놓치지 않는다.
                 publish_progress()
 
@@ -277,6 +319,8 @@ def run_real_load(*, model: str, messages: int, duration_seconds: float,
                 metrics.accept()
                 emitted += 1
                 platform_counts[getattr(event, "platform", "twitch")] += 1
+                max_observed_fifo_backlog = max(
+                    max_observed_fifo_backlog, input_fifo.qsize())
                 drain_observed()
 
             # Do not force a sentinel behind a saturated queue for ever.
@@ -320,6 +364,8 @@ def run_real_load(*, model: str, messages: int, duration_seconds: float,
                     errors.append("local_model_worker_unresponsive_after_stop")
             while not observed.empty():
                 drain_observed()
+            if pending_timing_platforms:
+                errors.append("unmatched_platform_completion_timing")
             if emitted != messages:
                 # Never mark a 500-message test as PASS if only the first
                 # few arrived before the operator's finite test deadline.
@@ -354,6 +400,12 @@ def run_real_load(*, model: str, messages: int, duration_seconds: float,
         "local_wait_p95_seconds": snap.wait_p95,
         "local_ai_p95_seconds": snap.inference_p95,
         "local_p95_sample_count": snap.sampled,
+        "max_observed_fifo_backlog": max_observed_fifo_backlog,
+        "platform_completed_timing_counts": dict(platform_timing_counts),
+        "platform_over_three_seconds": dict(platform_over_three),
+        "platform_model_failures": dict(platform_model_failures),
+        "platform_p95_total_seconds": {
+            code: platform_p95(code) for code in platform_names},
         "ollama_server_stage_p95_seconds": {
             name: server_stage_p95(name) for name in server_stage_names},
         "ollama_server_stage_sample_counts": dict(server_stage_counts),
@@ -364,9 +416,13 @@ def run_real_load(*, model: str, messages: int, duration_seconds: float,
         "long_running_broadcast_verified": False,
         "passed_no_drops": (
             not errors and emitted == messages and snap.completed == emitted and
+            snap.invalid == 0 and real_reply["invalid_timing"] == 0 and
+            sum(platform_timing_counts.values()) == emitted and
             real_reply["success"] == emitted and worker_finished.is_set()),
         "passed_three_second_local": (
             not errors and emitted == messages and snap.completed == emitted
+            and snap.invalid == 0 and real_reply["invalid_timing"] == 0
+            and sum(platform_timing_counts.values()) == emitted
             and real_reply["success"] == emitted and snap.over_three_seconds == 0),
     }
 
