@@ -2214,3 +2214,24 @@ F) 원본 100단계 roadmap.json status는 completed=9, pending=91이며 **코�
 - 같은 파일의 실제 `_observe_actual_live2d_model` 결과에 `official_wav_header_events` 관찰 건수 추가, Python IPC 및 `OfficialLipSyncEvidence`로 전달. `src/ai_broadcaster/original_plan_full_pipeline.py`의 기존 지연 정보에 동일 WebSocket의 실제 서버 음성 **헤더 후보 이벤트** 수량을 명시. 이는 실제 WAV 전체 무결성 확인, 참조 음성 라이선스, Cubism/OBS 오디오 신호 정확한 화자 식별이나 인코더·시청자 E2E 증거가 아니다. 공식 실제 WAV 전송 수신을 추가로 관찰할 수 있는 개발 기능이다.
 - 이번 회차 실행: 기존 코드 누적 기능 구현 및 `main` fast-forward 반영만 수행. 실 OBS/Windows GUI/TTS 실행, 실모델 측정, 전체 회귀, Windows EXE 빌드, 오류 수정·검증은 **아직 수행하지 않음**. 소스 반영을 동작 성공이라고 혼동하지 않는다.
 - 다음 개발: 공식 GPT-SoVITS 합성 본문·원본 설정과 이 이벤트/실제 Cubism RMS·입 움직임·OBS 동일 발화 연결을 계속 확장. 4플랫폼 실제 수백 명 수신, 24시간 장시간 재연결, FIFO 1~3초 목표 병목의 미개발/미실증 항목까지 기존 코드 누적 개발. 사용자 권리/동의/송출 금지 및 토큰/keep_alive 임의 설정 금지, 신규 브랜치·롤백·force push/다른 프로젝트/예약 수정 금지. 개발 완료 후에 전체 회귀→실패 수정→전체 재검증. 다음 실행은 현재 main HEAD 조회부터.
+
+## 102. 2026-10-22 15시대 — AISTING 실제 누적 개발: 4플랫폼 콜백 전달 감사와 로컬 FIFO 병목 구분
+
+### 시작 상태·96~97절 미결 CI 확인
+- 본 회차 시작 GitHub main HEAD `c35167b946ab5034ad5d5dcdadcb64d16a72d35e` (1~101절 원문 유지). 기존 97절 `2687831af162f90f985da467aac9f90d0fd01828`는 더 이상 최신 HEAD가 아니므로 되돌리지 않았다.
+- 96절 Windows CI https://github.com/junggyeol4444/AISTING/actions/runs/39722213656 : **completed/cancelled**. windows-exe, obs-real-readonly, twitch-public-readonly, ollama-real-local-e2e 각 job **success**, korean-public-chat-readonly job **cancelled**. 취소 job 로그 다운로드는 404 BlobNotFound로 실패. Windows EXE job의 2,544개 테스트·GUI 격리 검사·EXE artifact 생성 로그는 해당 job 성공 사실이지 전체 workflow 성공 또는 사용자 실기기 실증이 아니다.
+- 96절 실제 모델 500건 CI https://github.com/junggyeol4444/AISTING/actions/runs/39720448468 : workflow **completed/success**, 실제 로컬 Ollama FIFO 500/500 종결·모델 오류 0·3초 초과 500/500. 로컬 총 p95 **2,979.984초**, FIFO 대기 p95 **2,973.875초**, AI 처리 p95 **7.875초**, 최대 FIFO 적체 **499건**, 서버 입력 평가 p95 **6.995594초**, 총 경과 **3,133.64초**. 요청한 6,900초 장시간 유지 검사 `completed_full_local_duration=false`이므로 **24시간 성공 아님**. 합성 플랫폼별 메시지 125건이지 실제 시청자 500명/4플랫폼 실수신 증명이 아니다. **시청자 E2E 1~3초 목표 실패**.
+- 과거 39720448401·39720448453 및 39718736665 실패, 39722213715 성공 기록은 삭제하지 않는다.
+
+### 이번 회차 실제 코드 개발 (전체 통합검증 전)
+- 기존 `src/ai_broadcaster/live_runtime_metrics.py`의 `LiveLatencySnapshot`에 **실제 로컬 p95 FIFO 대기 대 AI 처리 상대 병목**을 구분하는 `bottleneck_ko`를 추가하고 기존 한국어 `describe()` 결과에 연결했다. 표본이 없으면 미측정, 로컬 총 p95가 3초 이내면 **시청자 E2E 미검증**을 명시, 초과 시 대기/AI 어느 쪽 p95가 우세한지 **추정**으로 표시한다. 실제 AI 추론 속도를 개선했다거나 시청자 지연을 측정했다고 주장하지 않는다.
+- 기존 `src/ai_broadcaster/multi_platform_session.py`에 선택된 Twitch/치지직/SOOP/YouTube별 **실제 리더 콜백 진입 수·GUI emit 완료 수·emit 예외 수**를 세션 메모리에서 구분 계수했다. `reconnect_snapshot()`에 `콜백수신`, `콜백전달완료`, `콜백전달오류`를 기존 재연결·공백 수치와 함께 추가했다. 채팅 본문·사용자 ID·토큰은 신규 계수에 저장하지 않는다. 네트워크 수신 이전 누락과 사용자 실제 시청자 수는 알 수 없다. 콜백 오류는 숨기지 않고 기존 수신기 예외/재연결 흐름으로 다시 전달한다.
+- 두 기존 파일만 Git 객체를 통해 기존 main `c35167b9`의 부모-자식 **fast-forward** 커밋 `b97bac2f75bb7365fb78bd51527fa9c662f074b4`에 반영했다. 기존 코드·캐릭터·SQLite·설정·원본 기획·부록 삭제/재작성 없음. 새로운 브랜치·force push·롤백·다른 프로젝트/예약/Drive 변경 없음.
+- `[skip ci]` 개발 중 커밋이므로 **이번 신규 기능에 대한 전체 회귀, Windows EXE/GUI, OBS, 실제 GPT-SoVITS/Live2D/4플랫폼/24시간/시청자 테스트는 실행하지 않았다.** 개발 코드 반영과 동작 검증을 구분한다.
+
+### 진행 중 멈춘 것·안 한 것·계속 개발할 것
+- 기존 101절 공식 동일 WebSocket WAV 헤더 후보 감사를 확장해 RIFF 선언 크기와 수신 base64 길이 일치 후보를 계수하는 개발안을 검토했으나 **GitHub 코드 객체 작성 단계가 안전 검사에 차단되어 main에 반영하지 않았다**. 해당 변경을 완료·검증으로 기록하지 않는다. 승인된 기존 음성 경로를 우회하거나 무단 음성·계정 사용하지 않는다.
+- 본인 권리 확인된 **실제 한국어 GPT-SoVITS WAV → 공식 Cubism 실제 입 → OBS 동일 발화 오디오/영상** 증거, 4플랫폼 실제 수백 명 무누락, 실제 24시간 재연결, 시청자 1~3초 E2E는 아직 **미완료/미실증**이다. 500건 부하에서는 오히려 대기 p95 2,973.875초가 핵심 병목이다. 실제 권리·사용자 승인 없는 보이스/계정/OAuth·송출·녹화·채팅 발신·훈련은 수행하지 않았다.
+- 사용자 명령 순서대로 기존 기능 개발을 먼저 누적한다. 이후에만 **전체 코드 통합 회귀 → Windows 네이티브 EXE/GUI·OBS·로컬 모델·4플랫폼 실제 통합검사 → 발견 오류 수정 → 전체 재검증**한다. mock와 실제 구분, 이전 실패 CI 보존. 토큰 96/keep_alive 10m 임의 변경 금지.
+- 다음 회차 시작 시 GitHub `main` HEAD를 다시 조회하고 이 문서 **1~102절 전체**, `docs/AISTING_NEXT_CONVERSATION_HANDOFF.md` 원문, `docs/hourly-handoff-appendices/` 전부, `docs/ORIGINAL_PLAN.txt`, `docs/ROADMAP_100.md`, `config/roadmap.json`, 실제 main 소스를 계속 기준으로 한다. 현재 기능 개발 커밋 HEAD는 `b97bac2f75bb7365fb78bd51527fa9c662f074b4`; 본 문서 반영 커밋으로 최종 HEAD는 달라질 수 있으므로 재조회 필수. 이번 코드의 신규 CI는 **미실행**. 다른 업무/예약 변경 금지.
+
