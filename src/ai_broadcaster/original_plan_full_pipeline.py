@@ -296,7 +296,9 @@ def verify_official_chat_live2d_obs(
             return False
         # The same monotonic clock is used by both native Windows OBS events
         # and official WebView2/Cubism evidence; NO broad window shortcut.
-        return first <= mouth_last and last >= mouth_first
+        # 경계점 하나에서만 맞닿은 소리/입 표본은 겹친 지속시간이
+        # 0이다. 이전/다음 발화가 우연히 경계에 닿아도 동일 발화가 아니다.
+        return first < mouth_last and last > mouth_first
 
     matching = [sample for began, ended, sample in observation
                 if same_utterance_window(began, ended, sample)]

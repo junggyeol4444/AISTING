@@ -448,6 +448,57 @@ class FullPipelineContracts(unittest.TestCase):
         self.assertFalse(result.temporal_overlap_candidate)
         self.assertFalse(result.verified_observation)
 
+    def test_obs_sound_and_cubism_mouth_touching_only_at_boundary_is_not_same_turn(self):
+        # OBS 소리가 끝나는 시각과 새 입 움직임 시작이 같거나,
+        # 입 움직임 종료와 새 소리 시작이 같을 때는 중첩 지속시간 0초.
+        # 실제 OBS/음성 사용 없이 두 독립 표본 시간을 결정적으로 맞춘다.
+        import threading
+        for direction in ("audio_before_mouth", "audio_after_mouth"):
+            with self.subTest(direction=direction):
+                safety, monitor = make_obs(), make_obs()
+                shared = {}
+                ready = threading.Event()
+
+                def media(**kwargs):
+                    t = time.monotonic() + 0.04
+                    shared["point"] = t
+                    ready.set()
+                    time.sleep(max(0.0, t + 0.065 - time.monotonic()))
+                    if direction == "audio_before_mouth":
+                        first, last = t - 0.01, t
+                    else:
+                        first, last = t + 0.02, t + 0.035
+                    monitor.probe_count += 1
+                    return SimpleNamespace(
+                        coherent_media_candidate=True,
+                        audio=SimpleNamespace(
+                            first_selected_signal_monotonic=first,
+                            last_selected_signal_monotonic=last))
+
+                def live2d(*args, **kwargs):
+                    self.assertTrue(ready.wait(2))
+                    t = shared["point"]
+                    time.sleep(max(0.0, t + 0.04 - time.monotonic()))
+                    return SimpleNamespace(
+                        verified_signal=True,
+                        first_audio_mouth_monotonic=t,
+                        last_audio_mouth_monotonic=t + 0.02)
+
+                monitor.inspect_program_media = media
+                with patch.object(pipeline, "OfficialObsWebsocket",
+                                  side_effect=[safety, monitor]), patch.object(
+                                  pipeline, "send_to_native_live2d_session_with_observation",
+                                  side_effect=live2d) as sender:
+                    result = pipeline.verify_official_chat_live2d_obs(
+                        "시각 경계가 닿은 다른 발화",
+                        obs_password="local", obs_input_name="Mic",
+                        operator_approved=True, voice_rights_confirmed=True)
+                sender.assert_called_once()
+                self.assertEqual(monitor.probe_count, 1)
+                self.assertFalse(result.temporal_overlap_candidate)
+                self.assertFalse(result.verified_observation)
+                self.assertFalse(result.viewer_end_to_end_verified)
+
     def test_broad_three_second_window_does_not_certify_unrelated_meter_event(self):
         safety, monitor = make_obs(), make_obs()
         obs_signal = []
