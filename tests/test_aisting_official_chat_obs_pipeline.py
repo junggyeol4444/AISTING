@@ -187,10 +187,13 @@ class FullPipelineContracts(unittest.TestCase):
         visits = [0]
         original_status = obs.status
         def last_status():
-            visits[0] += 1
-            # Two early checks, one just before the request, then final.
-            if visits[0] >= 4:
-                stopped.set()
+            # OBS 관찰 보조 스레드의 추가 안전 상태 조회는
+            # 메인 스레드 마지막 중지 검사의 호출 횟수에 포함하지 않는다.
+            if threading.current_thread() is threading.main_thread():
+                visits[0] += 1
+                # 사전 검사 3회 이후 실제 질문 전송 뒤 최종 검사만 중지.
+                if visits[0] >= 4:
+                    stopped.set()
             return original_status()
         obs.status = last_status
         with patch.object(pipeline, "OfficialObsWebsocket", return_value=obs), (
