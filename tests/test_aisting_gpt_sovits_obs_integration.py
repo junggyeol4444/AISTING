@@ -80,6 +80,52 @@ class VerifyRealVoiceObsTests(unittest.TestCase):
                 verify_gpt_sovits_to_obs(Path("ref.wav"), "한글", "반가워요",
                     obs_password="test", operator_approved=True)
 
+    def test_muted_or_changed_obs_audio_route_cannot_pass_real_voice_probe(self):
+        # 피크 발생만으로는 실제 출력 사용 가능 신호가 아니다.
+        # 유일한 임시 소스만 생성·삭제하며 실제 OBS/음성은 실행하지 않는다.
+        for problem in ("muted", "changed"):
+            with self.subTest(problem=problem):
+                created, removed = [], []
+                class Client:
+                    def get_record_status(self):
+                        return SimpleNamespace(output_active=False)
+                    def get_input_kind_list(self, unused):
+                        return SimpleNamespace(input_kinds=["ffmpeg_source"])
+                    def create_input(self, scene, name, kind, settings, enabled):
+                        created.append(name)
+                    def remove_input(self, name):
+                        removed.append(name)
+                from ai_broadcaster.original_plan_obs import ActualObsAudioMeters
+                meters = ActualObsAudioMeters(
+                    event_count=5, input_peaks=(("probe", 0.5),),
+                    selected_input="probe",
+                    selected_muted=(problem == "muted"),
+                    selected_volume=1.0, selected_meter_events=5,
+                    selected_route_changed=(problem == "changed"))
+                # 정확한 생성 소스 이름에 맞는 실제 출력 후보 조건만 사용한다.
+                self.assertTrue(meters.any_signal)
+                self.assertFalse(meters.usable_output_candidate)
+                obs = SimpleNamespace(
+                    _client=Client(),
+                    connect=lambda: SimpleNamespace(
+                        version="32", scene="Scene", streaming=False),
+                    status=lambda: SimpleNamespace(scene="Scene", streaming=False),
+                    read_actual_audio_meters=lambda **kwargs: meters)
+                voice = SimpleNamespace(sample_rate=24000, channels=1,
+                                        frame_count=8000, wav_data=b"RIFF"+b"x"*60)
+                with patch(
+                    "ai_broadcaster.original_plan_voice_obs_bridge.OfficialObsWebsocket",
+                    return_value=obs), patch(
+                    "ai_broadcaster.original_plan_voice_obs_bridge.synthesize_local_gpt_sovits",
+                    return_value=voice):
+                    with self.assertRaisesRegex(RuntimeError, "입력 신호"):
+                        verify_gpt_sovits_to_obs(
+                            Path("licensed.wav"), "권리 확인", "안녕하세요",
+                            obs_password="test", operator_approved=True,
+                            rights_confirmed=True)
+                self.assertEqual(removed, created)
+                self.assertEqual(len(created), 1)
+
     def test_existing_live_stream_is_never_modified(self):
         obs=SimpleNamespace(connect=lambda:SimpleNamespace(streaming=True))
         with patch("ai_broadcaster.original_plan_voice_obs_bridge.OfficialObsWebsocket",
@@ -118,7 +164,7 @@ class VerifyRealVoiceObsTests(unittest.TestCase):
             connect=lambda:SimpleNamespace(version="32.2.2",scene="Scene",streaming=False),
             status=lambda:SimpleNamespace(scene="Scene",streaming=False),
             read_actual_audio_meters=lambda **kwargs:
-                SimpleNamespace(selected_meter_events=12, selected_signal=True))
+                SimpleNamespace(selected_meter_events=12, selected_signal=True, usable_output_candidate=True))
         voice=SimpleNamespace(sample_rate=24000,channels=1,frame_count=80,
                               wav_data=b"RIFF"+b"x"*60)
         with patch("ai_broadcaster.original_plan_voice_obs_bridge.OfficialObsWebsocket",
@@ -163,7 +209,7 @@ class VerifyRealVoiceObsTests(unittest.TestCase):
                 def inspect(**kwargs):
                     observed.append(kwargs["duration"])
                     kwargs["start_action"]()
-                    return SimpleNamespace(selected_meter_events=5, selected_signal=True)
+                    return SimpleNamespace(selected_meter_events=5, selected_signal=True, usable_output_candidate=True)
                 client = Client()
                 obs = SimpleNamespace(
                     _client=client,
@@ -301,7 +347,7 @@ class VerifyRealVoiceObsTests(unittest.TestCase):
             connect=lambda:SimpleNamespace(version="32.2.2",scene="Scene",streaming=False),
             status=lambda:next(states),
             read_actual_audio_meters=lambda **kwargs:SimpleNamespace(
-                selected_meter_events=2,selected_signal=True))
+                selected_meter_events=2,selected_signal=True, usable_output_candidate=True))
         voice=SimpleNamespace(sample_rate=24000,channels=1,frame_count=100,
                               wav_data=b"RIFF"+b"x"*60)
         with patch("ai_broadcaster.original_plan_voice_obs_bridge.OfficialObsWebsocket",
@@ -335,7 +381,7 @@ class VerifyRealVoiceObsTests(unittest.TestCase):
                 removed.append(name)
         def meter(**kwargs):
             kwargs["start_action"]()
-            return SimpleNamespace(selected_meter_events=2, selected_signal=True)
+            return SimpleNamespace(selected_meter_events=2, selected_signal=True, usable_output_candidate=True)
         obs = SimpleNamespace(
             _client=Client(),
             connect=lambda:SimpleNamespace(
@@ -380,7 +426,7 @@ class VerifyRealVoiceObsTests(unittest.TestCase):
                 removed.append(name)
         def meter(**kwargs):
             kwargs["start_action"]()
-            return SimpleNamespace(selected_meter_events=1, selected_signal=True)
+            return SimpleNamespace(selected_meter_events=1, selected_signal=True, usable_output_candidate=True)
         obs = SimpleNamespace(
             _client=Client(),
             connect=lambda:SimpleNamespace(
@@ -424,7 +470,7 @@ class VerifyRealVoiceObsTests(unittest.TestCase):
                 removed.append(name)
         def meter(**kwargs):
             kwargs["start_action"]()
-            return SimpleNamespace(selected_meter_events=2, selected_signal=True)
+            return SimpleNamespace(selected_meter_events=2, selected_signal=True, usable_output_candidate=True)
         obs = SimpleNamespace(
             _client=Client(),
             connect=lambda:SimpleNamespace(version="32", scene="Scene", streaming=False),

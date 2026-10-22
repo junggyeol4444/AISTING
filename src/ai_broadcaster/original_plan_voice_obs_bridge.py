@@ -178,7 +178,7 @@ def verify_gpt_sovits_to_obs(
                 frames=utterance.frame_count,
                 obs_version=state.version,
                 audio_input_events=meters.selected_meter_events,
-                actual_signal=bool(meters.selected_signal),
+                actual_signal=bool(meters.usable_output_candidate),
                 wav_duration_seconds=round(wav_duration, 3),
                 meter_observation_seconds=round(meter_duration, 3),
                 observation_covers_wav_duration=covers_duration,
