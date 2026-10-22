@@ -361,6 +361,12 @@ class OfficialLipSyncEvidence:
     # 실제 승인된 같은 공식 브라우저 WebSocket의 서버 WAV RIFF/WAVE
     # 헤더 후보 이벤트. 음성의 권리·재생·동일 화자 실증과는 별개이다.
     official_wav_header_events: int = 0
+    # 동일 공식 WebSocket의 실제 서버 오디오 이벤트를 헤더 길이 후보로
+    # 누적한 값. 파일 저장/재생/인코더 오디오 확인은 아니다.
+    official_ws_audio_events: int = 0
+    official_wav_riff_length_matched: int = 0
+    official_wav_riff_length_mismatched: int = 0
+    first_official_wav_seconds: float | None = None
 
     @property
     def verified_signal(self) -> bool:
@@ -436,12 +442,23 @@ def _parse_official_lipsync_evidence(reply: dict) -> OfficialLipSyncEvidence:
                 or (overlapping > 0 and ((first == 0) != (last == 0)))):
             raise ValueError('실제 음성·입 움직임 관찰시각 오류')
         wav_events = reply.get('official_wav_header_events', 0)
-        if type(wav_events) is not int or not 0 <= wav_events <= 4096:
+        audio_events = reply.get('official_ws_audio_events', 0)
+        matched = reply.get('official_wav_riff_length_matched', 0)
+        mismatched = reply.get('official_wav_riff_length_mismatched', 0)
+        first_wav = reply.get('first_official_wav_seconds')
+        if any(type(x) is not int or not 0 <= x <= 4096
+               for x in (wav_events, audio_events, matched, mismatched)):
             raise ValueError('공식 WAV 이벤트 수량 오류')
+        if (wav_events > audio_events or matched + mismatched > wav_events
+                or (first_wav is not None and
+                    (type(first_wav) not in (int, float)
+                     or not math.isfinite(first_wav) or not 0 <= first_wav <= 300))):
+            raise ValueError('동일 공식 세션 음성 관측 데이터 형식 오류')
         return OfficialLipSyncEvidence(
             samples, model_seen, canvas_seen, ids, float(rms), active,
             float(mouth), changes, renderer_active, overlapping,
-            float(first), float(last), wav_events
+            float(first), float(last), wav_events, audio_events,
+            matched, mismatched, float(first_wav) if first_wav is not None else None
         )
     except (KeyError, ValueError, TypeError) as exc:
         raise FrontendUnavailable('공식 Live2D 검사 결과에 유효하지 않은 데이터가 있습니다.') from exc
@@ -471,7 +488,15 @@ def _official_live2d_probe_script() -> str:
         "rms:(Number.isFinite(rms)?rms:null),"
         "mouth:(Number.isFinite(mouth)?mouth:null),"
         "ws_wav_header_events:(Number.isSafeInteger(window.__aistingSendAudit?.wavHeaderEvents)"
-        "?window.__aistingSendAudit.wavHeaderEvents:0)});"
+        "?window.__aistingSendAudit.wavHeaderEvents:0),"
+        "ws_audio_events:(Number.isSafeInteger(window.__aistingSendAudit?.audioEvents)"
+        "?window.__aistingSendAudit.audioEvents:0),"
+        "ws_wav_riff_length_matched:(Number.isSafeInteger(window.__aistingSendAudit?.riffLengthMatched)"
+        "?window.__aistingSendAudit.riffLengthMatched:0),"
+        "ws_wav_riff_length_mismatched:(Number.isSafeInteger(window.__aistingSendAudit?.riffLengthMismatched)"
+        "?window.__aistingSendAudit.riffLengthMismatched:0),"
+        "ws_first_wav_seconds:(Number.isFinite(window.__aistingSendAudit?.firstWavMs)"
+        "?window.__aistingSendAudit.firstWavMs/1000:null)});"
         "})()"
     )
 
@@ -484,6 +509,8 @@ def _observe_actual_live2d_model(window, seconds: float) -> dict:
     peak_rms = 0.0
     first_overlap = last_overlap = 0.0
     wav_header_events = 0
+    ws_audio_events = riff_matched = riff_mismatched = 0
+    first_wav_seconds = None
     low = high = previous = None
     deadline = time.monotonic() + seconds
     script = _official_live2d_probe_script()
@@ -497,6 +524,24 @@ def _observe_actual_live2d_model(window, seconds: float) -> dict:
                 if (type(observed_wav_headers) is int
                         and 0 <= observed_wav_headers <= 4096):
                     wav_header_events = max(wav_header_events, observed_wav_headers)
+                for field, current in (
+                        ('ws_audio_events', ws_audio_events),
+                        ('ws_wav_riff_length_matched', riff_matched),
+                        ('ws_wav_riff_length_mismatched', riff_mismatched)):
+                    value = item.get(field)
+                    if type(value) is int and 0 <= value <= 4096:
+                        if field == 'ws_audio_events':
+                            ws_audio_events = max(current, value)
+                        elif field == 'ws_wav_riff_length_matched':
+                            riff_matched = max(current, value)
+                        else:
+                            riff_mismatched = max(current, value)
+                observed_first = item.get('ws_first_wav_seconds')
+                if (first_wav_seconds is None
+                        and type(observed_first) in (int, float)
+                        and math.isfinite(observed_first)
+                        and 0 <= observed_first <= 300):
+                    first_wav_seconds = float(observed_first)
                 model_seen = model_seen or item.get('model') is True
                 canvas_seen = canvas_seen or item.get('canvas') is True
                 count = item.get('ids')
@@ -547,6 +592,10 @@ def _observe_actual_live2d_model(window, seconds: float) -> dict:
         'first_audio_mouth_monotonic': first_overlap,
         'last_audio_mouth_monotonic': last_overlap,
         'official_wav_header_events': wav_header_events,
+        'official_ws_audio_events': ws_audio_events,
+        'official_wav_riff_length_matched': riff_matched,
+        'official_wav_riff_length_mismatched': riff_mismatched,
+        'first_official_wav_seconds': first_wav_seconds,
     }
 
 
@@ -577,7 +626,9 @@ def _official_frontend_input_script(value: str, nonce: str) -> tuple[str, str, s
         "const nonce=" + marker + ";"
         "const original=WebSocket.prototype.send;"
         "const audit={nonce:nonce,observed:false,original:original,wrapper:null,"
-        "socket:null,listener:null,wavHeaderEvents:0};"
+        "socket:null,listener:null,wavHeaderEvents:0,audioEvents:0,"
+        "riffLengthMatched:0,riffLengthMismatched:0,firstWavMs:null,"
+        "sentAtMs:null};"
         "audit.wrapper=function(data){"
         "let matching=false;"
         "try{"
@@ -591,15 +642,29 @@ def _official_frontend_input_script(value: str, nonce: str) -> tuple[str, str, s
         "audit.listener=function(evt){try{"
         "if(typeof evt.data!=='string')return;"
         "const msg=JSON.parse(evt.data);"
-        "if(msg.type!=='audio'||typeof msg.audio!=='string'||"
+        "if(msg.type!=='audio'||audit.audioEvents>=4096)return;"
+        "audit.audioEvents++;"
+        "if(typeof msg.audio!=='string'||"
         "msg.audio.length<60||msg.audio.length>25165824)return;"
         "const header=atob(msg.audio.slice(0,16));"
-        "if(header.slice(0,4)==='RIFF'&&header.slice(8,12)==='WAVE'&&"
-        "audit.wavHeaderEvents<4096)audit.wavHeaderEvents++;"
+        "if(header.slice(0,4)!=='RIFF'||header.slice(8,12)!=='WAVE')return;"
+        "if(audit.wavHeaderEvents>=4096)return;"
+        "audit.wavHeaderEvents++;"
+        "const size=(header.charCodeAt(4)|header.charCodeAt(5)<<8|"
+        "header.charCodeAt(6)<<16|header.charCodeAt(7)<<24)>>>0;"
+        "const padded=msg.audio.length;"
+        "const decoded=(padded/4)*3-(msg.audio.endsWith('==')?2:"
+        "msg.audio.endsWith('=')?1:0);"
+        "if(padded%4===0&&size+8===decoded){"
+        "audit.riffLengthMatched++;"
+        "if(audit.firstWavMs===null&&audit.sentAtMs!==null)"
+        "audit.firstWavMs=Math.max(0,performance.now()-audit.sentAtMs);"
+        "}else audit.riffLengthMismatched++;"
         "}catch(_e){}};"
         "this.addEventListener('message',audit.listener);"
         "}"
         "}}catch(_err){}"
+        "if(matching&&audit.sentAtMs===null)audit.sentAtMs=performance.now();"
         "const result=original.apply(this,arguments);"
         "if(matching)audit.observed=true;"
         "return result;};"

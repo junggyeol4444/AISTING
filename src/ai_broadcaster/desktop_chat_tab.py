@@ -1195,6 +1195,9 @@ class LocalChatTab(ttk.Frame):
                             " / " + ("OBS 관찰 시간 중첩 후보" if getattr(
                                 evidence, "temporal_overlap_candidate", False)
                                 else "동일 발화 관찰 시간 중첩 미확인") +
+                            " / " + ("공식 동일 WS WAV·입·OBS 연관 후보" if getattr(
+                                evidence, "same_session_voice_candidate", False)
+                                else "공식 음성 WAV·입·OBS 연관 미충족") +
                             " · " + getattr(evidence, "latency_summary_ko", "지연 미측정") +
                             " · 실제 방송/시청자 출력은 별도 실증 필요")
                         if evidence.verified_observation:

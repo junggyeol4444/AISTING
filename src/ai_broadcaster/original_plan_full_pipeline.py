@@ -48,7 +48,26 @@ class OfficialChatObsEvidence:
             + " / OBS 첫 오디오 표본 " + measured(self.first_obs_audio_seconds)
             + " / 공식 동일 WS WAV 헤더 이벤트 "
             + str(getattr(self.lip, "official_wav_header_events", 0))
-            + "건(헤더 후보) / 시청자 E2E 별도 미검증"
+            + "건(헤더 후보) / RIFF 길이 일치 "
+            + str(getattr(self.lip, "official_wav_riff_length_matched", 0))
+            + "건 / 길이 불일치 "
+            + str(getattr(self.lip, "official_wav_riff_length_mismatched", 0))
+            + "건 / 첫 공식 WS WAV 후보 "
+            + measured(getattr(self.lip, "first_official_wav_seconds", None))
+            + " / 시청자 E2E 별도 미검증"
+        )
+
+    @property
+    def same_session_voice_candidate(self) -> bool:
+        """한 질문과 같은 공식 WebSocket의 WAV 길이 후보+입+OBS 관측.
+
+        RIFF 표본 길이가 맞더라도 실제 보이스 사용권이나 OBS 인코더에
+        바로 그 WAV가 출력되었다고 단정할 수는 없다.
+        """
+        return bool(
+            self.verified_observation
+            and getattr(self.lip, "official_wav_riff_length_matched", 0) > 0
+            and getattr(self.lip, "official_ws_audio_events", 0) > 0
         )
 
     @property
