@@ -71,6 +71,18 @@ class OfficialChatObsEvidence:
         )
 
     @property
+    def same_session_audio_video_candidate(self) -> bool:
+        """동일 발화 시간 후보·공식 WAV 길이·실제 프로그램 영상 변화를 결합.
+
+        화면 변화가 반드시 아바타 입이라는 증거는 아니며
+        시청자 인코더/송출/수신 검증으로 보고하지 않는다.
+        """
+        return bool(
+            self.same_session_voice_candidate
+            and getattr(self.obs, "program_video_change_candidate", False)
+        )
+
+    @property
     def verified_observation(self) -> bool:
         """Two real concurrent observations; NOT proof of encoded stream."""
         return bool(self.lip.verified_signal and self.obs.coherent_media_candidate
@@ -207,6 +219,7 @@ def verify_official_chat_live2d_obs(
                 sample = observer.inspect_program_media(
                     operator_approved=True, input_name=obs_input_name,
                     duration=min(float(duration), 3.0),
+                    observe_program_motion=True,
                 )
                 capture_ended = time.monotonic()
                 # 검사 도중 사용자가 녹화 또는 방송을 잠시 시작한

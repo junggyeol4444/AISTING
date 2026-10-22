@@ -1198,6 +1198,12 @@ class LocalChatTab(ttk.Frame):
                             " / " + ("공식 동일 WS WAV·입·OBS 연관 후보" if getattr(
                                 evidence, "same_session_voice_candidate", False)
                                 else "공식 음성 WAV·입·OBS 연관 미충족") +
+                            " / " + ("OBS 프로그램 영상 프레임 변화 후보" if getattr(
+                                evidence.obs, "program_video_change_candidate", False)
+                                else "OBS 영상 변화 미확인") +
+                            " / " + ("음성·입·영상 관측 결합 후보" if getattr(
+                                evidence, "same_session_audio_video_candidate", False)
+                                else "음성·입·영상 결합 미충족") +
                             " · " + getattr(evidence, "latency_summary_ko", "지연 미측정") +
                             " · 실제 방송/시청자 출력은 별도 실증 필요")
                         if evidence.verified_observation:

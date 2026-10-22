@@ -129,6 +129,26 @@ class ActualObsProgramMediaObservation:
     # A final OBS status snapshot must follow the last route query: a scene
     # may change while GetSceneItemList/GetSpecialInputs is in flight.
     after_route: ActualObsState | None = None
+    # 승인받은 현재 OBS 프로그램 장면을 음성 미터 관찰 전후에
+    # 각각 읽는다. 영상 프레임 원본은 저장하지 않고 메모리만 사용한다.
+    after_audio_frame: ActualObsFrame | None = None
+
+    @property
+    def program_video_change_candidate(self) -> bool:
+        """OBS 프로그램 화면의 서로 다른 두 PNG 관측 후보.
+
+        변경이 보이더라도 원인이 Cubism 입인지 장면의 다른 요소인지
+        이 결과 하나로는 구분할 수 없고, 실제 방송 출력 증거도 아니다.
+        """
+        other = self.after_audio_frame
+        return bool(
+            other is not None and self.stable_program_scene
+            and self.frame.scene == other.scene
+            and self.frame.width == other.width
+            and self.frame.height == other.height
+            and bool(self.frame.png_data) and bool(other.png_data)
+            and self.frame.png_data != other.png_data
+        )
 
     @property
     def selected_audio_route_stable(self) -> bool:
@@ -1009,7 +1029,8 @@ class OfficialObsWebsocket:
 
 
     def inspect_program_media(self, *, operator_approved: bool = False,
-                              input_name: str, duration: float = 3.0
+                              input_name: str, duration: float = 3.0,
+                              observe_program_motion: bool = False
                               ) -> ActualObsProgramMediaObservation:
         """Read one real OBS scene frame and the selected input's meter.
 
@@ -1020,6 +1041,8 @@ class OfficialObsWebsocket:
         """
         if operator_approved is not True:
             raise PermissionError('OBS 실제 화면·오디오 통합 관찰 승인이 필요합니다.')
+        if type(observe_program_motion) is not bool:
+            raise ValueError('OBS 영상 변화 관찰 선택값이 잘못되었습니다.')
         if (not isinstance(input_name, str) or not 1 <= len(input_name) <= 128
                 or input_name != input_name.strip()
                 or any(ord(char) < 32 for char in input_name)):
@@ -1045,7 +1068,18 @@ class OfficialObsWebsocket:
         audio = self.read_actual_audio_meters(
             operator_approved=True, duration=duration, input_name=input_name,
         )
+        # 기존 장면·오디오 읽기 흐름은 보존한다. 운영자가 위 통합 검사로
+        # 요청한 경우에만 두 번째 실제 프로그램 영상 프레임을 가져온다.
+        after_audio_frame = (
+            self.read_current_scene_frame(operator_approved=True)
+            if observe_program_motion else None
+        )
         after_meter = self.status()
+        if (after_audio_frame is not None
+                and after_audio_frame.scene != frame.scene):
+            raise ObsConnectionError(
+                'OBS 후속 영상 프레임이 원래 프로그램 장면과 일치하지 않습니다.'
+            )
         after_audio_route = self.read_program_audio_route(
             input_name=input_name, scene=after_meter.scene,
         )
@@ -1057,6 +1091,7 @@ class OfficialObsWebsocket:
             frame=frame, audio=audio,
             before_audio_route=before_audio_route,
             after_audio_route=after_audio_route,
+            after_audio_frame=after_audio_frame,
         )
         # The final status read has not happened yet. Check the provisional
         # path explicitly here, then require the final OBS state in the
