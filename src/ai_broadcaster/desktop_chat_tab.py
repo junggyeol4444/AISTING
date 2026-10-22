@@ -36,6 +36,9 @@ class _ReaderTimestampedChat:
     """
     message: object
     reader_received_at: float
+    # 실제 4플랫폼 수신기에서 GUI 대기 이전에 AI FIFO에 넣었는지 구분.
+    # 과거 직접 호출·오프라인 테스트는 기존 GUI 경로를 그대로 사용한다.
+    ai_prequeued: bool = False
 
 
 class LocalChatTab(ttk.Frame):
@@ -83,6 +86,9 @@ class LocalChatTab(ttk.Frame):
         self._twitch_replied = 0
         self._twitch_ai_failures = 0
         self._twitch_ai_inbox: queue.SimpleQueue | None = None
+        # 실제 수신 콜백의 AI 등록과 Stop 종료 표식을 직렬화한다.
+        # tkinter 객체를 잠금 보유 상태에서 직접 조작하지 않는다.
+        self._live_ingress_lock = threading.Lock()
         # Monotonic at actual reader callback for scoped network events,
         # before Tk backlog. No extra text copy, logging or deduplication.
         self._ai_arrival_times: queue.SimpleQueue = queue.SimpleQueue()
@@ -742,8 +748,9 @@ class LocalChatTab(ttk.Frame):
         self._twitch_reader_finished = False
         self._twitch_reader_error = None
         inbox = queue.SimpleQueue()
-        self._twitch_ai_inbox = inbox
-        self._ai_arrival_times = queue.SimpleQueue()
+        with self._live_ingress_lock:
+            self._ai_arrival_times = queue.SimpleQueue()
+            self._twitch_ai_inbox = inbox
         # The user's real Windows receiver gets fresh private diagnostics on
         # each connection; no message text or credentials enter this meter.
         started_at = time.monotonic()
@@ -789,8 +796,32 @@ class LocalChatTab(ttk.Frame):
             # actually drains committed work.
             ai_backlog = pending_ai.qsize() if pending_ai is not None else 0
             if self._results.qsize() < limit and ai_backlog < limit:
-                self._results.put(("twitch_scoped", (session, "twitch_" + kind, stamped_item)))
-                return True
+                if kind == "chat" and isinstance(session, MultiPlatformReadOnlySession):
+                    # 실제 네트워크 수신은 Tk 화면 출력보다 먼저 로컬 AI
+                    # FIFO에 들어간다. Tk의 128건/주기 표시 지연이 추론
+                    # 시작 지연에 그대로 더해지는 병목을 제거한다.
+                    # 화면에는 같은 사건을 한 번만 전달하고 AI 이중 등록을 금지.
+                    with self._live_ingress_lock:
+                        if (session is not self._twitch_session
+                                or session._stop.is_set() or self._closed):
+                            return False
+                        inbox = self._twitch_ai_inbox
+                        arrivals = self._ai_arrival_times
+                        if inbox is None or arrivals is None:
+                            return False
+                        if self._results.qsize() < limit and inbox.qsize() < limit:
+                            arrivals.put(stamped_item.reader_received_at)
+                            self._results.put(("twitch_scoped", (
+                                session, "twitch_chat", _ReaderTimestampedChat(
+                                    item, stamped_item.reader_received_at,
+                                    ai_prequeued=True))))
+                            inbox.put(item)
+                            return True
+                else:
+                    # 기존 직접 GUI 호출·상태 알림 경로는 보존한다.
+                    self._results.put(("twitch_scoped", (
+                        session, "twitch_" + kind, stamped_item)))
+                    return True
             session._stop.wait(0.02)
         return False
 
@@ -912,15 +943,16 @@ class LocalChatTab(ttk.Frame):
             self._append("[로컬 수신 종료] " + meter.snapshot(time.monotonic()).describe())
         for platform_meter in getattr(self, "_platform_live_metrics", {}).values():
             platform_meter.stop(time.monotonic())
-        if self._twitch_ai_inbox is not None:
-            # Wake worker, but never submit further queued AI requests.
-            self._twitch_ai_inbox.put(None)
+        with self._live_ingress_lock:
+            if self._twitch_ai_inbox is not None:
+                # Stop 뒤 새 채팅이 종료 표식 다음에 등록되지 않도록 한다.
+                self._twitch_ai_inbox.put(None)
+            self._twitch_ai_inbox = None
         # Do not keep the UI locked waiting for a stalled socket/HTTP reader.
         # Each late reader/AI event carries this original session identity;
         # _poll discards it after a restart instead of contaminating the new
         # connection's FIFO, counts or persona.
         self._twitch_session = None
-        self._twitch_ai_inbox = None
         self._platform_health_status.set("플랫폼별 수신 종료 · 시청자 무누락 여부 미확인")
         self._twitch_reader_finished = False
         if getattr(self, "_twitch_start", None) is not None:
@@ -1086,8 +1118,10 @@ class LocalChatTab(ttk.Frame):
                         # 이전 직접 GUI 테스트와 기존 플랫폼 채팅 객체는 보존.
                         # 실제 수신기 출처 이벤트만 콜백 원시각을 사용한다.
                         accepted_at = time.monotonic()
+                        ai_prequeued = False
                         if isinstance(payload, _ReaderTimestampedChat):
                             accepted_at = payload.reader_received_at
+                            ai_prequeued = payload.ai_prequeued
                             payload = payload.message
                         meter = getattr(self, "_live_latency_metrics", None)
                         if meter is not None:
@@ -1106,10 +1140,13 @@ class LocalChatTab(ttk.Frame):
                                 self, "_platform_live_metrics", {}).get(platform)
                             if platform_meter is not None:
                                 platform_meter.accept()
-                            arrivals = getattr(self, "_ai_arrival_times", None)
-                            if arrivals is not None:
-                                arrivals.put(accepted_at)
-                            self._twitch_ai_inbox.put(payload)
+                            if not ai_prequeued:
+                                # 기존 GUI 직접 호출만 여기서 AI에 등록한다.
+                                # 네트워크 실제 콜백은 이미 1회 등록됨.
+                                arrivals = getattr(self, "_ai_arrival_times", None)
+                                if arrivals is not None:
+                                    arrivals.put(accepted_at)
+                                self._twitch_ai_inbox.put(payload)
                         self._twitch_status.set(
                             "실제 채팅 " + str(self._twitch_received)
                             + "건 · AI 응답 " + str(self._twitch_replied)
