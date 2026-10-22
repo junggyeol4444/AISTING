@@ -21,6 +21,8 @@ class ChatResult:
     reply: str
     remembered_count: int
     warning: str = ""
+    # Ollama가 실제 제공한 서버 구간(초)만 선택적으로 전달한다.
+    ollama_server_timings_seconds: dict[str, float] | None = None
 
 
 class _TextOutput:
@@ -66,4 +68,7 @@ def run_local_chat(
         "대화는 출력했지만 기억 저장에 실패했습니다. 저장 경로를 확인해 주세요."
         if pipeline.post_delivery_errors else ""
     )
-    return ChatResult(reply=result.reply, remembered_count=memory.count(), warning=warning)
+    return ChatResult(
+        reply=result.reply, remembered_count=memory.count(), warning=warning,
+        ollama_server_timings_seconds=getattr(
+            generator, "last_server_timings_seconds", None))

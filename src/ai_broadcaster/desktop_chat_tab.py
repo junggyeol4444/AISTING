@@ -983,6 +983,25 @@ class LocalChatTab(ttk.Frame):
                     elif kind == "twitch_ai_ok":
                         chat, result = payload
                         self._twitch_replied += 1
+                        # 서버가 보고한 실제 모델 로딩/입력/생성 시간만 표시.
+                        # 시청자 전달이나 송출 구간 시간으로 잘못 해석하지 않는다.
+                        timing = getattr(result, "ollama_server_timings_seconds", None)
+                        if (isinstance(timing, dict) and
+                                (self._twitch_replied <= 3
+                                 or self._twitch_replied % 25 == 0)):
+                            parts = []
+                            for name, label in (
+                                ("load_duration", "모델 로딩"),
+                                ("prompt_eval_duration", "입력 처리"),
+                                ("eval_duration", "답변 생성")):
+                                seconds = timing.get(name)
+                                if (type(seconds) in (int, float)
+                                        and math.isfinite(seconds) and seconds >= 0):
+                                    parts.append(f"{label} {seconds:.3f}초")
+                            if parts:
+                                self._append("[Ollama 서버 단계 실측] " +
+                                             " / ".join(parts) +
+                                             " · 로컬 서버 내부 시간, 시청자 지연 미검증")
                         self._append(
                             "AI → [" + {"twitch":"트위치","chzzk":"치지직",
                              "soop":"SOOP","youtube":"유튜브"}.get(

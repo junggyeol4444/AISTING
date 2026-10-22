@@ -82,6 +82,41 @@ class LoadRunnerContracts(unittest.TestCase):
         self.assertTrue(data["passed_no_drops"])
         self.assertFalse(data["long_running_broadcast_verified"])
 
+    def test_ollama_stage_p95_uses_real_response_metadata_without_text(self):
+        # 단위 테스트 답변은 모의지만 실제 작업자의 성공 이벤트 통로를 사용한다.
+        # 모델 API가 시간을 제공하지 않으면 이 값은 성공으로 꾸미지 않는다.
+        sampled = SimpleNamespace(
+            reply="민감한 채팅 내용", remembered_count=1,
+            ollama_server_timings_seconds={
+                "load_duration": 0.15,
+                "prompt_eval_duration": 0.4,
+                "eval_duration": 2.1,
+                "total_duration": 2.7})
+        with patch.object(SOAK, "real_ollama_chat", return_value=sampled):
+            report = SOAK.run_real_load(
+                model="installed-test-model", messages=8,
+                duration_seconds=3, queue_size=16)
+        self.assertEqual(report["completed"], 8)
+        self.assertEqual(report["model_success"], 8)
+        self.assertEqual(report["ollama_server_stage_p95_seconds"], {
+            "load_duration": 0.15,
+            "prompt_eval_duration": 0.4,
+            "eval_duration": 2.1,
+            "total_duration": 2.7})
+        self.assertEqual(report["ollama_server_stage_sample_counts"]["eval_duration"], 8)
+        self.assertNotIn("민감한", json.dumps(report, ensure_ascii=False))
+        self.assertFalse(report["viewer_end_to_end_verified"])
+
+    def test_missing_ollama_stage_time_remains_null(self):
+        with patch.object(SOAK, "real_ollama_chat",
+                          return_value=SimpleNamespace(reply="정상", remembered_count=1)):
+            result = SOAK.run_real_load(
+                model="installed-test-model", messages=4,
+                duration_seconds=2, queue_size=8)
+        self.assertEqual(result["completed"], 4)
+        self.assertIsNone(result["ollama_server_stage_p95_seconds"]["eval_duration"])
+        self.assertEqual(result["ollama_server_stage_sample_counts"], {})
+
     def test_actual_worker_reports_bounded_live_checkpoints_without_chat_text(self):
         summaries = []
         with patch.object(SOAK, "real_ollama_chat",

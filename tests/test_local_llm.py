@@ -35,6 +35,11 @@ class LocalFakeServer(BaseHTTPRequestHandler):
             return
         result = {
             "ok": {"message": {"content": "반가워요!"}},
+            "timed": {"message": {"content": "반가워요!"},
+                      "load_duration": 150000000, "prompt_eval_duration": 400000000,
+                      "eval_duration": 2100000000, "total_duration": 2700000000},
+            "bad_timing": {"message": {"content": "반가워요!"},
+                           "eval_duration": -50, "total_duration": "unknown"},
             "empty": {"message": {"content": ""}},
             "broken": {"unknown": True},
             "long": {"message": {"content": "가" * 100}},
@@ -99,6 +104,27 @@ class TestLocalModel(unittest.TestCase):
         self.assertNotIn("options", payload)
         self.assertNotIn("keep_alive", payload)
         self.assertIn("시청자: 안녕", payload["messages"][1]["content"])
+
+    def test_actual_ollama_server_stage_durations_only_when_reported(self):
+        # 같은 원본 모델 요청을 유지하고 서버 제공 실측값만 별도 보관.
+        LocalFakeServer.mode = "timed"
+        generator = self.generator()
+        result = generator.generate(ChatMessage("1", "시청자", "안녕"))
+        self.assertEqual(result, "반가워요!")
+        self.assertEqual(generator.last_server_timings_seconds, {
+            "load_duration": 0.15, "prompt_eval_duration": 0.4,
+            "eval_duration": 2.1, "total_duration": 2.7})
+        _, request = LocalFakeServer.requests[0]
+        self.assertNotIn("options", request)
+        self.assertNotIn("keep_alive", request)
+
+    def test_missing_or_invalid_server_durations_are_unmeasured(self):
+        generator = self.generator()
+        for mode in ("bad_timing", "ok"):
+            LocalFakeServer.mode = mode
+            self.assertEqual(
+                generator.generate(ChatMessage("1", "시청자", "안녕")), "반가워요!")
+            self.assertIsNone(generator.last_server_timings_seconds)
 
     def test_paid_api_permission_cannot_be_enabled(self):
         self.settings["operation"]["allow_paid_api"] = True

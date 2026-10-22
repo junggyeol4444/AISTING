@@ -56,6 +56,23 @@ class ConfirmedPersonaLocalChatTests(unittest.TestCase):
             self.assertNotEqual(observed[0]["name"], unsaved_draft["name"])
             self.assertEqual(observed[1], "[트위치] viewer123")
 
+    def test_local_ollama_server_stage_metadata_kept_without_user_text(self):
+        # 모의 생성기와 원래 ChatPipeline으로 수치만 전달한다.
+        class MeasuredNoNetworkModel:
+            last_server_timings_seconds = {"eval_duration": 2.5}
+            def generate(self, message):
+                return "실제 응답을 흉내 낸 테스트"
+            def on_delivered(self, message, reply):
+                pass
+        class NoDiskMemory:
+            def count(self):
+                return 1
+        with patch.object(desktop_chat, "LocalOllamaReplyGenerator",
+                          return_value=MeasuredNoNetworkModel()), patch.object(
+                          desktop_chat, "ConversationMemory", return_value=NoDiskMemory()):
+            outcome = desktop_chat.run_local_chat("local-model", "안녕하세요")
+        self.assertEqual(outcome.ollama_server_timings_seconds, {"eval_duration": 2.5})
+
     def test_existing_non_gui_local_chat_does_not_override_legacy_persona(self):
         observed = []
         class NoNetworkModel:

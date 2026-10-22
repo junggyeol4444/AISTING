@@ -9,7 +9,7 @@ chat posting, recording, voice cloning or external services are started.
 from __future__ import annotations
 
 import argparse
-from collections import Counter
+from collections import Counter, deque
 from collections.abc import Callable
 import json
 import math
@@ -105,6 +105,19 @@ def run_real_load(*, model: str, messages: int, duration_seconds: float,
     deadline = start + duration_seconds
     metrics = LiveLatencyMetrics(start, capacity=1024)
     real_reply = Counter()
+    # 모델 메타데이터는 실제 Ollama가 제공한 응답에만 존재한다.
+    # 과거 기본 응답과 테스트용 모의값에는 미측정으로 남긴다.
+    server_stage_names = (
+        "load_duration", "prompt_eval_duration", "eval_duration", "total_duration")
+    server_stage_samples = {name: deque(maxlen=1024) for name in server_stage_names}
+    server_stage_counts = Counter()
+
+    def server_stage_p95(name):
+        values = sorted(server_stage_samples[name])
+        if not values:
+            return None
+        return values[math.ceil(len(values) * .95) - 1]
+
     platform_counts = Counter()
     emitted = 0
     worker_finished = threading.Event()
@@ -143,6 +156,9 @@ def run_real_load(*, model: str, messages: int, duration_seconds: float,
                 "p95_total_seconds": snap.total_p95,
                 "p95_wait_seconds": snap.wait_p95,
                 "p95_ai_seconds": snap.inference_p95,
+                "ollama_server_stage_p95_seconds": {
+                    name: server_stage_p95(name) for name in server_stage_names},
+                "ollama_server_stage_sample_counts": dict(server_stage_counts),
                 "elapsed_seconds": round(now - start, 3),
                 "goal_three_seconds_met_so_far": (
                     snap.completed > 0 and snap.over_three_seconds == 0),
@@ -200,6 +216,17 @@ def run_real_load(*, model: str, messages: int, duration_seconds: float,
                     return
             if kind == "twitch_ai_ok":
                 real_reply["success"] += 1
+                # 원래 성공 이벤트의 ChatResult에서 서버 계측만 추출한다.
+                # 실제 채팅 문장·송신자·모델 출력은 보고서에 기록하지 않는다.
+                reply = value[1] if isinstance(value, tuple) and len(value) == 2 else None
+                timing = getattr(reply, "ollama_server_timings_seconds", None)
+                if isinstance(timing, dict):
+                    for name in server_stage_names:
+                        value_seconds = timing.get(name)
+                        if (type(value_seconds) in (int, float)
+                                and math.isfinite(value_seconds) and value_seconds >= 0):
+                            server_stage_samples[name].append(float(value_seconds))
+                            server_stage_counts[name] += 1
             elif kind == "twitch_ai_error":
                 real_reply["error"] += 1
             elif kind == "twitch_ai_timing":
@@ -327,6 +354,9 @@ def run_real_load(*, model: str, messages: int, duration_seconds: float,
         "local_wait_p95_seconds": snap.wait_p95,
         "local_ai_p95_seconds": snap.inference_p95,
         "local_p95_sample_count": snap.sampled,
+        "ollama_server_stage_p95_seconds": {
+            name: server_stage_p95(name) for name in server_stage_names},
+        "ollama_server_stage_sample_counts": dict(server_stage_counts),
         "python_peak_bytes": peak,
         "worker_ended": worker_finished.is_set(),
         "processing_errors": errors,

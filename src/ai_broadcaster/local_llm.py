@@ -85,10 +85,13 @@ class LocalOllamaReplyGenerator:
         self.config = config
         self.system = persona_prompt(settings)
         self.memory = memory
+        # Ollama 서버 자체의 단계별 실측값. 텍스트·계정 정보는 저장하지 않는다.
+        self.last_server_timings_seconds: dict[str, float] | None = None
         # 프록시와 리다이렉트 사용을 차단하여 localhost 외 유출을 피함.
         self._opener = build_opener(ProxyHandler({}), HTTPHandler(), _NoRedirect())
 
     def generate(self, message: ChatMessage) -> str:
+        self.last_server_timings_seconds = None
         if not isinstance(message, ChatMessage):
             raise TypeError("ChatMessage가 필요합니다.")
         messages = [{"role": "system", "content": self.system}]
@@ -124,6 +127,14 @@ class LocalOllamaReplyGenerator:
             raise LocalModelError("로컬 AI 응답 내용이 비어 있습니다.")
         if len(reply) > self.config.max_reply_chars:
             raise LocalModelError("로컬 AI 응답 길이 제한을 넘었습니다.")
+        # Ollama는 서버 내부 구간을 나노초로 보고한다. 제공하지 않거나
+        # 유효하지 않으면 0으로 추정하지 않는다. 본래 응답은 그대로 유지한다.
+        stages = {}
+        for key in ("load_duration", "prompt_eval_duration", "eval_duration", "total_duration"):
+            duration = data.get(key)
+            if type(duration) is int and 0 <= duration <= 10**18:
+                stages[key] = round(duration / 1_000_000_000, 6)
+        self.last_server_timings_seconds = stages or None
         return reply
 
     def on_delivered(self, message: ChatMessage, reply: str) -> None:
