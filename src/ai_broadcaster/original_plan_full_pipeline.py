@@ -128,6 +128,42 @@ class OfficialChatObsEvidence:
         )
 
     @property
+    def same_session_pcm_sample_pair_candidate(self) -> bool:
+        """실제 Cubism 입·RMS와 OBS 미터의 근접 관측 표본을 서로 다른 2쌍으로 연결.
+
+        두 독립 관찰자의 Python monotonic 시계를 비교한다. 각각의
+        첫/마지막 시각 범위만 겹치는 경우는 이 후보가 될 수 없다.
+        이 판정도 WAV 파형 동일성이나 방송 인코더/시청자 수신 증거는 아니다.
+        """
+        if not self.same_session_pcm_mouth_audio_video_candidate:
+            return False
+        mouth = getattr(self.lip, 'official_pcm_mouth_sample_times', ())
+        audio = getattr(getattr(self.obs, 'audio', None),
+                        'selected_signal_sample_times', ())
+        if (not isinstance(mouth, tuple) or not isinstance(audio, tuple)
+                or len(mouth) < 2 or len(audio) < 2):
+            return False
+        if (any(type(v) not in (int, float) or not math.isfinite(v) or v <= 0
+                for v in mouth + audio)
+                or any(a >= b for times in (mouth, audio)
+                       for a, b in zip(times, times[1:]))):
+            return False
+        i = j = matched = 0
+        while i < len(mouth) and j < len(audio):
+            difference = mouth[i] - audio[j]
+            if abs(difference) <= 0.2:
+                matched += 1
+                if matched >= 2:
+                    return True
+                i += 1
+                j += 1
+            elif difference < 0:
+                i += 1
+            else:
+                j += 1
+        return False
+
+    @property
     def verified_observation(self) -> bool:
         """Two real concurrent observations; NOT proof of encoded stream."""
         return bool(self.lip.verified_signal and self.obs.coherent_media_candidate

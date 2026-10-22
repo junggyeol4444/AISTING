@@ -70,6 +70,8 @@ class ActualObsAudioMeters:
     selected_route_changed: bool = False
     first_selected_signal_monotonic: float = 0.0
     last_selected_signal_monotonic: float = 0.0
+    # 선택된 OBS 입력의 실제 양수 미터 이벤트 최근 128개 (메모리 전용).
+    selected_signal_sample_times: tuple[float, ...] = ()
 
     @property
     def any_signal(self) -> bool:
@@ -816,6 +818,7 @@ class OfficialObsWebsocket:
         selected_meter_events = 0
         first_selected_signal_monotonic = 0.0
         last_selected_signal_monotonic = 0.0
+        selected_signal_times: list[float] = []
 
         def on_input_volume_meters(data: object) -> None:
             nonlocal count, selected_meter_events
@@ -851,6 +854,9 @@ class OfficialObsWebsocket:
                                 if not first_selected_signal_monotonic:
                                     first_selected_signal_monotonic = sampled_at
                                 last_selected_signal_monotonic = sampled_at
+                                selected_signal_times.append(sampled_at)
+                                if len(selected_signal_times) > 128:
+                                    selected_signal_times.pop(0)
 
         events = None
         try:
@@ -906,6 +912,7 @@ class OfficialObsWebsocket:
                 route_changed,
                 first_selected_signal_monotonic,
                 last_selected_signal_monotonic,
+                tuple(selected_signal_times),
             )
 
 

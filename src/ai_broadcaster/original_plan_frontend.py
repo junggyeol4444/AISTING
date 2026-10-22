@@ -377,6 +377,8 @@ class OfficialLipSyncEvidence:
     official_pcm_mouth_window_samples: int = 0
     official_pcm_mouth_first_monotonic: float = 0.0
     official_pcm_mouth_last_monotonic: float = 0.0
+    # 실제 Python 단조시계의 입·RMS 동시 관측 표본. 최근 64개만 메모리 유지.
+    official_pcm_mouth_sample_times: tuple[float, ...] = ()
 
     @property
     def verified_signal(self) -> bool:
@@ -464,6 +466,16 @@ def _parse_official_lipsync_evidence(reply: dict) -> OfficialLipSyncEvidence:
         pcm_mouth = reply.get('official_pcm_mouth_window_samples', 0)
         pcm_mouth_first = reply.get('official_pcm_mouth_first_monotonic', 0.0)
         pcm_mouth_last = reply.get('official_pcm_mouth_last_monotonic', 0.0)
+        pcm_mouth_times = reply.get('official_pcm_mouth_sample_times', [])
+        if (not isinstance(pcm_mouth_times, list)
+                or len(pcm_mouth_times) > 64 or len(pcm_mouth_times) > pcm_mouth
+                or any(type(t) not in (int, float) or not math.isfinite(t) or t <= 0
+                       for t in pcm_mouth_times)
+                or any(a >= b for a, b in zip(pcm_mouth_times, pcm_mouth_times[1:]))
+                or (pcm_mouth_times and
+                    (pcm_mouth_times[0] < pcm_mouth_first
+                     or pcm_mouth_times[-1] > pcm_mouth_last))):
+            raise ValueError('공식 WAV 입·RMS 실제 표본시각 형식 오류')
         if any(type(x) is not int or not 0 <= x <= 4096
                for x in (wav_events, audio_events, matched, mismatched,
                          pcm_candidates, pcm_unsupported, pcm_mouth)):
@@ -502,7 +514,8 @@ def _parse_official_lipsync_evidence(reply: dict) -> OfficialLipSyncEvidence:
             matched, mismatched, float(first_wav) if first_wav is not None else None,
             pcm_candidates, pcm_unsupported, float(pcm_seconds),
             pcm_rate, pcm_channels, pcm_mouth,
-            float(pcm_mouth_first), float(pcm_mouth_last)
+            float(pcm_mouth_first), float(pcm_mouth_last),
+            tuple(float(t) for t in pcm_mouth_times)
         )
     except (KeyError, ValueError, TypeError) as exc:
         raise FrontendUnavailable('공식 Live2D 검사 결과에 유효하지 않은 데이터가 있습니다.') from exc
@@ -574,6 +587,7 @@ def _observe_actual_live2d_model(window, seconds: float) -> dict:
     pcm_first_rate = pcm_first_channels = None
     pcm_mouth_window_samples = 0
     pcm_mouth_first = pcm_mouth_last = 0.0
+    pcm_mouth_times: list[float] = []
     low = high = previous = None
     deadline = time.monotonic() + seconds
     script = _official_live2d_probe_script()
@@ -655,6 +669,9 @@ def _observe_actual_live2d_model(window, seconds: float) -> dict:
                                 pcm_mouth_last = time.monotonic()
                                 if pcm_mouth_first == 0.0:
                                     pcm_mouth_first = pcm_mouth_last
+                                pcm_mouth_times.append(pcm_mouth_last)
+                                if len(pcm_mouth_times) > 64:
+                                    pcm_mouth_times.pop(0)
                             # Capture the real Cubism mouth+RMS sample time.
                             last_overlap = time.monotonic()
                             if first_overlap == 0.0:
@@ -694,6 +711,7 @@ def _observe_actual_live2d_model(window, seconds: float) -> dict:
         'official_pcm_mouth_window_samples': pcm_mouth_window_samples,
         'official_pcm_mouth_first_monotonic': pcm_mouth_first,
         'official_pcm_mouth_last_monotonic': pcm_mouth_last,
+        'official_pcm_mouth_sample_times': pcm_mouth_times,
     }
 
 
