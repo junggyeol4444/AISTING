@@ -54,6 +54,16 @@ class OfficialChatObsEvidence:
             + str(getattr(self.lip, "official_wav_riff_length_mismatched", 0))
             + "건 / 첫 공식 WS WAV 후보 "
             + measured(getattr(self.lip, "first_official_wav_seconds", None))
+            + " / PCM·float 헤더 구조 후보 "
+            + str(getattr(self.lip, "official_pcm_header_candidates", 0))
+            + "건 / 헤더 구조 미확인 "
+            + str(getattr(self.lip, "official_pcm_header_unsupported", 0))
+            + "건 / WAV 헤더상 합계 음성 길이 "
+            + measured(getattr(self.lip, "official_pcm_header_total_seconds", None))
+            + " / 최초 WAV 헤더 표본율 "
+            + str(getattr(self.lip, "official_pcm_first_sample_rate", None) or "미측정")
+            + "Hz / 채널 "
+            + str(getattr(self.lip, "official_pcm_first_channels", None) or "미측정")
             + " / 시청자 E2E 별도 미검증"
         )
 
@@ -80,6 +90,18 @@ class OfficialChatObsEvidence:
         return bool(
             self.same_session_voice_candidate
             and getattr(self.obs, "program_video_change_candidate", False)
+        )
+
+    @property
+    def same_session_pcm_audio_video_candidate(self) -> bool:
+        """공식 서버 PCM/float WAV 메타데이터와 실제 입·OBS 관측 결합.
+
+        헤더만 확인하며 오디오 본문 파형/화자·인코더/시청자 송출은
+        확인하지 않는다. 기존 단일 질문·관찰 경로만 사용한다.
+        """
+        return bool(
+            self.same_session_audio_video_candidate
+            and getattr(self.lip, "official_pcm_header_candidates", 0) > 0
         )
 
     @property

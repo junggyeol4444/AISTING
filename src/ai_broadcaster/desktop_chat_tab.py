@@ -1367,6 +1367,9 @@ class LocalChatTab(ttk.Frame):
                             " / " + ("음성·입·영상 관측 결합 후보" if getattr(
                                 evidence, "same_session_audio_video_candidate", False)
                                 else "음성·입·영상 결합 미충족") +
+                            " / " + ("공식 WAV PCM 구조·입·OBS 결합 후보" if getattr(
+                                evidence, "same_session_pcm_audio_video_candidate", False)
+                                else "공식 WAV PCM 구조·입·OBS 결합 미충족") +
                             " · " + getattr(evidence, "latency_summary_ko", "지연 미측정") +
                             " · 실제 방송/시청자 출력은 별도 실증 필요")
                         if evidence.verified_observation:

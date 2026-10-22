@@ -367,6 +367,13 @@ class OfficialLipSyncEvidence:
     official_wav_riff_length_matched: int = 0
     official_wav_riff_length_mismatched: int = 0
     first_official_wav_seconds: float | None = None
+    # 같은 공식 WS의 WAV 메타데이터만 메모리에서 읽는다.
+    # PCM 파형/음성 원본/사용자 텍스트를 복사·저장하지 않는다.
+    official_pcm_header_candidates: int = 0
+    official_pcm_header_unsupported: int = 0
+    official_pcm_header_total_seconds: float = 0.0
+    official_pcm_first_sample_rate: int | None = None
+    official_pcm_first_channels: int | None = None
 
     @property
     def verified_signal(self) -> bool:
@@ -446,19 +453,39 @@ def _parse_official_lipsync_evidence(reply: dict) -> OfficialLipSyncEvidence:
         matched = reply.get('official_wav_riff_length_matched', 0)
         mismatched = reply.get('official_wav_riff_length_mismatched', 0)
         first_wav = reply.get('first_official_wav_seconds')
+        pcm_candidates = reply.get('official_pcm_header_candidates', 0)
+        pcm_unsupported = reply.get('official_pcm_header_unsupported', 0)
+        pcm_seconds = reply.get('official_pcm_header_total_seconds', 0.0)
+        pcm_rate = reply.get('official_pcm_first_sample_rate')
+        pcm_channels = reply.get('official_pcm_first_channels')
         if any(type(x) is not int or not 0 <= x <= 4096
-               for x in (wav_events, audio_events, matched, mismatched)):
+               for x in (wav_events, audio_events, matched, mismatched,
+                         pcm_candidates, pcm_unsupported)):
             raise ValueError('공식 WAV 이벤트 수량 오류')
         if (wav_events > audio_events or matched + mismatched > wav_events
                 or (first_wav is not None and
                     (type(first_wav) not in (int, float)
                      or not math.isfinite(first_wav) or not 0 <= first_wav <= 300))):
             raise ValueError('동일 공식 세션 음성 관측 데이터 형식 오류')
+        if (pcm_candidates + pcm_unsupported > matched
+                or type(pcm_seconds) not in (int, float)
+                or not math.isfinite(pcm_seconds) or not 0 <= pcm_seconds <= 2457600
+                or (pcm_rate is not None and
+                    (type(pcm_rate) is not int or not 8000 <= pcm_rate <= 192000))
+                or (pcm_channels is not None and
+                    (type(pcm_channels) is not int or not 1 <= pcm_channels <= 8))
+                or (pcm_candidates == 0 and
+                    (pcm_seconds != 0 or pcm_rate is not None or pcm_channels is not None))
+                or (pcm_candidates > 0 and
+                    (pcm_seconds <= 0 or pcm_rate is None or pcm_channels is None))):
+            raise ValueError('공식 WAV PCM 메타데이터 형식 오류')
         return OfficialLipSyncEvidence(
             samples, model_seen, canvas_seen, ids, float(rms), active,
             float(mouth), changes, renderer_active, overlapping,
             float(first), float(last), wav_events, audio_events,
-            matched, mismatched, float(first_wav) if first_wav is not None else None
+            matched, mismatched, float(first_wav) if first_wav is not None else None,
+            pcm_candidates, pcm_unsupported, float(pcm_seconds),
+            pcm_rate, pcm_channels
         )
     except (KeyError, ValueError, TypeError) as exc:
         raise FrontendUnavailable('공식 Live2D 검사 결과에 유효하지 않은 데이터가 있습니다.') from exc
@@ -496,7 +523,17 @@ def _official_live2d_probe_script() -> str:
         "ws_wav_riff_length_mismatched:(Number.isSafeInteger(window.__aistingSendAudit?.riffLengthMismatched)"
         "?window.__aistingSendAudit.riffLengthMismatched:0),"
         "ws_first_wav_seconds:(Number.isFinite(window.__aistingSendAudit?.firstWavMs)"
-        "?window.__aistingSendAudit.firstWavMs/1000:null)});"
+        "?window.__aistingSendAudit.firstWavMs/1000:null),"
+        "ws_pcm_header_candidates:(Number.isSafeInteger(window.__aistingSendAudit?.pcmHeaders)"
+        "?window.__aistingSendAudit.pcmHeaders:0),"
+        "ws_pcm_header_unsupported:(Number.isSafeInteger(window.__aistingSendAudit?.pcmUnsupported)"
+        "?window.__aistingSendAudit.pcmUnsupported:0),"
+        "ws_pcm_total_seconds:(Number.isFinite(window.__aistingSendAudit?.pcmSeconds)"
+        "?window.__aistingSendAudit.pcmSeconds:0),"
+        "ws_pcm_first_sample_rate:(Number.isSafeInteger(window.__aistingSendAudit?.firstRate)"
+        "?window.__aistingSendAudit.firstRate:null),"
+        "ws_pcm_first_channels:(Number.isSafeInteger(window.__aistingSendAudit?.firstChannels)"
+        "?window.__aistingSendAudit.firstChannels:null)});"
         "})()"
     )
 
@@ -511,6 +548,9 @@ def _observe_actual_live2d_model(window, seconds: float) -> dict:
     wav_header_events = 0
     ws_audio_events = riff_matched = riff_mismatched = 0
     first_wav_seconds = None
+    pcm_headers = pcm_unsupported = 0
+    pcm_total_seconds = 0.0
+    pcm_first_rate = pcm_first_channels = None
     low = high = previous = None
     deadline = time.monotonic() + seconds
     script = _official_live2d_probe_script()
@@ -542,6 +582,28 @@ def _observe_actual_live2d_model(window, seconds: float) -> dict:
                         and math.isfinite(observed_first)
                         and 0 <= observed_first <= 300):
                     first_wav_seconds = float(observed_first)
+                for field, current in (
+                        ('ws_pcm_header_candidates', pcm_headers),
+                        ('ws_pcm_header_unsupported', pcm_unsupported)):
+                    value = item.get(field)
+                    if type(value) is int and 0 <= value <= 4096:
+                        if field == 'ws_pcm_header_candidates':
+                            pcm_headers = max(current, value)
+                        else:
+                            pcm_unsupported = max(current, value)
+                pcm_duration = item.get('ws_pcm_total_seconds')
+                if (type(pcm_duration) in (int, float)
+                        and math.isfinite(pcm_duration)
+                        and 0 <= pcm_duration <= 2457600):
+                    pcm_total_seconds = max(pcm_total_seconds, float(pcm_duration))
+                rate = item.get('ws_pcm_first_sample_rate')
+                channels = item.get('ws_pcm_first_channels')
+                if (pcm_first_rate is None and type(rate) is int
+                        and 8000 <= rate <= 192000):
+                    pcm_first_rate = rate
+                if (pcm_first_channels is None and type(channels) is int
+                        and 1 <= channels <= 8):
+                    pcm_first_channels = channels
                 model_seen = model_seen or item.get('model') is True
                 canvas_seen = canvas_seen or item.get('canvas') is True
                 count = item.get('ids')
@@ -596,6 +658,11 @@ def _observe_actual_live2d_model(window, seconds: float) -> dict:
         'official_wav_riff_length_matched': riff_matched,
         'official_wav_riff_length_mismatched': riff_mismatched,
         'first_official_wav_seconds': first_wav_seconds,
+        'official_pcm_header_candidates': pcm_headers,
+        'official_pcm_header_unsupported': pcm_unsupported,
+        'official_pcm_header_total_seconds': round(pcm_total_seconds, 6),
+        'official_pcm_first_sample_rate': pcm_first_rate,
+        'official_pcm_first_channels': pcm_first_channels,
     }
 
 
@@ -628,7 +695,8 @@ def _official_frontend_input_script(value: str, nonce: str) -> tuple[str, str, s
         "const audit={nonce:nonce,observed:false,original:original,wrapper:null,"
         "socket:null,listener:null,wavHeaderEvents:0,audioEvents:0,"
         "riffLengthMatched:0,riffLengthMismatched:0,firstWavMs:null,"
-        "sentAtMs:null};"
+        "pcmHeaders:0,pcmUnsupported:0,pcmSeconds:0,"
+        "firstRate:null,firstChannels:null,sentAtMs:null};"
         "audit.wrapper=function(data){"
         "let matching=false;"
         "try{"
@@ -659,6 +727,33 @@ def _official_frontend_input_script(value: str, nonce: str) -> tuple[str, str, s
         "audit.riffLengthMatched++;"
         "if(audit.firstWavMs===null&&audit.sentAtMs!==null)"
         "audit.firstWavMs=Math.max(0,performance.now()-audit.sentAtMs);"
+        // 데이터 전체를 atob로 복사하지 않고 헤더 첫 768바이트만 관찰.
+        "const prefix=atob(msg.audio.slice(0,Math.min(padded,1024)));"
+        "const u16=p=>prefix.charCodeAt(p)|(prefix.charCodeAt(p+1)<<8);"
+        "const u32=p=>(u16(p)|(u16(p+2)<<16))>>>0;"
+        "let off=12,fmt=null,pcmData=null,dataOff=0;"
+        "for(let j=0;j<32&&off+8<=prefix.length;j++){"
+        "const name=prefix.slice(off,off+4),n=u32(off+4);"
+        "if(name==='fmt '&&n>=16&&off+24<=prefix.length){"
+        "fmt={kind:u16(off+8),channels:u16(off+10),rate:u32(off+12),"
+        "byteRate:u32(off+16),align:u16(off+20),bits:u16(off+22)};}"
+        "if(name==='data'){pcmData=n;dataOff=off+8;break;}"
+        "const next=off+8+n+(n%2);"
+        "if(next<=off||next>prefix.length)break;off=next;}"
+        "const ok=fmt&&pcmData!==null&&pcmData>0&&"
+        "fmt.rate>=8000&&fmt.rate<=192000&&"
+        "fmt.channels>=1&&fmt.channels<=8&&"
+        "((fmt.kind===1&&[8,16,24,32].includes(fmt.bits))||"
+        "(fmt.kind===3&&[32,64].includes(fmt.bits)))&&"
+        "fmt.align===fmt.channels*fmt.bits/8&&"
+        "fmt.byteRate===fmt.rate*fmt.align&&"
+        "pcmData%fmt.align===0&&pcmData<=decoded-dataOff&&"
+        "pcmData/fmt.byteRate<=600;"
+        "if(ok){audit.pcmHeaders++;"
+        "audit.pcmSeconds+=pcmData/fmt.byteRate;"
+        "if(audit.firstRate===null)audit.firstRate=fmt.rate;"
+        "if(audit.firstChannels===null)audit.firstChannels=fmt.channels;"
+        "}else audit.pcmUnsupported++;"
         "}else audit.riffLengthMismatched++;"
         "}catch(_e){}};"
         "this.addEventListener('message',audit.listener);"
