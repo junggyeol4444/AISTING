@@ -38,6 +38,12 @@ class LiveLatencySnapshot:
     reader_faults: int
     stopped: bool
 
+    @property
+    def unterminated(self) -> int:
+        # 완료/실패 종료는 모두 completed로 계산된다. 시간 자체가 잘못된
+        # 종료 사건은 invalid로 따로 계수해 남은 작업과 구분한다.
+        return max(0, self.accepted - self.completed - self.invalid)
+
     def describe(self) -> str:
         p95 = ("측정 없음" if self.total_p95 is None
                else f"{self.total_p95:.2f}초")
@@ -47,7 +53,7 @@ class LiveLatencySnapshot:
         return (f"로컬 실제 수신 {self.accepted}건 · 종결 측정 {self.completed}건 "
                 f"· 실패 {self.failed}건 · 시간 오류 {self.invalid}건 "
                 f"· 3초 초과 {self.over_three_seconds}건 "
-                f"· 최근 {self.sampled}건 p95 총 {p95} "
+                f"· 미종결 {self.unterminated}건 · 최근 {self.sampled}건 p95 총 {p95} "
                 f"(대기 {wait} / AI {infer}) · 로컬 연결 경과 "
                 f"{self.local_running_seconds / 3600:.2f}시간 "
                 f"· 수신기 오류 {self.reader_faults}건"

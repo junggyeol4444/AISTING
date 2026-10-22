@@ -11,6 +11,7 @@ import threading
 import math
 import time
 from collections import deque
+from dataclasses import dataclass
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog
 
@@ -24,6 +25,17 @@ from .multiplatform_readonly import ChzzkReadOnlySession, SoopReadOnlySession, Y
 from .multi_platform_session import MultiPlatformReadOnlySession
 from .live_runtime_metrics import LiveLatencyMetrics
 from .offline_settings import load_settings
+
+
+@dataclass(frozen=True)
+class _ReaderTimestampedChat:
+    """원본 채팅과 네트워크 읽기 콜백 시각을 별도 보관한다.
+
+    채팅 본문·플랫폼·닉네임을 수정하거나 다른 메시지와 병합하지 않는다.
+    서버가 실제 게시한 시각이나 시청자 화면 시간은 측정하지 않는다.
+    """
+    message: object
+    reader_received_at: float
 
 
 class LocalChatTab(ttk.Frame):
@@ -69,8 +81,8 @@ class LocalChatTab(ttk.Frame):
         self._twitch_replied = 0
         self._twitch_ai_failures = 0
         self._twitch_ai_inbox: queue.SimpleQueue | None = None
-        # Wall-clock at native GUI acceptance; one FIFO timestamp per
-        # accepted chat. No text copies, storage, logging, or deduplication.
+        # Monotonic at actual reader callback for scoped network events,
+        # before Tk backlog. No extra text copy, logging or deduplication.
         self._ai_arrival_times: queue.SimpleQueue = queue.SimpleQueue()
         self._live_latency_metrics: LiveLatencyMetrics | None = None
         # Reader EOF is distinct from operator Stop; keep accepted AI work alive.
@@ -754,6 +766,10 @@ class LocalChatTab(ttk.Frame):
         """
         if type(limit) is not int or limit < 1:
             raise ValueError("채팅 이벤트 큐 용량 설정 오류")
+        # GUI 이벤트 큐 또는 AI FIFO가 밀려도 실제 수신 시작 시각을
+        # 나중에 새로 찍지 않는다. 네트워크 수신기 콜백에서 한 번만 찍는다.
+        stamped_item = (_ReaderTimestampedChat(item, time.monotonic())
+                        if kind == "chat" else item)
         while not getattr(self, "_closed", False):
             if session is None or session._stop.is_set():
                 return
@@ -763,7 +779,7 @@ class LocalChatTab(ttk.Frame):
             # actually drains committed work.
             ai_backlog = pending_ai.qsize() if pending_ai is not None else 0
             if self._results.qsize() < limit and ai_backlog < limit:
-                self._results.put(("twitch_scoped", (session, "twitch_" + kind, item)))
+                self._results.put(("twitch_scoped", (session, "twitch_" + kind, stamped_item)))
                 return
             session._stop.wait(0.02)
 
@@ -800,8 +816,8 @@ class LocalChatTab(ttk.Frame):
                 except queue.Empty:
                     accepted_at = None
 
-                # Measure actual FIFO waiting separately from actual model
-                # processing; preserve the existing legacy latency event.
+                # Measure the actual reader callback + Tk/FIFO waiting separately
+                # from model execution; preserve the legacy latency event.
                 model_started_at = time.monotonic()
                 attempt_failed = False
 
@@ -960,6 +976,12 @@ class LocalChatTab(ttk.Frame):
                             self._chat_platform.get() + " " + str(payload) +
                             " 채팅방 입장 확인 · 실제 채팅 대기")
                     elif kind == "twitch_chat":
+                        # 이전 직접 GUI 테스트와 기존 플랫폼 채팅 객체는 보존.
+                        # 실제 수신기 출처 이벤트만 콜백 원시각을 사용한다.
+                        accepted_at = time.monotonic()
+                        if isinstance(payload, _ReaderTimestampedChat):
+                            accepted_at = payload.reader_received_at
+                            payload = payload.message
                         meter = getattr(self, "_live_latency_metrics", None)
                         if meter is not None:
                             meter.accept()
@@ -974,7 +996,7 @@ class LocalChatTab(ttk.Frame):
                         if self._twitch_ai_inbox is not None:
                             arrivals = getattr(self, "_ai_arrival_times", None)
                             if arrivals is not None:
-                                arrivals.put(time.monotonic())
+                                arrivals.put(accepted_at)
                             self._twitch_ai_inbox.put(payload)
                         self._twitch_status.set(
                             "실제 채팅 " + str(self._twitch_received)
@@ -1058,8 +1080,8 @@ class LocalChatTab(ttk.Frame):
                         if type(payload) in (int, float) and math.isfinite(payload) and payload >= 0:
                             flag = " · 3초 초과" if payload > 3 else ""
                             self._twitch_status.set(
-                                f"AI 대기·처리 {payload:.2f}초 (GUI 접수부터){flag}"
-                                " · 네트워크·시청자 전달 시간은 미측정")
+                                f"AI 대기·처리 {payload:.2f}초 (수신기 콜백부터){flag}"
+                                " · 플랫폼 서버 이전·시청자 전달 시간은 미측정")
                     elif kind == "twitch_reader_stopped":
                         # A single channel can disconnect without terminating
                         # other transports or dropping queued AI replies.
