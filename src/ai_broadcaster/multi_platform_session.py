@@ -64,6 +64,10 @@ class MultiPlatformReadOnlySession:
         self._room_ready = {code: False for code in channels}
         self._last_ready_at = {}
         self._last_chat_at = {}
+        # 실제 WebSocket 수신 프레임(트위치/치지직/SOOP) 또는
+        # 정상이 확인된 YouTube API 응답. 채팅 개수와 절대 혼동하지 않는다.
+        self._transport_activity_count = {code: 0 for code in channels}
+        self._last_transport_activity_at: dict[str, float] = {}
         # 실제 ready 신호가 확인된 기간만 누적한다. 실제 네트워크
         # 무누락 또는 24시간 송출 성공과는 다른 읽기 전용 지표다.
         self._ready_interval_started: dict[str, float] = {}
@@ -111,6 +115,12 @@ class MultiPlatformReadOnlySession:
                                 self._callback_emit_total_seconds[code] += elapsed
                                 self._callback_emit_max_seconds[code] = max(
                                     self._callback_emit_max_seconds[code], elapsed)
+                    elif kind == "transport_activity":
+                        with self._emit_lock:
+                            self._transport_activity_count[code] += 1
+                            self._last_transport_activity_at[code] = time.monotonic()
+                        # 프레임마다 GUI 큐에 상태 이벤트를 올리지 않는다.
+                        # 채팅 수신·단일 AI FIFO를 밀어내지 않도록 카운터만 유지.
                     elif kind in ("ready", "connected"):
                         with self._emit_lock:
                             if kind == "ready":
@@ -230,6 +240,10 @@ class MultiPlatformReadOnlySession:
                     if code in self._last_ready_at else None,
                     "마지막채팅콜백경과초": round(now - self._last_chat_at[code], 3)
                     if code in self._last_chat_at else None,
+                    "수신응답계수": self._transport_activity_count[code],
+                    "마지막통신응답경과초": round(
+                        now - self._last_transport_activity_at[code], 3)
+                    if code in self._last_transport_activity_at else None,
                     "수신기종료": code in self._finished_readers,
                 }
                 for code in self._channels

@@ -195,6 +195,7 @@ class TwitchReadOnlySession:
                     raise TwitchReadError("트위치 채팅 응답 형식 오류")
                 if not data:
                     raise TwitchReadError("트위치 서버가 연결을 종료했습니다.")
+                self.emit("transport_activity", None)
                 buffer += data
                 # One split per frame avoids quadratic rescanning under load.
                 if "\r\n" in buffer:

@@ -1069,6 +1069,9 @@ class LocalChatTab(ttk.Frame):
             idle = state["마지막채팅콜백경과초"]
             idle_label = ("채팅 콜백 아직 없음" if idle is None
                           else f"마지막 콜백 {idle:.0f}초 전")
+            traffic = state.get("마지막통신응답경과초")
+            traffic_label = ("통신 응답 미관측" if traffic is None
+                             else f"마지막 통신 응답 {traffic:.0f}초 전")
             gap_p95 = state.get("완료공백최근p95초")
             gap_label = ("복구 공백 p95 미측정" if gap_p95 is None
                          else f"최근 복구 공백 p95 {gap_p95:.1f}초")
@@ -1106,6 +1109,8 @@ class LocalChatTab(ttk.Frame):
                 f" / 완료 공백 최장 {state['완료공백최장초']:.1f}초"
                 f" / 복구 공백 3초 초과 {state['완료공백3초초과']}건"
                 f" / {gap_label} / {ratio_label} / {idle_label}"
+                f" / 소켓 프레임·API 응답 {state.get('수신응답계수', 0)}건"
+                f" / {traffic_label}"
                 f" / 수신큐 완료대기 {block_stats['건수']}건"
                 f" / 대기 누적 {block_stats['총초']:.2f}초"
                 f" / 최장 {block_stats['최장초']:.2f}초"

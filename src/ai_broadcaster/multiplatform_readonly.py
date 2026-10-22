@@ -164,6 +164,9 @@ class ReadOnlySession:
                 return
             if not data:
                 raise RuntimeError("채팅 서버 연결이 종료됐습니다.")
+            # 내용 없는 채팅방에서도 실제 WebSocket 프레임 수신은
+            # 연결 활동의 증거다. 메타데이터만 전달하고 본문 저장 없음.
+            self.emit("transport_activity", None)
             for item in parser(data, self.channel):
                 if self._stop.is_set():
                     return
@@ -222,6 +225,7 @@ class ChzzkReadOnlySession(ReadOnlySession):
                 data = json.loads(raw)
                 if not isinstance(data, dict):
                     raise ValueError("치지직 접속 응답 형식 오류")
+                self.emit("transport_activity", None)
                 startup_chats.extend(parse_chzzk_frame(raw, self.channel))
                 if data.get("cmd") == 10100 and isinstance(data.get("bdy"), dict) and data["bdy"].get("sid"):
                     accepted = True
@@ -590,6 +594,9 @@ class YouTubeReadOnlySession(ReadOnlySession):
             raw_items = payload.get("items", [])
             if not isinstance(raw_items, list):
                 raise ValueError("유튜브 채팅 페이지 메시지 목록 형식 오류")
+            # YouTube는 WebSocket이 아닌 폴링 응답을 계측한다.
+            # 채팅 없음 != 통신 없음. 응답 본문/키/토큰은 저장 금지.
+            self.emit("transport_activity", None)
             next_cursor = payload.get("nextPageToken")
             ended = isinstance(payload.get("offlineAt"), str) and bool(payload["offlineAt"])
             if isinstance(next_cursor, str) and len(next_cursor) > 2048:
