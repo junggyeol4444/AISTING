@@ -276,7 +276,7 @@ def verify_official_chat_live2d_obs(
                           and type(mouth_last) in (int, float)
                           and math.isfinite(mouth_first)
                           and math.isfinite(mouth_last)
-                          and 0 < mouth_first <= mouth_last
+                          and 0 < mouth_first < mouth_last
                           # 과거 발화의 입 움직임 시간이 이번 요청 시점을
                           # 가로질러도 동일 발화로 잘못 인정하지 않는다.
                           and prompt_started_at <= mouth_first
@@ -292,7 +292,7 @@ def verify_official_chat_live2d_obs(
         last = getattr(audio, "last_selected_signal_monotonic", 0.0)
         if (type(first) not in (int, float) or type(last) not in (int, float)
                 or not math.isfinite(first) or not math.isfinite(last)
-                or not (began <= first <= last <= ended)):
+                or not (began <= first < last <= ended)):
             return False
         # The same monotonic clock is used by both native Windows OBS events
         # and official WebView2/Cubism evidence; NO broad window shortcut.

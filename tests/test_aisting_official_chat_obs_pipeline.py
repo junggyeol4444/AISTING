@@ -536,6 +536,59 @@ class FullPipelineContracts(unittest.TestCase):
                 self.assertFalse(result.verified_observation)
                 self.assertFalse(result.viewer_end_to_end_verified)
 
+    def test_zero_duration_obs_or_cubism_samples_are_not_same_utterance(self):
+        # 실제 송출 없는 양측 단조시계 검사. 0초 표본을 성공으로 처리하지 않는다.
+        for zero_kind in ("obs_audio", "cubism_mouth"):
+            with self.subTest(zero_kind=zero_kind):
+                safety, monitor = make_obs(), make_obs()
+                shared = {}
+                ready = threading.Event()
+
+                def media(**kwargs):
+                    point = time.monotonic() + 0.04
+                    shared["point"] = point
+                    ready.set()
+                    time.sleep(max(0.0, point + 0.07 - time.monotonic()))
+                    if zero_kind == "obs_audio":
+                        first = last = point + 0.01
+                    else:
+                        first, last = point, point + 0.03
+                    monitor.probe_count += 1
+                    return SimpleNamespace(
+                        coherent_media_candidate=True,
+                        audio=SimpleNamespace(
+                            first_selected_signal_monotonic=first,
+                            last_selected_signal_monotonic=last))
+
+                def live2d(*args, **kwargs):
+                    self.assertTrue(ready.wait(2))
+                    point = shared["point"]
+                    time.sleep(max(0.0, point + 0.045 - time.monotonic()))
+                    if zero_kind == "cubism_mouth":
+                        first = last = point + 0.01
+                    else:
+                        first, last = point, point + 0.03
+                    return SimpleNamespace(
+                        verified_signal=True,
+                        first_audio_mouth_monotonic=first,
+                        last_audio_mouth_monotonic=last)
+
+                monitor.inspect_program_media = media
+                with patch.object(pipeline, "OfficialObsWebsocket",
+                                  side_effect=[safety, monitor]), patch.object(
+                                  pipeline, "send_to_native_live2d_session_with_observation",
+                                  side_effect=live2d) as sender:
+                    result = pipeline.verify_official_chat_live2d_obs(
+                        "0초 길이 소리와 입 표본 검사",
+                        obs_password="local", obs_input_name="Mic",
+                        operator_approved=True, voice_rights_confirmed=True)
+                sender.assert_called_once()
+                self.assertEqual(monitor.probe_count, 1)
+                self.assertFalse(result.temporal_overlap_candidate)
+                self.assertFalse(result.verified_observation)
+                self.assertFalse(result.viewer_end_to_end_verified)
+                self.assertIsNone(result.first_obs_audio_seconds)
+
     def test_broad_three_second_window_does_not_certify_unrelated_meter_event(self):
         safety, monitor = make_obs(), make_obs()
         obs_signal = []
