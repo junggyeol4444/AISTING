@@ -16,7 +16,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog
 
 from .conversation_memory import ConversationMemory, DEFAULT_MEMORY_FILE
-from .desktop_chat import run_local_chat
+from .desktop_chat import run_local_chat, LocalChatRunner
 from .reply_voice import ReplyVoicePlayer, should_auto_read
 from .windows_tts import Voice
 from .avatar_animation import SpeechActivity
@@ -799,6 +799,7 @@ class LocalChatTab(ttk.Frame):
                 self._results.put((kind, value))
             else:
                 self._results.put(("twitch_scoped", (session, kind, value)))
+        local_runner: LocalChatRunner | None = None
         try:
             while True:
                 chat = inbox.get()
@@ -845,12 +846,21 @@ class LocalChatTab(ttk.Frame):
                         report_measured_elapsed()
                     continue
                 try:
-                    model_reply = run_local_chat if reply_function is None else reply_function
-                    result = model_reply(
-                        model, chat.text, sender="[" + {"twitch":"트위치","chzzk":"치지직",
-                            "soop":"SOOP","youtube":"유튜브"}.get(
-                                getattr(chat, "platform", "twitch"), "트위치") + "] " + chat.sender,
-                        use_committed_gui_character=True)
+                    actor = "[" + {"twitch":"트위치","chzzk":"치지직",
+                        "soop":"SOOP","youtube":"유튜브"}.get(
+                            getattr(chat, "platform", "twitch"), "트위치") + "] " + chat.sender
+                    if reply_function is None:
+                        # 한 번 선택한 로컬 Ollama·캐릭터/기억 경로를
+                        # 동일 수신 워커 내에서만 보유한다. 다른 방송
+                        # 세션과 공유하지 않고 원래 단일 FIFO를 유지한다.
+                        if local_runner is None:
+                            local_runner = LocalChatRunner(
+                                model, use_committed_gui_character=True)
+                        result = local_runner.reply(chat.text, sender=actor)
+                    else:
+                        result = reply_function(
+                            model, chat.text, sender=actor,
+                            use_committed_gui_character=True)
                 except Exception as exc:
                     attempt_failed = True
                     report("twitch_ai_error", (chat, type(exc).__name__))

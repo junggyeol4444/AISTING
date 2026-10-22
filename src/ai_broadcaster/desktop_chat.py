@@ -72,3 +72,52 @@ def run_local_chat(
         reply=result.reply, remembered_count=memory.count(), warning=warning,
         ollama_server_timings_seconds=getattr(
             generator, "last_server_timings_seconds", None))
+
+
+class LocalChatRunner:
+    """한 번 승인된 Windows 수신 세션에서 기존 Ollama 클라이언트 재사용.
+
+    요청마다 모델 설정·캐릭터를 다시 파싱하고 HTTP 연결 객체를
+    재생성하는 비용을 줄인다. FIFO 처리 순서, SQLite 기록 시점,
+    각 채팅 메시지의 개별 ID와 원래 답변 길이 설정은 유지한다.
+    모델 병렬 실행·출력 생략·토큰 상한/keep_alive 강제 변경 없음.
+    """
+
+    def __init__(
+        self, model: str, *, port: int = 11434,
+        settings_path: Path = DEFAULT_FILE,
+        memory_path: Path = DEFAULT_MEMORY_FILE,
+        use_committed_gui_character: bool = True,
+    ) -> None:
+        config = LocalModelConfig(model=model, port=port)
+        self.memory = ConversationMemory(path=memory_path)
+        settings = load_settings(settings_path)
+        if use_committed_gui_character:
+            confirmed = active_persona(load_gui_settings())
+            settings["persona"]["name"] = confirmed["name"]
+            settings["persona"]["traits"] = confirmed["character"]
+            settings["persona"]["speech_style"] = confirmed["style"]
+        self.generator = LocalOllamaReplyGenerator(config, settings, memory=self.memory)
+
+    def reply(self, text: str, *, sender: str) -> ChatResult:
+        if not isinstance(text, str) or not text.strip() or len(text) > 4000:
+            raise ValueError("내용은 공백이 아닌 1~4000글자로 입력해 주세요.")
+        if not isinstance(sender, str) or not sender.strip() or len(sender) > 160:
+            raise ValueError("채팅 작성자 정보가 올바르지 않습니다.")
+        # 원래의 요청별 임시 FIFO/발화 객체와 SQLite 저장 의미를
+        # 그대로 지켜, 한 채팅의 추론 실패가 다음 채팅의 답변을
+        # 잘못 대신하게 하거나 이전 출력을 재전송하지 않는다.
+        fifo = SessionController()
+        fifo.receive_chat(ChatMessage(str(uuid4()), sender.strip(), text.strip()))
+        output = _TextOutput()
+        pipeline = ChatPipeline(fifo, self.generator, output)
+        outcome = pipeline.process_next()
+        if outcome is None:
+            raise RuntimeError("로컬 AI 응답 처리 결과가 없습니다.")
+        return ChatResult(
+            reply=outcome.reply, remembered_count=self.memory.count(),
+            warning=("대화는 출력했지만 기억 저장에 실패했습니다. 저장 경로를 확인해 주세요."
+                     if pipeline.post_delivery_errors else ""),
+            ollama_server_timings_seconds=getattr(
+                self.generator, "last_server_timings_seconds", None),
+        )
