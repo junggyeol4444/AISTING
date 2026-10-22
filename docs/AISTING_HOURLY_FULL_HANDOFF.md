@@ -1938,3 +1938,11 @@ F) 원본 100단계 roadmap.json status는 completed=9, pending=91이며 **코�
 - 같은 HEAD [Windows 39704987636](https://github.com/junggyeol4444/AISTING/actions/runs/39704987636) **5개 중 windows-exe 실패**: 네이티브 통합 테스트에서 동일 단언 오류 재현. 네 개의 obs-real-readonly/twitch-public-readonly/korean-public-chat-readonly/ollama-real-local-e2e 작업은 성공. Windows 전체 검사 성공으로 주장하지 않음.
 - 수정 `tests/test_aisting_real_local_fifo_soak.py`: 500건 플랫폼별 0건 오류 값 검사 기준을 실제 보고서와 일치하도록 `{"twitch":0,"chzzk":0,"soop":0,"youtube":0}`로 정정. 실제 응답/타임스탬프/모델/로드맵/사용자 설정·소스 실행 정책 변경 없음.
 - 수정 HEAD의 **전체 CI와 Windows 네이티브 전체 재검증**을 새로 수행하여 결과를 확인한다. 성공 확인 전에는 실패 해결을 확정하지 않음. [92절 실제 Ollama 500건 39704987503](https://github.com/junggyeol4444/AISTING/actions/runs/39704987503)은 본 기록 시점 진행 중.
+
+
+### 92절 오류 수정 후 전체 재검증 확정
+- **최종 소스 커밋 `d8d198ad999e566a8a37a3b99d7d731bae0f4e89`**: 신규 4플랫폼 FIFO 지연/적체 검증과 오류 수신기 소켓 정리 코드, 신규 회귀검사 4개, 첫 CI에서 확인된 테스트 기대값 오류 1건을 보정해 기존 main에 안전한 fast-forward로 반영. 임의 모델 설정/캐릭터/SQLite/방송 계정은 미변경.
+- [전체 회귀 재검증 39705311437](https://github.com/junggyeol4444/AISTING/actions/runs/39705311437): **success, 총 2,538개 실행, 2개 skip, 실패 0**. 기존 1차 CI [39704987626](https://github.com/junggyeol4444/AISTING/actions/runs/39704987626)의 1건 실패는 테스트 기대값 수정 후 재실행으로 해소됨.
+- [Windows 네이티브 재검증 39705311435](https://github.com/junggyeol4444/AISTING/actions/runs/39705311435): **5개 작업 모두 success** (`windows-exe`, `obs-real-readonly`, `twitch-public-readonly`, `korean-public-chat-readonly`, `ollama-real-local-e2e`). EXE artifact `AISTING-Windows-EXE-integrated` ID **12395365414**, `AISTING-Windows-Real-Ollama-FIFO-500-24h-EXE` ID **12395240588**. 실제 Windows CI의 통합·GUI 확인이며, 권리 있는 한국어 GPT-SoVITS→공식 Cubism→OBS 동일 발화 음성·영상, 실제 방송/시청자 전달의 성공을 뜻하지 않음.
+- [92절 500건 실제 로컬 Ollama synthetic 부하 39704987503](https://github.com/junggyeol4444/AISTING/actions/runs/39704987503) 및 [91절 39702241916](https://github.com/junggyeol4444/AISTING/actions/runs/39702241916)은 이 추가 기록 시각에도 **in_progress**. 최종 500건·새 플랫폼별 지연 p95 및 1~3초 통과 판정 미확정. 과거 90절 실제 synthetic 500건은 누락 0이나 전체 p95 2676.343초로 3초 목표 **실패** 유지.
+- 이번 회차 누적 최종: 개발·GitHub 반영·1차 CI 실패 재현·검사 수정·전체 회귀 재검증·Windows EXE/GUI·OBS 읽기·4플랫폼 공개 읽기·로컬 Ollama 통합 재검증 **완료**. 사용자 원본 1~91절·부록·원본 기획·로드맵 pending·캐릭터·SQLite·설정 보존. 실사용 WAV→Cubism→OBS 동일 발화, 실제 수백 명/24시간 방송, 최종 시청자 1~3초는 **미완료/미실증**. 다음 회차는 92절 최종 소스 `d8d198ad`에 대한 실제 500건 결과 및 증거, 장시간 재연결·실제 모델·음성·영상 병목 계속 개발.
