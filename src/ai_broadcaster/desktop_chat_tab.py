@@ -1128,7 +1128,12 @@ class LocalChatTab(ttk.Frame):
                                 "실제 GPT-SoVITS WAV → OBS 임시 입력 미터 신호 확인 "
                                 f"· {payload.sample_rate}Hz "
                                 f"· 미터 이벤트 {payload.audio_input_events}건 "
-                                "· Live2D·시청자 송출은 별도 검사")
+                                f"· WAV {payload.wav_duration_seconds:.2f}초 "
+                                f"· OBS 관찰 {payload.meter_observation_seconds:.2f}초 "
+                                + ("· 전체 WAV 시간 관찰 범위 포함 "
+                                   if payload.observation_covers_wav_duration
+                                   else "· WAV 후반 미관찰(8초 상한) ")
+                                + "· Live2D·시청자 송출은 별도 검사")
                         else:
                             self._tts_probe_status.set(
                                 "음성/OBS 실증 미충족 · 유효한 미터 신호 없음")

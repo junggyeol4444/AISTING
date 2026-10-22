@@ -137,6 +137,59 @@ class VerifyRealVoiceObsTests(unittest.TestCase):
         self.assertEqual(synth.call_args.kwargs["return_audio_bytes"],True)
 
 
+    def test_actual_wav_length_controls_real_obs_meter_window_without_touching_user_sources(self):
+        # 모의 종속성으로 테스트하되 실제 운영 WAV 길이를 OBS에 넘기는 코드.
+        # 5초 WAV를 이전처럼 3초만 관찰하지 않으며 12초 WAV는 상한 8초.
+        for frames, expected_seconds, full in (
+                (24000 * 5, 5.25, True),
+                (24000 * 12, 8.0, False)):
+            with self.subTest(frames=frames):
+                removed, observed = [], []
+                class Client:
+                    def get_record_status(self):
+                        return SimpleNamespace(output_active=False)
+                    def get_input_kind_list(self, _):
+                        return SimpleNamespace(input_kinds=["ffmpeg_source"])
+                    def create_input(self, scene, name, kind, settings, enabled):
+                        self_test.assertEqual(kind, "ffmpeg_source")
+                        self_test.assertEqual(scene, "Scene")
+                        self_test.assertTrue(Path(settings["local_file"]).is_file())
+                    def trigger_media_input_action(self, name, action):
+                        self_test.assertEqual(
+                            action, "OBS_WEBSOCKET_MEDIA_INPUT_ACTION_RESTART")
+                    def remove_input(self, name):
+                        removed.append(name)
+                self_test = self
+                def inspect(**kwargs):
+                    observed.append(kwargs["duration"])
+                    kwargs["start_action"]()
+                    return SimpleNamespace(selected_meter_events=5, selected_signal=True)
+                client = Client()
+                obs = SimpleNamespace(
+                    _client=client,
+                    connect=lambda:SimpleNamespace(
+                        version="32.2", scene="Scene", streaming=False),
+                    status=lambda:SimpleNamespace(scene="Scene", streaming=False),
+                    read_actual_audio_meters=inspect)
+                voice = SimpleNamespace(
+                    sample_rate=24000, channels=1, frame_count=frames,
+                    wav_data=b"RIFF"+b"x"*60)
+                with patch(
+                        "ai_broadcaster.original_plan_voice_obs_bridge.OfficialObsWebsocket",
+                        return_value=obs), patch(
+                        "ai_broadcaster.original_plan_voice_obs_bridge.synthesize_local_gpt_sovits",
+                        return_value=voice):
+                    output = verify_gpt_sovits_to_obs(
+                        Path("licensed_reference.wav"), "참조 발화",
+                        "이번 한국어 음성", obs_password="local",
+                        operator_approved=True, rights_confirmed=True)
+                self.assertTrue(output.actual_signal)
+                self.assertEqual(observed, [expected_seconds])
+                self.assertEqual(output.meter_observation_seconds, expected_seconds)
+                self.assertEqual(output.wav_duration_seconds, frames / 24000)
+                self.assertIs(output.observation_covers_wav_duration, full)
+                self.assertEqual(len(removed), 1)
+
     def test_stream_started_during_real_synthesis_does_not_create_obs_input(self):
         class Client:
             def get_record_status(self):

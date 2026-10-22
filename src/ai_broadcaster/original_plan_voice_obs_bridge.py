@@ -6,6 +6,7 @@ Never start stream/record, post chats or clone/train any voice.
 """
 from __future__ import annotations
 
+import math
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -22,6 +23,9 @@ class RealVoiceObsResult:
     obs_version: str
     audio_input_events: int
     actual_signal: bool
+    wav_duration_seconds: float = 0.0
+    meter_observation_seconds: float = 0.0
+    observation_covers_wav_duration: bool = False
 
 
 def verify_gpt_sovits_to_obs(
@@ -75,6 +79,19 @@ def verify_gpt_sovits_to_obs(
     raw = utterance.wav_data
     if not raw or len(raw) < 44:
         raise RuntimeError("실제 GPT-SoVITS 음성 WAV를 전달받지 못했습니다.")
+    # 기존의 고정 3초 미터 관찰은 5~8초 한국어 WAV의 후반 신호를
+    # 놓칠 수 있다. 실제 반환된 WAV 프레임/샘플레이트에 맞춰,
+    # OBS API의 기존 읽기 상한 8초 안에서만 기간을 확대한다.
+    if (type(utterance.sample_rate) is not int or utterance.sample_rate <= 0
+            or type(utterance.frame_count) is not int or utterance.frame_count <= 0):
+        raise RuntimeError("실제 GPT-SoVITS WAV 재생 시간을 계산할 수 없습니다.")
+    wav_duration = utterance.frame_count / utterance.sample_rate
+    if not math.isfinite(wav_duration) or wav_duration <= 0:
+        raise RuntimeError("실제 GPT-SoVITS WAV 재생 시간이 유효하지 않습니다.")
+    # 최소 기존 3초, 최대 OBS의 허용된 8초. 8초 초과 WAV는
+    # 관찰 창이 전체를 포함하지 않았음을 UI에 명시한다.
+    meter_duration = min(8.0, max(3.0, wav_duration + 0.25))
+    covers_duration = meter_duration >= wav_duration
     # Use a unique source name; never replace the operator's existing input.
     import secrets
     input_name = "AISTING-verification-" + secrets.token_hex(8)
@@ -152,7 +169,8 @@ def verify_gpt_sovits_to_obs(
                     input_name, "OBS_WEBSOCKET_MEDIA_INPUT_ACTION_RESTART")
 
             meters = obs.read_actual_audio_meters(
-                operator_approved=True, input_name=input_name, duration=3,
+                operator_approved=True, input_name=input_name,
+                duration=meter_duration,
                 start_action=start_exact_created_media_after_meter_subscription)
             result = RealVoiceObsResult(
                 sample_rate=utterance.sample_rate,
@@ -161,6 +179,9 @@ def verify_gpt_sovits_to_obs(
                 obs_version=state.version,
                 audio_input_events=meters.selected_meter_events,
                 actual_signal=bool(meters.selected_signal),
+                wav_duration_seconds=round(wav_duration, 3),
+                meter_observation_seconds=round(meter_duration, 3),
+                observation_covers_wav_duration=covers_duration,
             )
             if not result.actual_signal:
                 raise RuntimeError("OBS가 GPT-SoVITS 실제 WAV 입력 신호를 확인하지 못했습니다.")

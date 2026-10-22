@@ -935,7 +935,12 @@ class OriginalPlanStudio:
                         "GPT-SoVITS 실제 음성 → OBS 믹서 신호 확인: " +
                         str(result.audio_input_events) + "건 · " +
                         str(result.sample_rate) + "Hz · " +
-                        str(result.frames) + "프레임. "
+                        str(result.frames) + "프레임 · WAV " +
+                        f"{result.wav_duration_seconds:.2f}초 · OBS 관찰 " +
+                        f"{result.meter_observation_seconds:.2f}초 · " +
+                        ("전체 WAV 시간 관찰 범위 포함 · "
+                         if result.observation_covers_wav_duration
+                         else "WAV 후반 미관찰(8초 상한) · ") +
                         "Live2D 립싱크·외부 방송은 별도 검증"
                     )
                 self._events.put(("gpt_synth_result",

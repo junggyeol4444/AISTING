@@ -22,6 +22,7 @@ def make_obs(*, confirmed=True, stable=True):
             # 발생하도록 검사 전용 사건 시각을 공유한다.
             self.probe_started = threading.Event()
             self.probe_started_at = None
+            self.lipsync_sample_finished = None
             self._client = SimpleNamespace(
                 get_record_status=lambda: SimpleNamespace(output_active=False)
             )
@@ -37,7 +38,13 @@ def make_obs(*, confirmed=True, stable=True):
             if self.probe_started_at is None:
                 self.probe_started_at = began
                 self.probe_started.set()
-            time.sleep(0.015)
+            if self.lipsync_sample_finished is None:
+                time.sleep(0.015)
+            else:
+                # Windows 작업 스레드 스케줄링이 느려도 OBS 양의 소리
+                # 구간이 실제 입/RMS 모의 표본 종료를 덮도록 동기화.
+                if not self.lipsync_sample_finished.wait(2):
+                    raise RuntimeError("모의 립싱크 표본 종료 대기 실패")
             self.probe_count += 1
             ended = time.monotonic()
             return SimpleNamespace(
@@ -60,10 +67,12 @@ class FullPipelineContracts(unittest.TestCase):
 
     def test_existing_official_ai_turn_only_once_and_obs_read_only(self):
         obs = make_obs()
+        obs.lipsync_sample_finished = threading.Event()
         def sampled_lip(*args, **kwargs):
             self.assertTrue(obs.probe_started.wait(2))
             time.sleep(0.005)
             moment = time.monotonic()
+            obs.lipsync_sample_finished.set()
             return SimpleNamespace(verified_signal=True,
                 first_audio_mouth_monotonic=obs.probe_started_at,
                 last_audio_mouth_monotonic=moment)
@@ -84,10 +93,12 @@ class FullPipelineContracts(unittest.TestCase):
         # 실제 검증 API에서 관찰한 monotonic 표본을 기록한다.
         # 여기서는 외부 OBS·음성 요청을 모의하므로 실사용 성공은 아니다.
         obs = make_obs()
+        obs.lipsync_sample_finished = threading.Event()
         def official_turn(*args, **kwargs):
             self.assertTrue(obs.probe_started.wait(2))
             time.sleep(0.035)
             moment = time.monotonic()
+            obs.lipsync_sample_finished.set()
             return SimpleNamespace(
                 verified_signal=True,
                 first_audio_mouth_monotonic=obs.probe_started_at,
@@ -308,10 +319,12 @@ class FullPipelineContracts(unittest.TestCase):
 
     def test_obs_monitor_owns_separate_connection(self):
         safety, monitor = make_obs(), make_obs()
+        monitor.lipsync_sample_finished = threading.Event()
         def sampled_lip(*args, **kwargs):
             self.assertTrue(monitor.probe_started.wait(2))
             time.sleep(0.005)
             moment = time.monotonic()
+            monitor.lipsync_sample_finished.set()
             return SimpleNamespace(verified_signal=True,
                 first_audio_mouth_monotonic=monitor.probe_started_at,
                 last_audio_mouth_monotonic=moment)
@@ -337,6 +350,7 @@ class FullPipelineContracts(unittest.TestCase):
         second_window = threading.Event()
         prompt_started = threading.Event()
         second_window_started_at = []
+        slow_lip_finished = threading.Event()
         send = Mock()
 
         def monitor_window(**kwargs):
@@ -348,7 +362,7 @@ class FullPipelineContracts(unittest.TestCase):
             began = time.monotonic()
             second_window_started_at.append(began)
             second_window.set()
-            time.sleep(0.04)
+            self.assertTrue(slow_lip_finished.wait(2))
             return SimpleNamespace(
                 coherent_media_candidate=True,
                 audio=SimpleNamespace(
@@ -362,6 +376,7 @@ class FullPipelineContracts(unittest.TestCase):
                 "The OBS monitor stopped before delayed Korean TTS started",
             )
             moment = time.monotonic()
+            slow_lip_finished.set()
             return SimpleNamespace(verified_signal=True,
                 first_audio_mouth_monotonic=second_window_started_at[0],
                 last_audio_mouth_monotonic=moment)
