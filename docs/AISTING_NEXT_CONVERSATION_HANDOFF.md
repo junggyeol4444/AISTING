@@ -2429,3 +2429,30 @@ F) 원본 100단계 roadmap.json status는 completed=9, pending=91이며 **코�
 - 마지막 사용자 지시대로 남은 핵심 기능 개발 우선 누적: 권리 확인된 실제 한국어 GPT-SoVITS WAV→공식 Cubism 입→OBS 동일 발화 음성/영상 실증, 4플랫폼 실제 수백 건·수백 명 무누락, 24시간 복구/안전성, 로컬 AI·음성·영상·시청자 1~3초 병목 개발. 이후 전체 회귀→Windows EXE/GUI·OBS·실모델 통합검사→오류 수정→전체 재검증.
 - 진행 중인 큐 대기와 중단된 큐 대기는 **로컬 네트워크 콜백 이후**의 진단이며 서버 측 누락, 실제 수백 명, 송출·시청자 종단간 전달 증거가 아니다.
 - 기존 1~116절과 과거 부록 원문·캐릭터·SQLite·설정·원본 기획 보존. 새 브랜치/force push/롤백/전면 재개발/다른 프로젝트·Drive·예약 변경 없음. 승인 없는 OAuth·방송/녹화·채팅 발신·모델 훈련·권리 없는 음성 없음. 임의 토큰 96·keep_alive 10m 설정 없음. 보고/GUI/코드/문서 한국어.
+
+## 118. 2026-10-23 — 기존 미반영 OBS 연속 관찰 기능의 main 반영
+
+- 사용자 최신 명령: **기존 AISTING 남은 기능 전체 개발 우선 → 이후 전수 검증 → 오류 수정 → 전체 재검증**. 이번 회차에는 원래 미반영 118회차 개발물을 기반으로 실제 기존 소스·신규 모듈을 `main`에 반영했다. 본 문서 1~117절 및 모든 이전 부록의 내용은 삭제하거나 수정하지 않았다.
+- 시작 main: `efe408060ccab725d9c45da888fc684da2a4b9bc`. 기존 117회차 GUI·테스트·인수인계 커밋 `80e1da0bce8bb5137dd97e0c5a5d64c146533cee`이 원래 main보다 2커밋 앞서고 뒤처진 커밋 0개임을 재확인 후 해당 HEAD로 **force=false 안전 fast-forward** 갱신 성공.
+- 기존 118회차 개발물 `AISTING_118_누적개발_미반영_인수인계.zip`과 `AISTING_20261023_118_인수인계_추가절.md`를 읽고 기존 `original_plan_full_pipeline.py`의 여섯 연속 OBS 관찰 구간 처리 흐름을 유지하면서, 신규 `obs_consecutive_audio.py`의 `collect_obs_audio_times`로 실제 서로 다른 OBS 선택 오디오 미터 표본을 누적하는 기능 적용. monotonic 구간 유효성, 역행·중복, 선택 입력/경로 안전성, 실제 입/RMS 표본 근접 여부를 함께 고려. 확인하지 않은 시각을 보간해 만들지 않는다.
+- 기존 `OfficialChatObsEvidence`에 `obs_audio_sample_times`, `obs_audio_window_count` 관측값을 추가하여 실제 오디오·입 근접 표본 계산과 첫 OBS 관측 지연에 사용. 신규 기능 소스 커밋 `29ab17c1573995f7611419cebf368b989b122d41`, 기존 main에서 안전 fast-forward 반영 성공.
+- 이전에 작성한 118회차 순수 Python 단위검사 7건 통과는 **이전 회차의 별도 로컬 증거**이며, 이번 반영본 전체 회귀/Windows 환경/실장비를 통과했다는 뜻이 아니다. 이번에는 사용자 지시에 따라 신규 CI 실행·전체 회귀·오류 수정은 하지 않았다. 예전 118회차 로컬 패치와 신규 GitHub 반영본의 소스 문구 및 검사 산출물 동일성을 전수 실증하지 않았다.
+
+
+## 119. 2026-10-23 — 신규 개발: OBS 실제 영상 획득 경계와 공식 WAV·Cubism·오디오의 시간 결합
+
+### 이번 회차 실제 개발
+- 118회차 반영 직후 `main` HEAD `29ab17c1573995f7611419cebf368b989b122d41`에서 시작. 기존 `original_plan_obs.py`의 운영자 승인 읽기 전용 `inspect_program_media`에 두 실제 OBS 영상 프레임 획득 API 호출의 시간 경계를 추가. 첫 프레임 API 완료 시각, 음성 미터 관측 후 두 번째 프레임 API 시작 시각을 **Windows 공유 monotonic 시계 기준**으로 보관. PNG 외부 저장, 실제 방송·녹화·장면 변경 없음.
+- 새 `ActualObsProgramMediaObservation.observed_video_brackets_audio_candidate`로 동일 프로그램 장면 두 프레임 변화가 실제 확인됐을 때, **첫 영상 취득 완료 후**이면서 **다음 영상 취득 시작 전**에 선택 OBS 입력의 첫·마지막 양성 오디오 표본이 실제로 위치하는지를 검사하는 기능 개발. 시간 역행/0초/NaN 등은 후보 처리하지 않는다.
+- 기존 `original_plan_full_pipeline.py`에서 공식 실제 WAV+PCM 헤더 후보·Cubism 입/RMS 근접 표본+OBS 미터와 영상 시간 경계를 연결한 `same_session_observed_video_audio_timing_candidate` 판정 추가. 기존 네이티브 `desktop_chat_tab.py`의 운영자 승인 통합 검사 결과에 한국어로 별도 표시.
+- 신규 개발 코드 커밋 `3ff4bbdc3b5723d74ffccf7c851c13e1a898f66c`을 `main`에 **fast-forward, force=false** 반영 성공. 총 119회차에서 수정한 소스: `original_plan_obs.py`, `original_plan_full_pipeline.py`, `desktop_chat_tab.py`. 이전 캐릭터, SQLite, 설정, 기획, 인수인계, 계정/모델 선택은 변경하지 않음.
+- 이 값은 **두 프레임 획득 API 호출 경계에 걸친 관찰 후보**이다. 개별 이미지가 캡처된 정확한 렌더 시간, 바뀐 영상이 Cubism 입 때문인지, 동일 WAV 파형이 인코더·시청자에게 전달됐는지까지 확정하지 않는다.
+
+### 과거 CI 실패 보존 및 실제 하지 않은 작업
+- [Windows CI 39722213656](https://github.com/junggyeol4444/AISTING/actions/runs/39722213656) = 전체 completed/cancelled. 이전 기록은 Windows EXE, OBS readonly, Twitch 공개 채팅, 실 Ollama 로컬 작업 성공, 한국어 공개 채팅 작업 취소. 취소된 작업을 성공이라고 보고하지 않음. 이전 404 로그 접근 불가 내용 보존.
+- [실모델 500건 CI 39720448468](https://github.com/junggyeol4444/AISTING/actions/runs/39720448468) = workflow completed/success이나 실제 Ollama에 합성 채팅 500/500건 모두 3초 초과. 전체 p95 2,979.984초, FIFO 대기 p95 2,973.875초, AI 처리 p95 7.875초. 실제 시청자 500명, 24시간 정상 송출, 1~3초 E2E 달성 증거 **없음**.
+- 이번 대화 실제 수행: GitHub main HEAD/두 CI 재조회, 기존 계획 및 1~117절/117차 부록 읽기, 118차 미반영 ZIP·추가절 점검, 117 미반영 fast-forward, 118회차 신규 기능 2파일, 119회차 신규 기능 3파일 실제 main fast-forward 반영. **이번 턴에 새 CI 실행, 전체 회귀, 실제 Windows EXE/GUI, 본인 권리 확인 GPT-SoVITS 로컬 WAV→실 Cubism·OBS 직접 운영·실증, 실제 수백 명 4플랫폼, 24시간 장기 시험, 시청자 E2E 지연 검증, 오류 수정은 하지 않았음.** 승인 없는 OAuth/송출·녹화·채팅 발신·모델 훈련·권리 없는 보이스 없음.
+- 원래 1~117절 원문과 다른 프로젝트/Drive/예약 일절 변경하지 않음. 새로운 브랜치·force push·롤백·전면 재개발 없음. 토큰 생성 길이 96·keep_alive 10m를 강제로 설정하지 않음. 기존 패치 ZIP과 인수인계 자료는 별도 보존.
+- 다음 실행에서 **현재 실제 main HEAD부터 재조회**하고 이전 1~119절과 원본 `docs/ORIGINAL_PLAN.txt`, `docs/ROADMAP_100.md`, `config/roadmap.json`, 모든 과거 부록을 확인. 4플랫폼 실수신 수백 명·24시간 복구, 실제 한국어 WAV→공식 Live2D 입→OBS 동일 파형 실증, 로컬 대기 병목 1~3초 개선의 미완료 기능을 **개발부터** 진행하고, 전체 기능 개발 완료 뒤 전수 회귀·Windows 네이티브 EXE/GUI·OBS/모델 실사용 검사, 오류 수정, 전체 재검증 순서를 지킬 것.
+- 119 기능 커밋 기준 HEAD `3ff4bbdc3b5723d74ffccf7c851c13e1a898f66c`; 이 문서 반영 시 새로운 실제 HEAD로 전진하므로 재조회 필수. 이번 신규 개발 기능 CI **미실행**.
+
