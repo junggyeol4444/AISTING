@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 
 from .original_plan_frontend import send_to_native_live2d_session_with_observation
 from .original_plan_obs import OfficialObsWebsocket
+from .obs_consecutive_audio import collect_obs_audio_times
 
 if TYPE_CHECKING:
     from .original_plan_frontend import OfficialLipSyncEvidence
@@ -33,6 +34,8 @@ class OfficialChatObsEvidence:
     first_obs_audio_seconds: float | None = None
     # 녹화·송출을 시작하지 않았으므로 시청자 측 출력 지연은 별도 실증이다.
     viewer_end_to_end_verified: bool = False
+    obs_audio_sample_times: tuple[float, ...] | None = None
+    obs_audio_window_count: int = 0
 
     @property
     def latency_summary_ko(self) -> str:
@@ -71,7 +74,9 @@ class OfficialChatObsEvidence:
             + "쌍 / 콜백시각 차이 절댓값 p95 "
             + (f"{self.pcm_obs_near_abs_p95_ms:.1f}ms"
                if self.pcm_obs_near_abs_p95_ms is not None else "미측정")
-            + " / 시청자 E2E 별도 미검증"
+            + " / 실제 OBS 일치 관찰 구간 " + str(self.obs_audio_window_count)
+            + "개 / 누적 유효 오디오 표본 " + str(len(self.obs_audio_sample_times or ()))
+            + "건 / 시청자 E2E 별도 미검증"
         )
 
     @property
@@ -138,7 +143,8 @@ class OfficialChatObsEvidence:
         if not self.same_session_pcm_mouth_audio_video_candidate:
             return ()
         mouth = getattr(self.lip, "official_pcm_mouth_sample_times", ())
-        audio = getattr(getattr(self.obs, "audio", None), "selected_signal_sample_times", ())
+        audio = (self.obs_audio_sample_times if self.obs_audio_sample_times is not None
+                 else getattr(getattr(self.obs, "audio", None), "selected_signal_sample_times", ()))
         if (not isinstance(mouth, tuple) or not isinstance(audio, tuple)
                 or len(mouth) < 2 or len(audio) < 2):
             return ()
@@ -433,6 +439,9 @@ def verify_official_chat_live2d_obs(
 
     matching = [sample for began, ended, sample in observation
                 if same_utterance_window(began, ended, sample)]
+    # 연속 OBS 관찰창 경계에 걸친 실제 오디오 표본 누적
+    combined_audio_times, matched_window_count = collect_obs_audio_times(
+        observation, mouth_first, mouth_last) if valid_mouth_window else ((), 0)
     # 연속 관찰 구간 중 실제 근접 표본이 가장 많은 후보를 선택한다.
     def candidate_quality(sample) -> tuple[int, int]:
         candidate = OfficialChatObsEvidence(
@@ -451,9 +460,7 @@ def verify_official_chat_live2d_obs(
         if valid_mouth_window and prompt_started_at <= mouth_first <= prompt_finished_at
         else None
     )
-    matched_first_audio = getattr(
-        getattr(selected, "audio", None), "first_selected_signal_monotonic", None
-    ) if matching else None
+    matched_first_audio = combined_audio_times[0] if combined_audio_times else None
     first_obs_latency = (
         round(matched_first_audio - prompt_started_at, 6)
         if (type(matched_first_audio) in (float, int)
@@ -465,4 +472,6 @@ def verify_official_chat_live2d_obs(
         lip=lip, obs=selected, temporal_overlap_candidate=bool(matching),
         local_roundtrip_seconds=round(prompt_finished_at - prompt_started_at, 6),
         first_cubism_audio_seconds=first_cubism_latency,
-        first_obs_audio_seconds=first_obs_latency)
+        first_obs_audio_seconds=first_obs_latency,
+        obs_audio_sample_times=combined_audio_times,
+        obs_audio_window_count=matched_window_count)
