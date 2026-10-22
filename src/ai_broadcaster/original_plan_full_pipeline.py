@@ -276,7 +276,11 @@ def verify_official_chat_live2d_obs(
                           and type(mouth_last) in (int, float)
                           and math.isfinite(mouth_first)
                           and math.isfinite(mouth_last)
-                          and 0 < mouth_first <= mouth_last)
+                          and 0 < mouth_first <= mouth_last
+                          # 과거 발화의 입 움직임 시간이 이번 요청 시점을
+                          # 가로질러도 동일 발화로 잘못 인정하지 않는다.
+                          and prompt_started_at <= mouth_first
+                          and mouth_last <= prompt_finished_at)
     # Match the actual NON-SILENT OBS meter timestamps, not a broad
     # 3-second video+audio inspection window that could include unrelated
     # noise before/after the Cubism mouth change.

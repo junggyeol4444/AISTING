@@ -387,6 +387,52 @@ class FullPipelineContracts(unittest.TestCase):
         self.assertEqual(monitor.probe_count, 6)
         self.assertEqual(send.call_count, 1)
 
+    def test_old_mouth_window_spanning_new_question_is_not_same_utterance(self):
+        # 이전 발화의 첫 표본이 이번 질문 이전이지만 끝 표본이 현재라면
+        # 시간 중첩만으로 이번 한국어 발화라고 인정하지 않는다.
+        obs = make_obs()
+        def stale_spanning_lip(*args, **kwargs):
+            time.sleep(0.035)
+            return SimpleNamespace(
+                verified_signal=True,
+                first_audio_mouth_monotonic=time.monotonic() - 20.0,
+                last_audio_mouth_monotonic=time.monotonic())
+        with patch.object(pipeline, "OfficialObsWebsocket", return_value=obs), patch.object(
+                pipeline, "send_to_native_live2d_session_with_observation",
+                side_effect=stale_spanning_lip) as sender:
+            result = pipeline.verify_official_chat_live2d_obs(
+                "이전 발화 시간을 재사용하면 안 됨",
+                obs_password="local", obs_input_name="Mic",
+                operator_approved=True, voice_rights_confirmed=True)
+        sender.assert_called_once()
+        self.assertFalse(result.temporal_overlap_candidate)
+        self.assertFalse(result.verified_observation)
+        self.assertIsNone(result.first_cubism_audio_seconds)
+        self.assertIsNone(result.first_obs_audio_seconds)
+        self.assertFalse(result.viewer_end_to_end_verified)
+
+    def test_future_mouth_window_spanning_obs_is_not_same_utterance(self):
+        # 현재 발화 종료 뒤 시점이 들어 있는 입 움직임 시간 구간도 배제.
+        obs = make_obs()
+        def future_spanning_lip(*args, **kwargs):
+            time.sleep(0.035)
+            return SimpleNamespace(
+                verified_signal=True,
+                first_audio_mouth_monotonic=time.monotonic() - 0.025,
+                last_audio_mouth_monotonic=time.monotonic() + 100.0)
+        with patch.object(pipeline, "OfficialObsWebsocket", return_value=obs), patch.object(
+                pipeline, "send_to_native_live2d_session_with_observation",
+                side_effect=future_spanning_lip) as sender:
+            result = pipeline.verify_official_chat_live2d_obs(
+                "현재 질문 완료 이후 표본은 현재 발화 증명이 아님",
+                obs_password="local", obs_input_name="Mic",
+                operator_approved=True, voice_rights_confirmed=True)
+        sender.assert_called_once()
+        self.assertFalse(result.temporal_overlap_candidate)
+        self.assertFalse(result.verified_observation)
+        self.assertIsNone(result.first_cubism_audio_seconds)
+        self.assertFalse(result.viewer_end_to_end_verified)
+
     def test_outdated_lipsync_clock_will_not_certify_current_obs_sound(self):
         obs = make_obs()
         lip = SimpleNamespace(verified_signal=True,
