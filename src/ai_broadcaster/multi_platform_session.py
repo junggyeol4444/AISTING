@@ -40,6 +40,11 @@ class MultiPlatformReadOnlySession:
         self._emit = emit
         self._readers = {}
         self._finished_readers = set()
+        # 장시간 수신에서 플랫폼별 재연결 횟수와 관측된 공백을
+        # 네트워크 시간으로만 기록한다. 놓친 채팅 건수는 추정하지 않는다.
+        self._disconnect_started: dict[str, float] = {}
+        self._reconnect_count = {code: 0 for code in channels}
+        self._observed_gap_seconds = {code: 0.0 for code in channels}
 
         def callback_for(code):
             def callback(kind, item):
@@ -53,8 +58,22 @@ class MultiPlatformReadOnlySession:
                             raise ValueError("채팅 플랫폼 식별자가 올바르지 않습니다.")
                         self._emit("chat", item)
                     elif kind in ("ready", "connected"):
-                        # Never expose reader-provided URLs, tokens or secrets.
-                        self._emit(kind, code + " 공개 채팅 연결")
+                        # 실제 채팅방 준비(ready) 이전의 소켓 연결(connected)은
+                        # 공백 종료로 계산하지 않는다. 소스/API 토큰은 출력 금지.
+                        reconnect_started = (
+                            self._disconnect_started.pop(code, None)
+                            if kind == "ready" else None
+                        )
+                        if reconnect_started is None:
+                            self._emit(kind, code + " 공개 채팅 연결")
+                        else:
+                            gap = max(0.0, time.monotonic() - reconnect_started)
+                            self._reconnect_count[code] += 1
+                            self._observed_gap_seconds[code] += gap
+                            self._emit(
+                                "ready", code + " 공개 채팅 재연결 완료 · 관측된 수신 공백 "
+                                + f"{gap:.2f}초 · 누락 여부는 실증 불가"
+                            )
                     elif kind == "error":
                         self._emit("error", code + " 공개 채팅 연결 오류")
             return callback
@@ -87,6 +106,27 @@ class MultiPlatformReadOnlySession:
         # Construct and validate every reader before starting any network I/O.
         for code, channel in channels.items():
             self._readers[code] = factories[code](channel.strip(), self._callbacks[code])
+
+    def reconnect_snapshot(self) -> dict[str, dict[str, float | int | bool]]:
+        """실제 재연결 준비 완료 횟수·관측 공백만 메모리에서 조회한다.
+
+        24시간 송출 성공 또는 무누락 수신으로 해석하지 않는다.
+        토큰/채널명/채팅 본문은 결과에 넣지 않는다.
+        """
+        with self._emit_lock:
+            now = time.monotonic()
+            return {
+                code: {
+                    "재연결완료": self._reconnect_count[code],
+                    "관측공백초": round(
+                        self._observed_gap_seconds[code]
+                        + max(0.0, now - self._disconnect_started[code])
+                        if code in self._disconnect_started
+                        else self._observed_gap_seconds[code], 6),
+                    "현재공백": code in self._disconnect_started,
+                }
+                for code in self._channels
+            }
 
     def stop(self) -> None:
         """Close every transport without blocking Tk on a broken reader."""
@@ -160,6 +200,8 @@ class MultiPlatformReadOnlySession:
                                 pass
                             with self._emit_lock:
                                 if not self._stop.is_set():
+                                    self._disconnect_started.setdefault(
+                                        code, time.monotonic())
                                     # Do not reveal transport credentials.
                                     self._emit("error", code + " 읽기 실패 (" +
                                                type(exc).__name__ + ")")
