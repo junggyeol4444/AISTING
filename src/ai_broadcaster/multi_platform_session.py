@@ -45,6 +45,11 @@ class MultiPlatformReadOnlySession:
         self._disconnect_started: dict[str, float] = {}
         self._reconnect_count = {code: 0 for code in channels}
         self._observed_gap_seconds = {code: 0.0 for code in channels}
+        # 수신기 콜백·GUI 전달·예외를 플랫폼별로 구분한다.
+        # 실제 서버 게시 건수나 시청자 수를 추정하지 않는다.
+        self._callback_chat_count = {code: 0 for code in channels}
+        self._forwarded_chat_count = {code: 0 for code in channels}
+        self._callback_error_count = {code: 0 for code in channels}
 
         def callback_for(code):
             def callback(kind, item):
@@ -56,7 +61,14 @@ class MultiPlatformReadOnlySession:
                             item = PlatformChat(item.channel, item.sender, item.text, code)
                         if not isinstance(item, PlatformChat) or item.platform != code:
                             raise ValueError("채팅 플랫폼 식별자가 올바르지 않습니다.")
-                        self._emit("chat", item)
+                        self._callback_chat_count[code] += 1
+                        try:
+                            self._emit("chat", item)
+                        except Exception:
+                            self._callback_error_count[code] += 1
+                            raise
+                        else:
+                            self._forwarded_chat_count[code] += 1
                     elif kind in ("ready", "connected"):
                         # 실제 채팅방 준비(ready) 이전의 소켓 연결(connected)은
                         # 공백 종료로 계산하지 않는다. 소스/API 토큰은 출력 금지.
@@ -124,6 +136,9 @@ class MultiPlatformReadOnlySession:
                         if code in self._disconnect_started
                         else self._observed_gap_seconds[code], 6),
                     "현재공백": code in self._disconnect_started,
+                    "콜백수신": self._callback_chat_count[code],
+                    "콜백전달완료": self._forwarded_chat_count[code],
+                    "콜백전달오류": self._callback_error_count[code],
                 }
                 for code in self._channels
             }

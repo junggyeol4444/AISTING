@@ -44,6 +44,16 @@ class LiveLatencySnapshot:
         # 종료 사건은 invalid로 따로 계수해 남은 작업과 구분한다.
         return max(0, self.accepted - self.completed - self.invalid)
 
+    @property
+    def bottleneck_ko(self) -> str:
+        # 실제 로컬 표본 p95의 상대 비중만 표시하며 시청자 지연을 뜻하지 않는다.
+        if self.total_p95 is None or self.wait_p95 is None or self.inference_p95 is None:
+            return '로컬 병목 미측정'
+        if self.total_p95 <= 3:
+            return '최근 로컬 p95 3초 이내 · 시청자 E2E 미검증'
+        return ('로컬 p95 병목 추정: FIFO 대기' if self.wait_p95 >= self.inference_p95
+                else '로컬 p95 병목 추정: AI 처리')
+
     def describe(self) -> str:
         p95 = ("측정 없음" if self.total_p95 is None
                else f"{self.total_p95:.2f}초")
@@ -54,7 +64,7 @@ class LiveLatencySnapshot:
                 f"· 실패 {self.failed}건 · 시간 오류 {self.invalid}건 "
                 f"· 3초 초과 {self.over_three_seconds}건 "
                 f"· 미종결 {self.unterminated}건 · 최근 {self.sampled}건 p95 총 {p95} "
-                f"(대기 {wait} / AI {infer}) · 로컬 연결 경과 "
+                f"(대기 {wait} / AI {infer}) · {self.bottleneck_ko} · 로컬 연결 경과 "
                 f"{self.local_running_seconds / 3600:.2f}시간 "
                 f"· 수신기 오류 {self.reader_faults}건"
                 " · 시청자 전달·방송 24시간 정상 송출은 미검증")
