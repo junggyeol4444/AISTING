@@ -374,9 +374,57 @@ def _youtube_video_id_or_none(value: str) -> str | None:
     raise ValueError("유튜브 영상 주소 형식이 올바르지 않습니다.")
 
 
+class YouTubeChatResumeState:
+    """동일 공개 채팅방에 대한 네트워크 재연결 위치를 메모리에만 유지한다.
+
+    저장 파일·계정 정보·메시지 본문은 보관하지 않는다. 실제로 전달한
+    이벤트 ID만 기억하고 페이지는 마지막 항목을 전달한 뒤 확정한다.
+    네트워크 공백 중 도착한 모든 채팅을 복구했다고 주장하지 않는다.
+    """
+
+    def __init__(self) -> None:
+        self.live_chat_id: str | None = None
+        self.next_page_token = ""
+        self.recent_message_ids: deque[str] = deque()
+        self.seen_message_ids: set[str] = set()
+        self.delivered = 0
+        self.completed_pages = 0
+
+    def bind_chat(self, live_chat_id: str) -> str:
+        if not isinstance(live_chat_id, str) or not live_chat_id.strip():
+            raise ValueError("유튜브 실제 채팅방 ID가 올바르지 않습니다.")
+        if self.live_chat_id is not None and self.live_chat_id != live_chat_id:
+            raise RuntimeError(
+                "재연결된 YouTube 채팅방이 바뀌었습니다. "
+                "이전 메시지 위치를 다른 방송에 적용하지 않습니다."
+            )
+        self.live_chat_id = live_chat_id
+        return self.next_page_token
+
+    def delivered_event(self, message_id: str | None) -> None:
+        # 두 사용자가 같은 본문을 입력해도 개별 이벤트는 각각 전달된다.
+        self.delivered += 1
+        if message_id is None or message_id in self.seen_message_ids:
+            return
+        self.seen_message_ids.add(message_id)
+        self.recent_message_ids.append(message_id)
+        if len(self.recent_message_ids) > 50_000:
+            self.seen_message_ids.discard(self.recent_message_ids.popleft())
+
+    def completed_page(self, next_page_token: str | None) -> None:
+        # 네트워크 단절 또는 UI 백프레셔 중 종료된 미완성 페이지의
+        # 위치를 앞당기지 않는다. 같은 페이지 재조회 후 이벤트 ID로 재전송 방지.
+        if next_page_token is not None and (
+                not isinstance(next_page_token, str) or len(next_page_token) > 2048):
+            raise ValueError("유튜브 채팅 페이지 토큰 오류")
+        self.next_page_token = next_page_token or ""
+        self.completed_pages += 1
+
+
 class YouTubeReadOnlySession(ReadOnlySession):
     def __init__(self, channel: str, emit, api_key: str = "",
-                 *, oauth_access_token: str = ""):
+                 *, oauth_access_token: str = "",
+                 resume_state: YouTubeChatResumeState | None = None):
         super().__init__(channel, emit)
         if type(oauth_access_token) is not str:
             raise ValueError("유튜브 OAuth 읽기 인증 형식이 잘못되었습니다.")
@@ -396,6 +444,12 @@ class YouTubeReadOnlySession(ReadOnlySession):
         self._key = "" if oauth_access_token else api_key
         # No refresh token, OAuth login, token save, automatic consent or write access.
         self._oauth_access_token = oauth_access_token
+        if resume_state is not None and not isinstance(
+                resume_state, YouTubeChatResumeState):
+            raise TypeError("유튜브 이어받기 상태 형식 오류")
+        self._resume_state = (resume_state if resume_state is not None
+                              else YouTubeChatResumeState())
+        self._terminal_chat_end = False
 
     def run(self, *, max_seconds=None):
         if self._stop.is_set():
@@ -494,14 +548,13 @@ class YouTubeReadOnlySession(ReadOnlySession):
             live_chat_id = live.get("activeLiveChatId") if isinstance(live, dict) else None
             if not isinstance(live_chat_id, str) or not live_chat_id.strip():
                 raise RuntimeError("현재 생방송 중이거나 활성화된 유튜브 채팅방이 없습니다.")
-        cursor = ""
+        # 이전 연결에서 완전히 전달한 페이지 다음 위치부터 수신한다.
+        # 페이지 중간 연결 실패는 같은 페이지를 다시 읽으며, 이미 UI에
+        # 넘긴 이벤트 ID만 재전송하지 않는다. 본문 중복은 보존한다.
+        resume = self._resume_state
+        cursor = resume.bind_chat(live_chat_id)
         first = True
-        # Deduplicate only YouTube's *same message ID* repeated across API
-        # pages, never two independently posted identical texts. Bounded to
-        # keep a 24-hour live reader from growing without limit.
-        recent_message_ids = deque()
-        seen_message_ids = set()
-        max_seen_ids = 50_000
+        seen_message_ids = resume.seen_message_ids
         # Some broken API/proxy responses can alternate A->B->A forever.
         # Track a bounded set of page tokens; fail before dispatching a
         # replayed page's events or consuming quota in an infinite cycle.
@@ -581,20 +634,18 @@ class YouTubeReadOnlySession(ReadOnlySession):
                     self.emit("chat", item)
                 if self._stop.is_set():
                     break
-                if message_id is not None:
-                    seen_message_ids.add(message_id)
-                    recent_message_ids.append(message_id)
-                    if len(recent_message_ids) > max_seen_ids:
-                        seen_message_ids.discard(recent_message_ids.popleft())
+                # emit()이 정상 반환한 뒤에만 전달 완료로 기록한다.
+                resume.delivered_event(message_id)
             if self._stop.is_set():
                 break
             if first:
                 self.emit("ready", self.channel)
             first = False
-            cursor = next_cursor
+            resume.completed_page(next_cursor)
+            cursor = resume.next_page_token
             if ended:
-                # YouTube has explicitly ended this live chat. A final page
-                # may omit nextPageToken; still deliver its actual messages.
+                # 서버가 종료를 명시했으면 같은 종료된 방송을 반복 재연결하지 않는다.
+                self._terminal_chat_end = True
                 break
             # Respect Google's server-designated strictly positive interval.
             self._stop.wait(millis / 1000)

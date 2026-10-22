@@ -11,7 +11,7 @@ import time
 
 from .multiplatform_readonly import (
     PlatformChat, ChzzkReadOnlySession, SoopReadOnlySession,
-    YouTubeReadOnlySession,
+    YouTubeReadOnlySession, YouTubeChatResumeState,
 )
 from .twitch_readonly import TwitchChatLine, TwitchReadOnlySession
 
@@ -59,6 +59,12 @@ class MultiPlatformReadOnlySession:
                         self._emit("error", code + " 공개 채팅 연결 오류")
             return callback
 
+        # 한 운영자 수신 세션의 실제 YouTube 채팅 ID·페이지 위치만 공유한다.
+        # 실패 뒤 새 리더 객체를 만들더라도 기존 4플랫폼 FIFO 내용과
+        # 이미 전달한 이벤트 ID가 사라지지 않는다.
+        self._youtube_resume = (
+            YouTubeChatResumeState() if "youtube" in channels else None
+        )
         factories = {
             "twitch": lambda channel, cb: TwitchReadOnlySession(
                 channel, cb, oauth_token=twitch_oauth_token,
@@ -67,9 +73,12 @@ class MultiPlatformReadOnlySession:
             "chzzk": lambda channel, cb: ChzzkReadOnlySession(channel, cb),
             "soop": lambda channel, cb: SoopReadOnlySession(channel, cb),
             "youtube": lambda channel, cb: YouTubeReadOnlySession(
-                channel, cb, youtube_api_key, oauth_access_token=youtube_oauth_token)
+                channel, cb, youtube_api_key,
+                oauth_access_token=youtube_oauth_token,
+                resume_state=self._youtube_resume)
                 if youtube_oauth_token else YouTubeReadOnlySession(
-                    channel, cb, youtube_api_key),
+                    channel, cb, youtube_api_key,
+                    resume_state=self._youtube_resume),
         }
         # Only an explicitly running session may reconnect after a failure.
         self._factories = factories
@@ -134,7 +143,8 @@ class MultiPlatformReadOnlySession:
                         try:
                             reader.run(max_seconds=max_seconds)
                             # 무기한 수신기가 Stop 없이 끝나면 연결 공백으로 처리한다.
-                            if max_seconds is None and not self._stop.is_set():
+                            if (max_seconds is None and not self._stop.is_set()
+                                    and not getattr(reader, "_terminal_chat_end", False)):
                                 raise ConnectionError("공개 채팅 읽기가 예기치 않게 종료됐습니다.")
                             break
                         except Exception as exc:
