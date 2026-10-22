@@ -703,28 +703,23 @@ class LocalChatTab(ttk.Frame):
                 session = MultiPlatformReadOnlySession(
                     {name: self._multi_channels[name].get().strip()
                      for name in saved_platforms}, emit, **multi_options)
-            elif code == "twitch":
-                token = getattr(self, "_twitch_oauth_token", None)
-                login = getattr(self, "_twitch_oauth_login", None)
-                if token is not None and token.get():
-                    session = TwitchReadOnlySession(
-                        channel, emit, oauth_token=token.get(),
-                        oauth_login=login.get().strip() if login is not None else "")
-                else:
-                    session = TwitchReadOnlySession(channel, emit)
-            elif code == "chzzk":
-                session = ChzzkReadOnlySession(channel, emit)
-            elif code == "soop":
-                session = SoopReadOnlySession(channel, emit)
             else:
-                if self._youtube_oauth_token.get():
-                    session = YouTubeReadOnlySession(
-                        channel, emit, self._youtube_api_key.get(),
-                        oauth_access_token=self._youtube_oauth_token.get())
-                else:
-                    session = YouTubeReadOnlySession(
-                        channel, emit, self._youtube_api_key.get())
-        
+                # 단일 플랫폼도 4플랫폼과 동일한 기존 재연결 관리자에
+                # 연결한다. 채팅 원본은 종류/내용/순서 그대로 AI 단일 FIFO로
+                # 전달하며, 오류 후 커서를 초기화하거나 전체 정지하지 않는다.
+                single_options = {}
+                if code == "twitch":
+                    twitch_token = self._twitch_oauth_token.get()
+                    if twitch_token:
+                        single_options["twitch_oauth_token"] = twitch_token
+                        single_options["twitch_oauth_login"] = (
+                            self._twitch_oauth_login.get().strip())
+                elif code == "youtube":
+                    single_options["youtube_api_key"] = self._youtube_api_key.get()
+                    single_options["youtube_oauth_token"] = (
+                        self._youtube_oauth_token.get())
+                session = MultiPlatformReadOnlySession(
+                    {code: channel}, emit, **single_options)
         except (ValueError, TypeError, OSError, RuntimeError) as exc:
             messagebox.showinfo("채팅 채널",
                                 "채널·API 설정을 확인하세요 (" + type(exc).__name__ + ")",
