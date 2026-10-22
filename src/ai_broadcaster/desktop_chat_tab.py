@@ -1459,6 +1459,9 @@ class LocalChatTab(ttk.Frame):
                             " / " + ("실제 Cubism 입·OBS 미터 근접 표본 2쌍 후보" if getattr(
                                 evidence, "same_session_pcm_sample_pair_candidate", False)
                                 else "실제 입·OBS 근접 표본 2쌍 미확인") +
+                            " / " + ("OBS 영상 획득 경계·오디오·입 근접 표본 일치 후보" if getattr(
+                                evidence, "same_session_observed_video_audio_timing_candidate", False)
+                                else "OBS 영상 경계·오디오·입 동시성 미확인") +
                             " · " + getattr(evidence, "latency_summary_ko", "지연 미측정") +
                             " · 실제 방송/시청자 출력은 별도 실증 필요")
                         if evidence.verified_observation:

@@ -105,6 +105,18 @@ class OfficialChatObsEvidence:
         )
 
     @property
+    def same_session_observed_video_audio_timing_candidate(self) -> bool:
+        """실제 OBS 영상 획득 두 시점 사이와 음성·입 근접 표본을 결합.
+
+        프레임 자체의 내부 촬영 시간이나 방송 인코더·시청자 측
+        출력 시각은 재지 않았으므로 이 값도 관측 후보에 그친다.
+        """
+        return bool(
+            self.same_session_pcm_sample_pair_candidate
+            and getattr(self.obs, 'observed_video_brackets_audio_candidate', False)
+        )
+
+    @property
     def same_session_pcm_audio_video_candidate(self) -> bool:
         """공식 서버 PCM/float WAV 메타데이터와 실제 입·OBS 관측 결합.
 

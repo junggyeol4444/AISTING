@@ -134,6 +134,9 @@ class ActualObsProgramMediaObservation:
     # 승인받은 현재 OBS 프로그램 장면을 음성 미터 관찰 전후에
     # 각각 읽는다. 영상 프레임 원본은 저장하지 않고 메모리만 사용한다.
     after_audio_frame: ActualObsFrame | None = None
+    # OBS WebSocket 화면 취득 호출의 경계 시각(실제 프레임 표시 시각 아님).
+    first_frame_capture_completed_monotonic: float = 0.0
+    last_frame_capture_started_monotonic: float = 0.0
 
     @property
     def program_video_change_candidate(self) -> bool:
@@ -150,6 +153,25 @@ class ActualObsProgramMediaObservation:
             and self.frame.height == other.height
             and bool(self.frame.png_data) and bool(other.png_data)
             and self.frame.png_data != other.png_data
+        )
+
+    @property
+    def observed_video_brackets_audio_candidate(self) -> bool:
+        """실제 OBS 화면 2회 캡처 호출 사이에만 오디오 발생한 경우.
+
+        이 조건은 영상 변화의 원인/입 움직임 또는 시청자 송출을
+        증명하지 않는다. 두 화면 획득의 실제 경계만 대조한다.
+        """
+        audio = self.audio
+        began = self.first_frame_capture_completed_monotonic
+        ended = self.last_frame_capture_started_monotonic
+        first = audio.first_selected_signal_monotonic
+        last = audio.last_selected_signal_monotonic
+        return bool(
+            self.program_video_change_candidate
+            and all(type(t) in (int, float) and math.isfinite(t) and t > 0
+                    for t in (began, ended, first, last))
+            and began < first < last < ended
         )
 
     @property
@@ -1064,6 +1086,7 @@ class OfficialObsWebsocket:
             input_name=input_name, scene=before.scene,
         )
         frame = self.read_current_scene_frame(operator_approved=True)
+        first_frame_capture_completed = time.monotonic()
         after_frame = self.status()
         # If the scene switched while capturing the image, do not attach
         # subsequent audio evidence to a different program scene.
@@ -1077,6 +1100,7 @@ class OfficialObsWebsocket:
         )
         # 기존 장면·오디오 읽기 흐름은 보존한다. 운영자가 위 통합 검사로
         # 요청한 경우에만 두 번째 실제 프로그램 영상 프레임을 가져온다.
+        second_frame_capture_started = time.monotonic() if observe_program_motion else 0.0
         after_audio_frame = (
             self.read_current_scene_frame(operator_approved=True)
             if observe_program_motion else None
@@ -1099,6 +1123,8 @@ class OfficialObsWebsocket:
             before_audio_route=before_audio_route,
             after_audio_route=after_audio_route,
             after_audio_frame=after_audio_frame,
+            first_frame_capture_completed_monotonic=first_frame_capture_completed,
+            last_frame_capture_started_monotonic=second_frame_capture_started,
         )
         # The final status read has not happened yet. Check the provisional
         # path explicitly here, then require the final OBS state in the
