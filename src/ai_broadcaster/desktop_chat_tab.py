@@ -77,6 +77,8 @@ class LocalChatTab(ttk.Frame):
         self._pipeline_obs_password = tk.StringVar()
         self._pipeline_status = tk.StringVar(value="공식 Live2D·OBS 동시 실측 미실행")
         self._twitch_status = tk.StringVar(value="읽기 전용 미연결 · 로그인·채팅 송신 없음")
+        self._platform_health_status = tk.StringVar(value="플랫폼별 수신 상태: 미연결")
+        self._platform_health_updated_at = 0.0
         self._twitch_received = 0
         self._twitch_replied = 0
         self._twitch_ai_failures = 0
@@ -85,6 +87,9 @@ class LocalChatTab(ttk.Frame):
         # before Tk backlog. No extra text copy, logging or deduplication.
         self._ai_arrival_times: queue.SimpleQueue = queue.SimpleQueue()
         self._live_latency_metrics: LiveLatencyMetrics | None = None
+        # 4플랫폼별 실제 AI FIFO 등록·종결·대기/추론 시간을 분리한다.
+        # 본문/닉네임/계정 정보는 별도 저장하지 않으며 시청자 E2E와 다르다.
+        self._platform_live_metrics: dict[str, LiveLatencyMetrics] = {}
         # Reader EOF is distinct from operator Stop; keep accepted AI work alive.
         self._twitch_reader_finished = False
         self._twitch_reader_error = None
@@ -199,6 +204,9 @@ class LocalChatTab(ttk.Frame):
                         variable=self._official_live2d).pack(anchor="w", pady=(4, 0), before=model_row)
         ttk.Label(self, textvariable=self._twitch_status, wraplength=600).pack(
             anchor="w", pady=(2, 5), before=model_row)
+        ttk.Label(self, textvariable=self._platform_health_status,
+                  wraplength=650, justify="left").pack(
+            anchor="w", pady=(0, 6), before=model_row)
         # Programmatic restoration and mouse selection both update geometry.
         # A synthetic ComboboxSelected event alone is unreliable on Windows Tk.
         self._chat_platform.trace_add(
@@ -726,6 +734,8 @@ class LocalChatTab(ttk.Frame):
                                 parent=self)
             return
         self._twitch_session = session
+        self._platform_health_updated_at = 0.0
+        self._platform_health_status.set("플랫폼별 채팅방 입장 대기 · 수신/누락 미확인")
         self._twitch_received = 0
         self._twitch_replied = 0
         self._twitch_ai_failures = 0
@@ -736,7 +746,12 @@ class LocalChatTab(ttk.Frame):
         self._ai_arrival_times = queue.SimpleQueue()
         # The user's real Windows receiver gets fresh private diagnostics on
         # each connection; no message text or credentials enter this meter.
-        self._live_latency_metrics = LiveLatencyMetrics(time.monotonic())
+        started_at = time.monotonic()
+        self._live_latency_metrics = LiveLatencyMetrics(started_at)
+        self._platform_live_metrics = {
+            name: LiveLatencyMetrics(started_at)
+            for name in session._channels
+        }
         self._twitch_active_workers.add(session)
         # One worker calls the EXISTING local Ollama conversation in order.
         # No extra model service, intentional delay or platform chat posting.
@@ -749,7 +764,7 @@ class LocalChatTab(ttk.Frame):
         self._twitch_status.set(choice + " 채팅 연결 요청 중 · 실제 수신 대기")
         threading.Thread(target=self._work_twitch, args=(session,), daemon=True).start()
 
-    def _enqueue_public_event(self, session, kind, item, *, limit: int = 4096) -> None:
+    def _enqueue_public_event(self, session, kind, item, *, limit: int = 4096) -> bool:
         """Back-pressure on the network reader, never on the Tk GUI thread.
 
         No text/content deduplication and no rejected ordinary viewer chat.
@@ -767,7 +782,7 @@ class LocalChatTab(ttk.Frame):
                         if kind == "chat" else item)
         while not getattr(self, "_closed", False):
             if session is None or session._stop.is_set():
-                return
+                return False
             pending_ai = getattr(self, "_twitch_ai_inbox", None)
             # A pending Tk message can still flow into the AI FIFO. Do not
             # discard its data: pause reading until the serial AI worker
@@ -775,8 +790,9 @@ class LocalChatTab(ttk.Frame):
             ai_backlog = pending_ai.qsize() if pending_ai is not None else 0
             if self._results.qsize() < limit and ai_backlog < limit:
                 self._results.put(("twitch_scoped", (session, "twitch_" + kind, stamped_item)))
-                return
+                return True
             session._stop.wait(0.02)
+        return False
 
     def _work_twitch(self, session: TwitchReadOnlySession) -> None:
         try:
@@ -824,10 +840,16 @@ class LocalChatTab(ttk.Frame):
                         if math.isfinite(elapsed) and elapsed >= 0:
                             report("twitch_ai_latency", elapsed)
                             if getattr(self, "_live_latency_metrics", None) is not None:
+                                wait = max(0.0, model_started_at - accepted_at)
+                                inference = max(0.0, ended_at - model_started_at)
                                 report("twitch_ai_timing", (
-                                    max(0.0, model_started_at - accepted_at),
-                                    max(0.0, ended_at - model_started_at),
-                                    elapsed, attempt_failed))
+                                    wait, inference, elapsed, attempt_failed))
+                                if session is not None:
+                                    # 같은 실제 처리 사건을 출처 플랫폼별로
+                                    # 계수한다. 기존 전체 FIFO 측정도 유지.
+                                    report("twitch_ai_platform_timing", (
+                                        getattr(chat, "platform", "twitch"),
+                                        wait, inference, elapsed, attempt_failed))
                 if official:
                     # Official WebView2 owns the AI, GPT-SoVITS audio and Cubism
                     # model in ONE upstream conversation. Never duplicate this
@@ -888,6 +910,8 @@ class LocalChatTab(ttk.Frame):
         if meter is not None:
             meter.stop(time.monotonic())
             self._append("[로컬 수신 종료] " + meter.snapshot(time.monotonic()).describe())
+        for platform_meter in getattr(self, "_platform_live_metrics", {}).values():
+            platform_meter.stop(time.monotonic())
         if self._twitch_ai_inbox is not None:
             # Wake worker, but never submit further queued AI requests.
             self._twitch_ai_inbox.put(None)
@@ -897,6 +921,7 @@ class LocalChatTab(ttk.Frame):
         # connection's FIFO, counts or persona.
         self._twitch_session = None
         self._twitch_ai_inbox = None
+        self._platform_health_status.set("플랫폼별 수신 종료 · 시청자 무누락 여부 미확인")
         self._twitch_reader_finished = False
         if getattr(self, "_twitch_start", None) is not None:
             self._twitch_start.configure(state="normal")
@@ -922,9 +947,86 @@ class LocalChatTab(ttk.Frame):
             self._twitch_ai_inbox = None
         super().destroy()
 
+    def _update_platform_health(self) -> None:
+        """4플랫폼 실제 콜백/재연결/AI 적체를 Windows UI에서 읽기 전용 관찰."""
+        session = self._twitch_session
+        if session is None:
+            return
+        now = time.monotonic()
+        if now - self._platform_health_updated_at < 5:
+            return
+        read = getattr(session, "try_reconnect_snapshot", None)
+        snapshot = read() if callable(read) else None
+        if snapshot is None:
+            return
+        self._platform_health_updated_at = now
+        labels = {"twitch": "트위치", "chzzk": "치지직",
+                  "soop": "SOOP", "youtube": "유튜브"}
+        lines = []
+        for code, state in snapshot.items():
+            if state["수신기종료"]:
+                phase = "읽기종료"
+            elif state["현재공백"]:
+                phase = "재연결중"
+            elif state["채팅방입장"]:
+                phase = "입장확인"
+            else:
+                phase = "입장대기"
+            idle = state["마지막채팅콜백경과초"]
+            idle_label = ("채팅 콜백 아직 없음" if idle is None
+                          else f"마지막 콜백 {idle:.0f}초 전")
+            gap_p95 = state.get("완료공백최근p95초")
+            gap_label = ("복구 공백 p95 미측정" if gap_p95 is None
+                         else f"최근 복구 공백 p95 {gap_p95:.1f}초")
+            observed_ratio = state.get("관측입장시간비율")
+            ratio_label = ("입장 시간비율 미측정" if observed_ratio is None
+                           else f"입장 관측비율 {observed_ratio * 100:.1f}%")
+            platform_meter = getattr(
+                self, "_platform_live_metrics", {}).get(code)
+            if platform_meter is not None:
+                ai = platform_meter.snapshot(now)
+                p95 = ("미측정" if ai.total_p95 is None
+                       else f"{ai.total_p95:.2f}초")
+                wait_p95 = ("미측정" if ai.wait_p95 is None
+                            else f"{ai.wait_p95:.2f}초")
+                model_p95 = ("미측정" if ai.inference_p95 is None
+                             else f"{ai.inference_p95:.2f}초")
+                ai_status = (
+                    f" / AI 등록 {ai.accepted}건 / 종결 {ai.completed}건"
+                    f" / AI 실패 {ai.failed}건 / 미종결 {ai.unterminated}건"
+                    f" / 로컬 3초 초과 {ai.over_three_seconds}건"
+                    f" / 최근 p95 {p95}(대기 {wait_p95}, 처리 {model_p95})")
+            else:
+                ai_status = " / AI 플랫폼별 실측 미시작"
+            lines.append(
+                f"{labels.get(code, code)} {phase} · 콜백 {state['콜백수신']}건"
+                f" / GUI 전달 {state['콜백전달완료']}건"
+                f" / 전달 오류 {state['콜백전달오류']}건"
+                f" / 중단 {state['콜백전달중단']}건"
+                f" / 전달 최대 {state['콜백전달최대초']:.2f}초"
+                f" / 재연결 {state['재연결완료']}회"
+                f" / 읽기 시도 {state['실제읽기시도']}회"
+                f" / 읽기 실패 {state['실제읽기실패']}회"
+                f" / 입장 관측 {state['입장관측누적초']:.0f}초"
+                f" / 관측 공백 {state['관측공백초']:.1f}초"
+                f" / 완료 공백 최장 {state['완료공백최장초']:.1f}초"
+                f" / 복구 공백 3초 초과 {state['완료공백3초초과']}건"
+                f" / {gap_label} / {ratio_label} / {idle_label}"
+                + ai_status
+            )
+        inbox = self._twitch_ai_inbox
+        pending = inbox.qsize() if inbox is not None else 0
+        self._platform_health_status.set(
+            "플랫폼별 실제 수신 진단 (무누락·24시간·시청자 지연 미검증):\n"
+            + "\n".join(lines)
+            + f"\nGUI 이벤트 대기 {self._results.qsize()}건"
+            + f" / 로컬 AI FIFO 대기 {pending}건"
+        )
+
     def _poll(self) -> None:
         if self._closed:
             return
+        self._update_platform_health()
         try:
             processed = 0
             while True:
@@ -999,6 +1101,11 @@ class LocalChatTab(ttk.Frame):
                         # Every incoming message, including duplicates, is
                         # queued regardless of the status of previous replies.
                         if self._twitch_ai_inbox is not None:
+                            platform = getattr(payload, "platform", "twitch")
+                            platform_meter = getattr(
+                                self, "_platform_live_metrics", {}).get(platform)
+                            if platform_meter is not None:
+                                platform_meter.accept()
                             arrivals = getattr(self, "_ai_arrival_times", None)
                             if arrivals is not None:
                                 arrivals.put(accepted_at)
@@ -1064,6 +1171,15 @@ class LocalChatTab(ttk.Frame):
                         self._twitch_status.set(
                             "AI 처리 실패 " + str(self._twitch_ai_failures)
                             + "건 · 성공 응답으로 계산하지 않음")
+                    elif kind == "twitch_ai_platform_timing":
+                        # 실제 단일 AI FIFO에서 종결된 플랫폼별 사건만 계수.
+                        # GUI 결과 처리 이전 대기나 서버 게시 누락은 증명하지 않는다.
+                        code, wait, inference, total, failed = payload
+                        platform_meter = getattr(
+                            self, "_platform_live_metrics", {}).get(code)
+                        if platform_meter is not None:
+                            platform_meter.terminal(
+                                wait, inference, total, failed)
                     elif kind == "twitch_ai_timing":
                         # Real GUI receiver's local FIFO wait and AI time,
                         # no inferred OBS/video/audience delivery timestamps.

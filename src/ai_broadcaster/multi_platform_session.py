@@ -8,6 +8,7 @@ from __future__ import annotations
 import math
 import threading
 import time
+from collections import deque
 
 from .multiplatform_readonly import (
     PlatformChat, ChzzkReadOnlySession, SoopReadOnlySession,
@@ -34,7 +35,8 @@ class MultiPlatformReadOnlySession:
         self._stop = threading.Event()
         self._stop_started_at = None
         self._run_lock = threading.Lock()
-        self._emit_lock = threading.Lock()
+        # GUI 상태 스냅샷은 동일 스레드 재진입을 허용한다.
+        self._emit_lock = threading.RLock()
         self._started_once = False
         self._running = False
         self._emit = emit
@@ -50,42 +52,91 @@ class MultiPlatformReadOnlySession:
         self._callback_chat_count = {code: 0 for code in channels}
         self._forwarded_chat_count = {code: 0 for code in channels}
         self._callback_error_count = {code: 0 for code in channels}
+        self._callback_locks = {code: threading.Lock() for code in channels}
+        self._callback_emit_total_seconds = {code: 0.0 for code in channels}
+        self._callback_emit_max_seconds = {code: 0.0 for code in channels}
+        self._callback_aborted_count = {code: 0 for code in channels}
+        # 읽기 루프가 실제 시도/예외를 관측한 횟수만 기록한다.
+        # 채팅이 조용하다는 이유로 끊김이나 무누락을 추정하지 않는다.
+        self._reader_attempts = {code: 0 for code in channels}
+        self._reader_failures = {code: 0 for code in channels}
+        self._last_reader_failure_at: dict[str, float] = {}
+        self._room_ready = {code: False for code in channels}
+        self._last_ready_at = {}
+        self._last_chat_at = {}
+        # 실제 ready 신호가 확인된 기간만 누적한다. 실제 네트워크
+        # 무누락 또는 24시간 송출 성공과는 다른 읽기 전용 지표다.
+        self._ready_interval_started: dict[str, float] = {}
+        self._ready_observed_seconds = {code: 0.0 for code in channels}
+        # 실제 재연결 완료 공백의 최근 512개 표본만 보존한다.
+        # 채팅 본문, 닉네임, 토큰 및 소켓 내용은 저장하지 않는다.
+        self._completed_gap_samples = {
+            code: deque(maxlen=512) for code in channels
+        }
+        self._completed_gap_max_seconds = {code: 0.0 for code in channels}
+        self._completed_gap_over_three = {code: 0 for code in channels}
+        self._session_started_at: float | None = None
 
         def callback_for(code):
             def callback(kind, item):
-                with self._emit_lock:
+                # 동일 플랫폼 이벤트 순서만 직렬화하고, 다른 플랫폼의
+                # GUI 전달 대기까지 공유 상태 잠금으로 묶지 않는다.
+                with self._callback_locks[code]:
                     if self._stop.is_set():
-                        return
+                        return False
                     if kind == "chat":
                         if code == "twitch" and isinstance(item, TwitchChatLine):
                             item = PlatformChat(item.channel, item.sender, item.text, code)
                         if not isinstance(item, PlatformChat) or item.platform != code:
                             raise ValueError("채팅 플랫폼 식별자가 올바르지 않습니다.")
-                        self._callback_chat_count[code] += 1
+                        with self._emit_lock:
+                            self._callback_chat_count[code] += 1
+                            self._last_chat_at[code] = time.monotonic()
+                        started = time.monotonic()
                         try:
-                            self._emit("chat", item)
+                            accepted = self._emit("chat", item)
                         except Exception:
-                            self._callback_error_count[code] += 1
+                            with self._emit_lock:
+                                self._callback_error_count[code] += 1
                             raise
                         else:
-                            self._forwarded_chat_count[code] += 1
+                            with self._emit_lock:
+                                if accepted is False:
+                                    self._callback_aborted_count[code] += 1
+                                else:
+                                    self._forwarded_chat_count[code] += 1
+                        finally:
+                            elapsed = max(0.0, time.monotonic() - started)
+                            with self._emit_lock:
+                                self._callback_emit_total_seconds[code] += elapsed
+                                self._callback_emit_max_seconds[code] = max(
+                                    self._callback_emit_max_seconds[code], elapsed)
                     elif kind in ("ready", "connected"):
-                        # 실제 채팅방 준비(ready) 이전의 소켓 연결(connected)은
-                        # 공백 종료로 계산하지 않는다. 소스/API 토큰은 출력 금지.
-                        reconnect_started = (
-                            self._disconnect_started.pop(code, None)
-                            if kind == "ready" else None
-                        )
-                        if reconnect_started is None:
+                        with self._emit_lock:
+                            if kind == "ready":
+                                ready_at = time.monotonic()
+                                self._room_ready[code] = True
+                                self._last_ready_at[code] = ready_at
+                                self._ready_interval_started.setdefault(code, ready_at)
+                                disconnected_at = self._disconnect_started.pop(code, None)
+                            else:
+                                disconnected_at = None
+                            if disconnected_at is not None:
+                                gap = max(0.0, time.monotonic() - disconnected_at)
+                                self._reconnect_count[code] += 1
+                                self._observed_gap_seconds[code] += gap
+                                self._completed_gap_samples[code].append(gap)
+                                self._completed_gap_max_seconds[code] = max(
+                                    self._completed_gap_max_seconds[code], gap)
+                                self._completed_gap_over_three[code] += int(gap > 3)
+                            else:
+                                gap = None
+                        if gap is None:
                             self._emit(kind, code + " 공개 채팅 연결")
                         else:
-                            gap = max(0.0, time.monotonic() - reconnect_started)
-                            self._reconnect_count[code] += 1
-                            self._observed_gap_seconds[code] += gap
                             self._emit(
                                 "ready", code + " 공개 채팅 재연결 완료 · 관측된 수신 공백 "
-                                + f"{gap:.2f}초 · 누락 여부는 실증 불가"
-                            )
+                                + f"{gap:.2f}초 · 누락 여부는 실증 불가")
                     elif kind == "error":
                         self._emit("error", code + " 공개 채팅 연결 오류")
             return callback
@@ -130,6 +181,28 @@ class MultiPlatformReadOnlySession:
             return {
                 code: {
                     "재연결완료": self._reconnect_count[code],
+                    "완료공백최근표본": len(self._completed_gap_samples[code]),
+                    "완료공백최장초": round(self._completed_gap_max_seconds[code], 3),
+                    "완료공백3초초과": self._completed_gap_over_three[code],
+                    "완료공백최근p95초": (
+                        round(sorted(self._completed_gap_samples[code])[
+                            math.ceil(len(self._completed_gap_samples[code]) * 0.95) - 1
+                        ], 3) if self._completed_gap_samples[code] else None
+                    ),
+                    "관측입장시간비율": (
+                        round(min(1.0, max(0.0, (
+                            self._ready_observed_seconds[code]
+                            + (max(0.0, min(now, self._stop_started_at
+                                           if self._stop_started_at is not None else now)
+                                   - self._ready_interval_started[code])
+                               if code in self._ready_interval_started else 0.0)
+                        ) / max(0.001, (
+                            min(now, self._stop_started_at
+                                if self._stop_started_at is not None else now)
+                            - self._session_started_at
+                        )))), 5)
+                        if self._session_started_at is not None else None
+                    ),
                     "관측공백초": round(
                         self._observed_gap_seconds[code]
                         + max(0.0, now - self._disconnect_started[code])
@@ -139,9 +212,44 @@ class MultiPlatformReadOnlySession:
                     "콜백수신": self._callback_chat_count[code],
                     "콜백전달완료": self._forwarded_chat_count[code],
                     "콜백전달오류": self._callback_error_count[code],
+                    "콜백전달중단": self._callback_aborted_count[code],
+                    "콜백전달누적초": round(self._callback_emit_total_seconds[code], 6),
+                    "콜백전달최대초": round(self._callback_emit_max_seconds[code], 6),
+                    "실제읽기시도": self._reader_attempts[code],
+                    "실제읽기실패": self._reader_failures[code],
+                    "마지막읽기실패경과초": round(now - self._last_reader_failure_at[code], 3)
+                    if code in self._last_reader_failure_at else None,
+                    "입장관측누적초": round(
+                        self._ready_observed_seconds[code]
+                        + (max(0.0, min(now, self._stop_started_at
+                                        if self._stop_started_at is not None else now)
+                               - self._ready_interval_started[code])
+                           if code in self._ready_interval_started else 0.0), 3),
+                    "채팅방입장": self._room_ready[code] and not self._stop.is_set(),
+                    "마지막입장경과초": round(now - self._last_ready_at[code], 3)
+                    if code in self._last_ready_at else None,
+                    "마지막채팅콜백경과초": round(now - self._last_chat_at[code], 3)
+                    if code in self._last_chat_at else None,
+                    "수신기종료": code in self._finished_readers,
                 }
                 for code in self._channels
             }
+
+    def try_reconnect_snapshot(self):
+        """GUI 대기열이 많을 때 상태 잠금을 기다리지 않고 다음 주기 재시도."""
+        if not self._emit_lock.acquire(blocking=False):
+            return None
+        try:
+            return self.reconnect_snapshot()
+        finally:
+            self._emit_lock.release()
+
+    def _end_ready_interval_locked(self, code: str, ended_at: float) -> None:
+        """_emit_lock 보유 중에 입장 관측 구간을 중복 없이 종료."""
+        started = self._ready_interval_started.pop(code, None)
+        if started is not None:
+            self._ready_observed_seconds[code] += max(0.0, ended_at - started)
+        self._room_ready[code] = False
 
     def stop(self) -> None:
         """Close every transport without blocking Tk on a broken reader."""
@@ -150,6 +258,9 @@ class MultiPlatformReadOnlySession:
                 return
             self._stop_started_at = time.monotonic()
             self._stop.set()
+        with self._emit_lock:
+            for code in self._channels:
+                self._end_ready_interval_locked(code, self._stop_started_at)
         def close_one(reader):
             try:
                 reader.stop()
@@ -187,6 +298,8 @@ class MultiPlatformReadOnlySession:
             self._running = True
             self._started_once = True
         started_at = time.monotonic()
+        with self._emit_lock:
+            self._session_started_at = started_at
         run_deadline = (started_at + max_seconds
                         if max_seconds is not None else None)
         try:
@@ -195,6 +308,8 @@ class MultiPlatformReadOnlySession:
                     failures = 0
                     while not self._stop.is_set():
                         connected_at = time.monotonic()
+                        with self._emit_lock:
+                            self._reader_attempts[code] += 1
                         try:
                             reader.run(max_seconds=max_seconds)
                             # 무기한 수신기가 Stop 없이 끝나면 연결 공백으로 처리한다.
@@ -205,6 +320,9 @@ class MultiPlatformReadOnlySession:
                         except Exception as exc:
                             if self._stop.is_set():
                                 break
+                            with self._emit_lock:
+                                self._reader_failures[code] += 1
+                                self._last_reader_failure_at[code] = time.monotonic()
                             # 전송 오류 뒤 다음 수신기를 만들기 전에 실패한
                             # 소켓/네트워크 세션을 해제한다. 사용자 전체 Stop과
                             # 달리 다른 3개 수신기의 처리는 계속된다.
@@ -215,11 +333,15 @@ class MultiPlatformReadOnlySession:
                                 pass
                             with self._emit_lock:
                                 if not self._stop.is_set():
+                                    self._end_ready_interval_locked(
+                                        code, time.monotonic())
                                     self._disconnect_started.setdefault(
                                         code, time.monotonic())
-                                    # Do not reveal transport credentials.
-                                    self._emit("error", code + " 읽기 실패 (" +
-                                               type(exc).__name__ + ")")
+                            # 오류 알림은 플랫폼 공용 상태 잠금 밖에서
+                            # GUI 큐로 전달한다. 다른 수신기의 진행을 막지 않는다.
+                            if not self._stop.is_set():
+                                self._emit("error", code + " 읽기 실패 (" +
+                                           type(exc).__name__ + ")")
                             # Finite Windows probes must not retry after failure.
                             if max_seconds is not None:
                                 break
@@ -228,14 +350,12 @@ class MultiPlatformReadOnlySession:
                             failures += 1
                             # 장시간 장애 중에도 운영자가 Stop할 때까지 재연결한다.
                             if failures == 4 or failures % 30 == 0:
-                                with self._emit_lock:
-                                    if not self._stop.is_set():
-                                        self._emit("error", code +
-                                                   " 재연결 3회 이상 실패 · 수신 공백 지속 · 재시도 중")
-                            with self._emit_lock:
                                 if not self._stop.is_set():
                                     self._emit("error", code +
-                                               " 수신 연결 끊김 · 재연결 대기 중 (공백 가능)")
+                                               " 재연결 3회 이상 실패 · 수신 공백 지속 · 재시도 중")
+                            if not self._stop.is_set():
+                                self._emit("error", code +
+                                           " 수신 연결 끊김 · 재연결 대기 중 (공백 가능)")
                             # 재연결 횟수가 커져도 거대한 정수 계산을 피한다.
                             if self._stop.wait(min(2 ** min(failures - 1, 2), 4)):
                                 break
@@ -246,10 +366,9 @@ class MultiPlatformReadOnlySession:
                                     replacement = self._factories[code](
                                         self._channels[code], self._callbacks[code])
                                 except Exception as reconnect_error:
-                                    with self._emit_lock:
-                                        if not self._stop.is_set():
-                                            self._emit("error", code + " 재연결 준비 실패 (" +
-                                                       type(reconnect_error).__name__ + ")")
+                                    if not self._stop.is_set():
+                                        self._emit("error", code + " 재연결 준비 실패 (" +
+                                                   type(reconnect_error).__name__ + ")")
                                     if self._stop.wait(min(2 ** min(failures - 1, 2), 4)):
                                         break
                             if replacement is None:
@@ -267,18 +386,15 @@ class MultiPlatformReadOnlySession:
                     # continue. Never silently imply all four remain online.
                     if not self._stop.is_set():
                         with self._emit_lock:
-                            if not self._stop.is_set():
-                                self._finished_readers.add(code)
-                                remaining = len(self._readers) - len(self._finished_readers)
-                                # Do not claim continued chat reception merely
-                                # because a reader was selected at startup.
-                                if remaining:
-                                    detail = (" · 나머지 " + str(remaining)
-                                              + "개 채널은 상태 개별 확인")
-                                else:
-                                    detail = " · 선택한 모든 채널의 읽기 작업 종료"
-                                self._emit("reader_stopped",
-                                           code + " 채팅 수신 종료" + detail)
+                            self._finished_readers.add(code)
+                            self._end_ready_interval_locked(code, time.monotonic())
+                            remaining = len(self._readers) - len(self._finished_readers)
+                        # 마지막 수신기 종료 알림도 상태 잠금 밖에서 전달한다.
+                        if not self._stop.is_set():
+                            detail = (f" · 나머지 {remaining}개 채널은 상태 개별 확인"
+                                      if remaining else " · 선택한 모든 채널의 읽기 작업 종료")
+                            self._emit("reader_stopped",
+                                       code + " 채팅 수신 종료" + detail)
             workers = [
                 threading.Thread(target=read_one, args=(code, reader),
                                  name="aisting-public-" + code, daemon=True)
