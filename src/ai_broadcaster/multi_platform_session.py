@@ -72,6 +72,8 @@ class MultiPlatformReadOnlySession:
         # 무누락 또는 24시간 송출 성공과는 다른 읽기 전용 지표다.
         self._ready_interval_started: dict[str, float] = {}
         self._ready_observed_seconds = {code: 0.0 for code in channels}
+        self._max_ready_streak_seconds = {code: 0.0 for code in channels}
+        self._ended_ready_streak_24h_count = {code: 0 for code in channels}
         # 실제 재연결 완료 공백의 최근 512개 표본만 보존한다.
         # 채팅 본문, 닉네임, 토큰 및 소켓 내용은 저장하지 않는다.
         self._completed_gap_samples = {
@@ -229,6 +231,18 @@ class MultiPlatformReadOnlySession:
                     "실제읽기실패": self._reader_failures[code],
                     "마지막읽기실패경과초": round(now - self._last_reader_failure_at[code], 3)
                     if code in self._last_reader_failure_at else None,
+                    "최장연속입장관측초": round(max(
+                        self._max_ready_streak_seconds[code],
+                        max(0.0, min(now, self._stop_started_at
+                                     if self._stop_started_at is not None else now)
+                            - self._ready_interval_started[code])
+                        if code in self._ready_interval_started else 0.0
+                    ), 3),
+                    "24시간연속입장관측완료구간": (
+                        self._ended_ready_streak_24h_count[code]
+                        + int(code in self._ready_interval_started and
+                              max(0.0, now - self._ready_interval_started[code]) >= 86400)
+                    ),
                     "입장관측누적초": round(
                         self._ready_observed_seconds[code]
                         + (max(0.0, min(now, self._stop_started_at
@@ -262,7 +276,14 @@ class MultiPlatformReadOnlySession:
         """_emit_lock 보유 중에 입장 관측 구간을 중복 없이 종료."""
         started = self._ready_interval_started.pop(code, None)
         if started is not None:
-            self._ready_observed_seconds[code] += max(0.0, ended_at - started)
+            duration = max(0.0, ended_at - started)
+            self._ready_observed_seconds[code] += duration
+            self._max_ready_streak_seconds[code] = max(
+                self._max_ready_streak_seconds[code], duration)
+            # 이 값은 오직 ready 상태 관측시간이며 실제 패킷 무손실,
+            # 방송/인코더 출력, 라이브 시청자 수신 보증이 아니다.
+            if duration >= 86400:
+                self._ended_ready_streak_24h_count[code] += 1
         self._room_ready[code] = False
 
     def stop(self) -> None:
