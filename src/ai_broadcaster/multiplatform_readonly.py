@@ -170,7 +170,13 @@ class ReadOnlySession:
             for item in parser(data, self.channel):
                 if self._stop.is_set():
                     return
-                self.emit("chat", item)
+                # 콜백이 명시적으로 False를 반환하면 AI 큐가 해당 채팅을
+                # 수용하지 않은 것이다. 성공이나 무누락으로 위장하지 않고
+                # 현재 소켓 읽기 작업을 종료해 플랫폼별 장애로 표시한다.
+                if self.emit("chat", item) is False:
+                    raise RuntimeError(
+                        "채팅 이벤트가 로컬 AI 큐에 수용되지 않아 읽기를 중단했습니다."
+                    )
 
 
 class ChzzkReadOnlySession(ReadOnlySession):
@@ -240,7 +246,10 @@ class ChzzkReadOnlySession(ReadOnlySession):
             for item in startup_chats:
                 if self._stop.is_set():
                     return
-                self.emit("chat", item)
+                if self.emit("chat", item) is False:
+                    raise RuntimeError(
+                        "치지직 채팅 이벤트가 AI 큐에 수용되지 않았습니다."
+                    )
             def parser(data, channel):
                 frame = json.loads(data)
                 if frame.get("cmd") == 0:
@@ -638,10 +647,15 @@ class YouTubeReadOnlySession(ReadOnlySession):
                 for item in chats:
                     if self._stop.is_set():
                         break
-                    self.emit("chat", item)
+                    if self.emit("chat", item) is False:
+                        # 정상적으로 UI/AI 큐에 등록되지 않았으면 현 페이지
+                        # 다음 토큰과 메시지 ID를 확정하면 안 된다.
+                        raise RuntimeError(
+                            "유튜브 채팅 수신 큐 전달이 완료되지 않아 페이지를 보존합니다."
+                        )
                 if self._stop.is_set():
                     break
-                # emit()이 정상 반환한 뒤에만 전달 완료로 기록한다.
+                # 실제 AI 큐 수용 확인 후에만 수신 메시지·페이지를 기록.
                 resume.delivered_event(message_id)
             if self._stop.is_set():
                 break

@@ -227,8 +227,11 @@ class TwitchReadOnlySession:
                     else:
                         chat = parse_irc_chat_line(line, self.channel)
                         if chat is not None:
+                            if self.emit("chat", chat) is False:
+                                raise TwitchReadError(
+                                    "트위치 채팅이 AI 수신 큐에 수용되지 않았습니다."
+                                )
                             received += 1
-                            self.emit("chat", chat)
                 if not self._stop.is_set() and len(buffer) > 65536:
                     raise TwitchReadError("트위치 미완성 채팅 줄 크기 한도 초과")
             if not ready and not self._stop.is_set():
