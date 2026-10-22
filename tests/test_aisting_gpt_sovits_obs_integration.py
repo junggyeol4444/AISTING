@@ -206,7 +206,7 @@ class VerifyRealVoiceObsTests(unittest.TestCase):
             _client=client,
             connect=lambda:SimpleNamespace(version="32.2.2",scene="Scene",streaming=False),
             status=lambda:SimpleNamespace(scene="Scene",streaming=True))
-        voice=SimpleNamespace(wav_data=b"RIFF"+b"x"*60)
+        voice=SimpleNamespace(sample_rate=24000, channels=1, frame_count=80, wav_data=b"RIFF"+b"x"*60)
         with patch("ai_broadcaster.original_plan_voice_obs_bridge.OfficialObsWebsocket",
                    return_value=obs), patch(
                 "ai_broadcaster.original_plan_voice_obs_bridge.synthesize_local_gpt_sovits",
@@ -230,7 +230,7 @@ class VerifyRealVoiceObsTests(unittest.TestCase):
             _client=Client(),
             connect=lambda:SimpleNamespace(version="32.2.2",scene="Scene A",streaming=False),
             status=lambda:SimpleNamespace(scene="Scene B",streaming=False))
-        voice=SimpleNamespace(wav_data=b"RIFF"+b"x"*60)
+        voice=SimpleNamespace(sample_rate=24000, channels=1, frame_count=80, wav_data=b"RIFF"+b"x"*60)
         with patch("ai_broadcaster.original_plan_voice_obs_bridge.OfficialObsWebsocket",
                    return_value=obs), patch(
                 "ai_broadcaster.original_plan_voice_obs_bridge.synthesize_local_gpt_sovits",
@@ -265,7 +265,7 @@ class VerifyRealVoiceObsTests(unittest.TestCase):
             connect=lambda:SimpleNamespace(version="32.2.2",scene="Scene",streaming=False),
             status=lambda:next(states),
             read_actual_audio_meters=lambda **kwargs:read_meter.append(kwargs))
-        voice=SimpleNamespace(wav_data=b"RIFF"+b"x"*60)
+        voice=SimpleNamespace(sample_rate=24000, channels=1, frame_count=80, wav_data=b"RIFF"+b"x"*60)
         with patch("ai_broadcaster.original_plan_voice_obs_bridge.OfficialObsWebsocket",
                    return_value=obs), patch(
                 "ai_broadcaster.original_plan_voice_obs_bridge.synthesize_local_gpt_sovits",
@@ -487,7 +487,7 @@ class VerifyRealVoiceObsTests(unittest.TestCase):
             _client=client,
             connect=lambda:SimpleNamespace(version="32.0",scene="Scene",streaming=False),
             status=lambda:SimpleNamespace(scene="Scene",streaming=False))
-        voice=SimpleNamespace(wav_data=b"RIFF"+b"x"*60)
+        voice=SimpleNamespace(sample_rate=24000, channels=1, frame_count=80, wav_data=b"RIFF"+b"x"*60)
         with patch("ai_broadcaster.original_plan_voice_obs_bridge.OfficialObsWebsocket",
                    return_value=obs), patch(
                 "ai_broadcaster.original_plan_voice_obs_bridge.synthesize_local_gpt_sovits",
@@ -516,7 +516,7 @@ class VerifyRealVoiceObsTests(unittest.TestCase):
             _client=Client(),
             connect=lambda:SimpleNamespace(version="32.0",scene="Scene",streaming=False),
             status=lambda:SimpleNamespace(scene="Scene",streaming=False))
-        voice=SimpleNamespace(wav_data=b"RIFF"+b"x"*60)
+        voice=SimpleNamespace(sample_rate=24000, channels=1, frame_count=80, wav_data=b"RIFF"+b"x"*60)
         with patch("ai_broadcaster.original_plan_voice_obs_bridge.OfficialObsWebsocket",
                    return_value=obs), patch(
                 "ai_broadcaster.original_plan_voice_obs_bridge.synthesize_local_gpt_sovits",
@@ -540,7 +540,7 @@ class VerifyRealVoiceObsTests(unittest.TestCase):
             _client=Client(),
             connect=lambda:SimpleNamespace(version="32.0",scene="Scene",streaming=False),
             status=lambda:SimpleNamespace(scene="Scene",streaming=False))
-        voice=SimpleNamespace(wav_data=b"RIFF"+b"x"*60)
+        voice=SimpleNamespace(sample_rate=24000, channels=1, frame_count=80, wav_data=b"RIFF"+b"x"*60)
         with patch("ai_broadcaster.original_plan_voice_obs_bridge.OfficialObsWebsocket",
                    return_value=obs), patch(
                 "ai_broadcaster.original_plan_voice_obs_bridge.synthesize_local_gpt_sovits",
@@ -581,7 +581,7 @@ class VerifyRealVoiceObsTests(unittest.TestCase):
             _client=Client(),
             connect=lambda:SimpleNamespace(version="32",scene="Scene",streaming=False),
             status=lambda:SimpleNamespace(scene="Scene",streaming=False))
-        voice=SimpleNamespace(wav_data=b"RIFF"+b"x"*60)
+        voice=SimpleNamespace(sample_rate=24000, channels=1, frame_count=80, wav_data=b"RIFF"+b"x"*60)
         with patch("ai_broadcaster.original_plan_voice_obs_bridge.OfficialObsWebsocket",
                    return_value=obs), patch(
                 "ai_broadcaster.original_plan_voice_obs_bridge.synthesize_local_gpt_sovits",

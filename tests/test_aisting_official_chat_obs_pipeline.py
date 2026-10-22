@@ -70,7 +70,9 @@ class FullPipelineContracts(unittest.TestCase):
         obs.lipsync_sample_finished = threading.Event()
         def sampled_lip(*args, **kwargs):
             self.assertTrue(obs.probe_started.wait(2))
-            time.sleep(0.005)
+            # Windows OBS 미터 이벤트가 같은 positive 시간 구간을
+            # 갖도록 충분한 실제 단조시계 간격을 확보한다.
+            time.sleep(0.065)
             moment = time.monotonic()
             obs.lipsync_sample_finished.set()
             return SimpleNamespace(verified_signal=True,
@@ -322,7 +324,9 @@ class FullPipelineContracts(unittest.TestCase):
         monitor.lipsync_sample_finished = threading.Event()
         def sampled_lip(*args, **kwargs):
             self.assertTrue(monitor.probe_started.wait(2))
-            time.sleep(0.005)
+            # Windows OBS 미터 이벤트가 같은 positive 시간 구간을
+            # 갖도록 충분한 실제 단조시계 간격을 확보한다.
+            time.sleep(0.065)
             moment = time.monotonic()
             monitor.lipsync_sample_finished.set()
             return SimpleNamespace(verified_signal=True,
@@ -375,6 +379,8 @@ class FullPipelineContracts(unittest.TestCase):
                 second_window.wait(2),
                 "The OBS monitor stopped before delayed Korean TTS started",
             )
+            # 두 번째 OBS 미터의 실제 활성 구간 안에 입 표본을 유지.
+            time.sleep(0.065)
             moment = time.monotonic()
             slow_lip_finished.set()
             return SimpleNamespace(verified_signal=True,

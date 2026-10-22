@@ -23,3 +23,10 @@
 - 이 96절 코드 반영 HEAD의 전체 회귀 및 Windows 네이티브 EXE/GUI·실제 OBS 읽기·실제 Ollama·4플랫폼 공개 읽기 CI를 반드시 확인하고, 실패가 있으면 소스 고쳐 전체 재검증. GitHub Actions가 아직 대기/진행 중이면 성공이라 주장하지 않음.
 - 기존 공식 Live2D Cubism과 GPT-SoVITS의 **같은 실제 발화** OBS 영상·오디오 결과/증거, 4플랫폼 **실제 시청자** 수백 명 처리, 24시간 실제 송출 안정성, E2E 시청자 1~3초는 미실증/미완료. 별개 WAV→OBS 입력 미터 단독 테스트는 Cubism 립싱크 증명이 아님. 기존 모든 인계·원본 코드/설정/캐릭터/SQLite 유지.
 - 다음 97절에서는 최신 96절 main과 전체 Windows CI 오류부터 수정, 실제 GPT-SoVITS→공식 Cubism→OBS 연결 미완료 및 FIFO 병목을 기존 소스에서 계속 개발·재검증·원문 누적.
+
+
+### 96절 첫 Windows 전체 검사 실패와 회귀 테스트 수정
+- 최초 96절 코드 HEAD `6935e202c163825c4f20061df19e51110d44781a` [Windows CI 39720448453](https://github.com/junggyeol4444/AISTING/actions/runs/39720448453)의 `windows-exe` 작업 **실패**. Windows 원래 테스트 322건 중 **7개 error, 3개 failure**; 7개는 과거 `test_aisting_gpt_sovits_obs_integration.py`에서 TTS 모의 응답이 `wav_data`만 제공하고 새 WAV 길이 계산에 필요한 `sample_rate`와 `frame_count`를 제공하지 않아 `AttributeError`가 발생한 테스트 입력 계약 불일치. 3개는 `test_aisting_official_chat_obs_pipeline.py`의 Windows 모의 립싱크·OBS 동시 **positive** 샘플이 동시 시계 간격을 짧게 잡아 `verified_observation=False`가 된 스레드/시간 경합. 실제 모델/WAV/OBS 장치에 연결한 실사용 검사 오류라고 주장하지 않음. 첫 실패 기록 유지, 결과 은폐 금지.
+- 이번 수정: `tests/test_aisting_gpt_sovits_obs_integration.py` 기존 7개 모의 WAV 응답 모두 `sample_rate=24000, channels=1, frame_count=80`을 추가하여 원래 음성 반환 데이터 계약을 충족. 기존 스트림 시작·장면 변경·녹화 상태·생성/정리 실패 시 기존 OBS 소스를 건드리지 않는 안전성 검사를 삭제하지 않고 지속 실행.
+- `tests/test_aisting_official_chat_obs_pipeline.py` positive 구간 2개에서 OBS 동시 미터+입 샘플 시작 이벤트/립 종료 이벤트 동기화를 유지하면서 65ms의 **테스트 안 모의 화자 구간**을 확보하고, 느린 2차 OBS 관찰 중 동일 65ms 화자 구간을 확보. 음성 길이·실제 모델 출력·OBS 설정·FIFO·동일 발화 strict overlap **운영 코드 변경 없음**. 단위검사에서의 짧은 모의 시간 조정만 포함.
+- 위 수정 `main` 안전한 fast-forward 반영 후 **같은 HEAD 전체 회귀 및 Windows EXE/GUI·OBS 실제 읽기·Twitch/치지직/SOOP 읽기·로컬 Ollama CI** 최종 확인 필요. 성공 확인 전 Windows 96절 전체 성공이라 기록하지 않음. 무단 로그인/송출/녹화/모델 학습·다른 저장소/예약/Drive 변경 없음.
