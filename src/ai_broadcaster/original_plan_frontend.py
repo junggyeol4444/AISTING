@@ -374,6 +374,9 @@ class OfficialLipSyncEvidence:
     official_pcm_header_total_seconds: float = 0.0
     official_pcm_first_sample_rate: int | None = None
     official_pcm_first_channels: int | None = None
+    official_pcm_mouth_window_samples: int = 0
+    official_pcm_mouth_first_monotonic: float = 0.0
+    official_pcm_mouth_last_monotonic: float = 0.0
 
     @property
     def verified_signal(self) -> bool:
@@ -458,9 +461,12 @@ def _parse_official_lipsync_evidence(reply: dict) -> OfficialLipSyncEvidence:
         pcm_seconds = reply.get('official_pcm_header_total_seconds', 0.0)
         pcm_rate = reply.get('official_pcm_first_sample_rate')
         pcm_channels = reply.get('official_pcm_first_channels')
+        pcm_mouth = reply.get('official_pcm_mouth_window_samples', 0)
+        pcm_mouth_first = reply.get('official_pcm_mouth_first_monotonic', 0.0)
+        pcm_mouth_last = reply.get('official_pcm_mouth_last_monotonic', 0.0)
         if any(type(x) is not int or not 0 <= x <= 4096
                for x in (wav_events, audio_events, matched, mismatched,
-                         pcm_candidates, pcm_unsupported)):
+                         pcm_candidates, pcm_unsupported, pcm_mouth)):
             raise ValueError('공식 WAV 이벤트 수량 오류')
         if (wav_events > audio_events or matched + mismatched > wav_events
                 or (first_wav is not None and
@@ -468,6 +474,16 @@ def _parse_official_lipsync_evidence(reply: dict) -> OfficialLipSyncEvidence:
                      or not math.isfinite(first_wav) or not 0 <= first_wav <= 300))):
             raise ValueError('동일 공식 세션 음성 관측 데이터 형식 오류')
         if (pcm_candidates + pcm_unsupported > matched
+                or pcm_mouth > overlapping
+                or (pcm_candidates == 0 and pcm_mouth != 0)
+                or type(pcm_mouth_first) not in (int, float)
+                or type(pcm_mouth_last) not in (int, float)
+                or not math.isfinite(pcm_mouth_first)
+                or not math.isfinite(pcm_mouth_last)
+                or pcm_mouth_first < 0 or pcm_mouth_last < pcm_mouth_first
+                or (pcm_mouth == 0 and (pcm_mouth_first != 0 or pcm_mouth_last != 0))
+                or (pcm_mouth > 0 and pcm_mouth_first <= 0)
+                or (pcm_mouth > 1 and pcm_mouth_first >= pcm_mouth_last)
                 or type(pcm_seconds) not in (int, float)
                 or not math.isfinite(pcm_seconds) or not 0 <= pcm_seconds <= 2457600
                 or (pcm_rate is not None and
@@ -485,7 +501,8 @@ def _parse_official_lipsync_evidence(reply: dict) -> OfficialLipSyncEvidence:
             float(first), float(last), wav_events, audio_events,
             matched, mismatched, float(first_wav) if first_wav is not None else None,
             pcm_candidates, pcm_unsupported, float(pcm_seconds),
-            pcm_rate, pcm_channels
+            pcm_rate, pcm_channels, pcm_mouth,
+            float(pcm_mouth_first), float(pcm_mouth_last)
         )
     except (KeyError, ValueError, TypeError) as exc:
         raise FrontendUnavailable('공식 Live2D 검사 결과에 유효하지 않은 데이터가 있습니다.') from exc
@@ -533,7 +550,11 @@ def _official_live2d_probe_script() -> str:
         "ws_pcm_first_sample_rate:(Number.isSafeInteger(window.__aistingSendAudit?.firstRate)"
         "?window.__aistingSendAudit.firstRate:null),"
         "ws_pcm_first_channels:(Number.isSafeInteger(window.__aistingSendAudit?.firstChannels)"
-        "?window.__aistingSendAudit.firstChannels:null)});"
+        "?window.__aistingSendAudit.firstChannels:null),"
+        "pcm_window_active:(window.__aistingSendAudit?.pcmWindowStartMs!=null&&"
+        "window.__aistingSendAudit?.pcmWindowEndMs!=null&&"
+        "performance.now()>=window.__aistingSendAudit.pcmWindowStartMs&&"
+        "performance.now()<=window.__aistingSendAudit.pcmWindowEndMs)});"
         "})()"
     )
 
@@ -551,6 +572,8 @@ def _observe_actual_live2d_model(window, seconds: float) -> dict:
     pcm_headers = pcm_unsupported = 0
     pcm_total_seconds = 0.0
     pcm_first_rate = pcm_first_channels = None
+    pcm_mouth_window_samples = 0
+    pcm_mouth_first = pcm_mouth_last = 0.0
     low = high = previous = None
     deadline = time.monotonic() + seconds
     script = _official_live2d_probe_script()
@@ -627,6 +650,11 @@ def _observe_actual_live2d_model(window, seconds: float) -> dict:
                         if (lipsync_enabled and type(rms) in (int, float)
                                 and 0.01 < rms <= 10):
                             overlapping += 1
+                            if item.get('pcm_window_active') is True:
+                                pcm_mouth_window_samples += 1
+                                pcm_mouth_last = time.monotonic()
+                                if pcm_mouth_first == 0.0:
+                                    pcm_mouth_first = pcm_mouth_last
                             # Capture the real Cubism mouth+RMS sample time.
                             last_overlap = time.monotonic()
                             if first_overlap == 0.0:
@@ -663,6 +691,9 @@ def _observe_actual_live2d_model(window, seconds: float) -> dict:
         'official_pcm_header_total_seconds': round(pcm_total_seconds, 6),
         'official_pcm_first_sample_rate': pcm_first_rate,
         'official_pcm_first_channels': pcm_first_channels,
+        'official_pcm_mouth_window_samples': pcm_mouth_window_samples,
+        'official_pcm_mouth_first_monotonic': pcm_mouth_first,
+        'official_pcm_mouth_last_monotonic': pcm_mouth_last,
     }
 
 
@@ -696,7 +727,8 @@ def _official_frontend_input_script(value: str, nonce: str) -> tuple[str, str, s
         "socket:null,listener:null,wavHeaderEvents:0,audioEvents:0,"
         "riffLengthMatched:0,riffLengthMismatched:0,firstWavMs:null,"
         "pcmHeaders:0,pcmUnsupported:0,pcmSeconds:0,"
-        "firstRate:null,firstChannels:null,sentAtMs:null};"
+        "firstRate:null,firstChannels:null,sentAtMs:null,"
+        "pcmWindowStartMs:null,pcmWindowEndMs:null};"
         "audit.wrapper=function(data){"
         "let matching=false;"
         "try{"
@@ -727,7 +759,7 @@ def _official_frontend_input_script(value: str, nonce: str) -> tuple[str, str, s
         "audit.riffLengthMatched++;"
         "if(audit.firstWavMs===null&&audit.sentAtMs!==null)"
         "audit.firstWavMs=Math.max(0,performance.now()-audit.sentAtMs);"
-        // 데이터 전체를 atob로 복사하지 않고 헤더 첫 768바이트만 관찰.
+        # WAV 본문은 저장하지 않고 헤더 앞부분만 관찰한다.
         "const prefix=atob(msg.audio.slice(0,Math.min(padded,1024)));"
         "const u16=p=>prefix.charCodeAt(p)|(prefix.charCodeAt(p+1)<<8);"
         "const u32=p=>(u16(p)|(u16(p+2)<<16))>>>0;"
@@ -753,6 +785,10 @@ def _official_frontend_input_script(value: str, nonce: str) -> tuple[str, str, s
         "audit.pcmSeconds+=pcmData/fmt.byteRate;"
         "if(audit.firstRate===null)audit.firstRate=fmt.rate;"
         "if(audit.firstChannels===null)audit.firstChannels=fmt.channels;"
+        "const receivedAt=performance.now();"
+        "if(audit.pcmWindowStartMs===null)audit.pcmWindowStartMs=receivedAt;"
+        "audit.pcmWindowEndMs=Math.max(audit.pcmWindowEndMs||0,"
+        "receivedAt+Math.min(12000,pcmData/fmt.byteRate*1000)+250);"
         "}else audit.pcmUnsupported++;"
         "}else audit.riffLengthMismatched++;"
         "}catch(_e){}};"

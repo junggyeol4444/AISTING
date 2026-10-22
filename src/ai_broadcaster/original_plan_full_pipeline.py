@@ -64,7 +64,9 @@ class OfficialChatObsEvidence:
             + str(getattr(self.lip, "official_pcm_first_sample_rate", None) or "미측정")
             + "Hz / 채널 "
             + str(getattr(self.lip, "official_pcm_first_channels", None) or "미측정")
-            + " / 시청자 E2E 별도 미검증"
+            + " / 공식 WAV 수신 예상 음성창 안 Cubism 입·RMS 표본 "
+            + str(getattr(self.lip, "official_pcm_mouth_window_samples", 0))
+            + "건 / 시청자 E2E 별도 미검증"
         )
 
     @property
@@ -102,6 +104,27 @@ class OfficialChatObsEvidence:
         return bool(
             self.same_session_audio_video_candidate
             and getattr(self.lip, "official_pcm_header_candidates", 0) > 0
+        )
+
+    @property
+    def same_session_pcm_mouth_audio_video_candidate(self) -> bool:
+        """공식 WAV 수신 예상 음성창 안 Cubism 입·RMS 표본과 OBS 후보.
+
+        WAV 수신창은 실제 재생 시각/OBS 인코더/시청자 수신의 실증이 아니다.
+        """
+        if (not self.same_session_pcm_audio_video_candidate
+                or getattr(self.lip, 'official_pcm_mouth_window_samples', 0) < 2):
+            return False
+        first = getattr(self.lip, 'official_pcm_mouth_first_monotonic', 0.0)
+        last = getattr(self.lip, 'official_pcm_mouth_last_monotonic', 0.0)
+        audio = getattr(self.obs, 'audio', None)
+        audio_first = getattr(audio, 'first_selected_signal_monotonic', 0.0)
+        audio_last = getattr(audio, 'last_selected_signal_monotonic', 0.0)
+        return bool(
+            all(type(v) in (int, float) and math.isfinite(v)
+                for v in (first, last, audio_first, audio_last))
+            and 0 < first < last and 0 < audio_first < audio_last
+            and first < audio_last and last > audio_first
         )
 
     @property
