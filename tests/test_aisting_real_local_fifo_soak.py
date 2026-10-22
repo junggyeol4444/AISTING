@@ -75,7 +75,8 @@ class LoadRunnerContracts(unittest.TestCase):
             "twitch":125, "chzzk":125, "soop":125, "youtube":125})
         self.assertEqual(sum(data["platform_over_three_seconds"].values()),
                          data["over_three_seconds"])
-        self.assertEqual(data["platform_model_failures"], {})
+        self.assertEqual(data["platform_model_failures"], {
+            "twitch":0, "chzzk":0, "soop":0, "youtube":0})
         self.assertGreaterEqual(data["max_observed_fifo_backlog"], 0)
         self.assertLessEqual(data["max_observed_fifo_backlog"], 128)
         self.assertTrue(all(isinstance(value, (int, float)) and value >= 0

@@ -23,3 +23,10 @@
 ### 여전히 미완료·후속 93절 인계
 - 권리 있는 실제 한국어 GPT-SoVITS WAV→공식 Cubism **실제 입 움직임**→OBS **같은 발화** 영상·오디오, 4플랫폼 실제 수백 명 무누락, **실제** 24시간 장시간 방송/재연결, 최종 시청자 **1~3초**는 미완료. synthetic 500건·OBS 읽기·Windows GUI/EXE 빌드만으로 실증 성공 주장 금지.
 - 다음은 이 92절 소스의 전체 회귀와 Windows CI 실제 결과, 91/92절 실제 Ollama 500건 결과에서 **모델 로딩·프롬프트·생성 p95 vs 플랫폼별 FIFO 대기**를 비교하고 실제 코드 병목을 수정. 핵심 GPT-SoVITS·공식 Cubism·OBS 동일 발화 연결은 기존 권리/사용자 승인 게이트를 유지하고 추가 개발. 에러 수정 뒤 전체 재검증, 변경/미변경/미완료를 후속 원문 절에 추가. 원본 모든 절 유지.
+
+
+### 92절 실제 1차 CI 실패·소스 검증값 수정 (원문 누적)
+- 첫 코드 HEAD `3365f763309f6cb9d5ab1285c98ade33eaf2c840`의 [전체 CI 39704987626](https://github.com/junggyeol4444/AISTING/actions/runs/39704987626) **실패**: 2538개 실행, skipped=2, failures=1. `test_500_production_fifo_events_no_loss_using_only_test_reply`의 단언이 `platform_model_failures == {}`를 기대했지만 실제 보고서는 Twitch/치지직/SOOP/YouTube 각 0건을 명시하여 실패. **실제 메시지 누락이나 모델 오류가 아니라 신규 테스트 기대값 오류**.
+- 같은 HEAD [Windows 39704987636](https://github.com/junggyeol4444/AISTING/actions/runs/39704987636) **5개 중 windows-exe 실패**: 네이티브 통합 테스트에서 동일 단언 오류 재현. 네 개의 obs-real-readonly/twitch-public-readonly/korean-public-chat-readonly/ollama-real-local-e2e 작업은 성공. Windows 전체 검사 성공으로 주장하지 않음.
+- 수정 `tests/test_aisting_real_local_fifo_soak.py`: 500건 플랫폼별 0건 오류 값 검사 기준을 실제 보고서와 일치하도록 `{"twitch":0,"chzzk":0,"soop":0,"youtube":0}`로 정정. 실제 응답/타임스탬프/모델/로드맵/사용자 설정·소스 실행 정책 변경 없음.
+- 수정 HEAD의 **전체 CI와 Windows 네이티브 전체 재검증**을 새로 수행하여 결과를 확인한다. 성공 확인 전에는 실패 해결을 확정하지 않음. [92절 실제 Ollama 500건 39704987503](https://github.com/junggyeol4444/AISTING/actions/runs/39704987503)은 본 기록 시점 진행 중.
