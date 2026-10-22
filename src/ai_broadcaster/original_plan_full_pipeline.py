@@ -150,6 +150,22 @@ def verify_official_chat_live2d_obs(
             state = observer.connect()
             if state.streaming or state.scene != before.scene:
                 raise RuntimeError("OBS 관찰 연결 중 프로그램 장면·송출이 변경됐습니다.")
+
+            def monitor_still_offline() -> None:
+                # 본 연결과 별도인 관찰 연결에서도 녹화·송출·장면 변경을
+                # 매 표본의 앞뒤에서 감지한다. 마지막에 원상 복구돼도
+                # 중간 방송/녹화 노출을 '정상 증거'로 기록하지 않는다.
+                status = observer.status()
+                if status.streaming or status.scene != before.scene:
+                    raise RuntimeError("OBS 동시 관찰 중 송출 또는 장면 변경 감지")
+                try:
+                    recording = observer._client.get_record_status().output_active
+                except Exception as exc:
+                    raise RuntimeError("OBS 동시 관찰 중 녹화 상태 확인 실패") from exc
+                if type(recording) is not bool or recording:
+                    raise RuntimeError("OBS 동시 관찰 중 녹화 시작 또는 상태 불명")
+
+            monitor_still_offline()
             # No approved AI prompt is sent until the separate OBS monitor
             # has actually connected to the correct stopped scene.
             started.set()
@@ -165,12 +181,16 @@ def verify_official_chat_live2d_obs(
                     break
                 if send_finished.is_set() and observation:
                     break
+                monitor_still_offline()
                 capture_started = time.monotonic()
                 sample = observer.inspect_program_media(
                     operator_approved=True, input_name=obs_input_name,
                     duration=min(float(duration), 3.0),
                 )
                 capture_ended = time.monotonic()
+                # 검사 도중 사용자가 녹화 또는 방송을 잠시 시작한
+                # 경우에도 정상 관측으로 채택하지 않는다.
+                monitor_still_offline()
                 observation.append((capture_started, capture_ended, sample))
                 if send_finished.is_set():
                     break

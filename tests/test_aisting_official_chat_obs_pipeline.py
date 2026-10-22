@@ -204,6 +204,54 @@ class FullPipelineContracts(unittest.TestCase):
                     voice_rights_confirmed=True, cancel_event=stopped)
         self.assertEqual(send.call_count, 1)
 
+    def test_recording_begins_during_obs_probe_is_not_verified(self):
+        # 정상 preflight 뒤 OBS 관찰 도중 녹화 시작: 최종 실패.
+        safety, observer = make_obs(), make_obs()
+        active = [False]
+        original_inspect = observer.inspect_program_media
+        def probe(*args, **kwargs):
+            sample = original_inspect(*args, **kwargs)
+            active[0] = True
+            return sample
+        observer.inspect_program_media = probe
+        observer._client.get_record_status = (
+            lambda: SimpleNamespace(output_active=active[0]))
+        send = Mock(side_effect=lambda *args, **kwargs: (
+            time.sleep(0.035),
+            SimpleNamespace(verified_signal=True))[1])
+        with patch.object(pipeline, "OfficialObsWebsocket",
+                          side_effect=[safety, observer]), patch.object(
+                          pipeline, "send_to_native_live2d_session_with_observation", send):
+            with self.assertRaisesRegex(RuntimeError, "OBS 화면·음성 동시 관찰 실패"):
+                pipeline.verify_official_chat_live2d_obs(
+                    "OBS 검사 중 녹화 시작", obs_password="local", obs_input_name="Mic",
+                    operator_approved=True, voice_rights_confirmed=True)
+        self.assertEqual(send.call_count, 1)
+
+    def test_scene_change_during_obs_probe_cannot_be_success_evidence(self):
+        # 최초 OBS 장면만 동일하고 중간에 바뀌면 동시 입증은 실패.
+        safety, observer = make_obs(), make_obs()
+        changed = [False]
+        original_inspect = observer.inspect_program_media
+        def probe(*args, **kwargs):
+            sample = original_inspect(*args, **kwargs)
+            changed[0] = True
+            return sample
+        observer.inspect_program_media = probe
+        observer.status = lambda: SimpleNamespace(
+            streaming=False, scene="Other" if changed[0] else "Scene")
+        send = Mock(side_effect=lambda *args, **kwargs: (
+            time.sleep(0.035),
+            SimpleNamespace(verified_signal=True))[1])
+        with patch.object(pipeline, "OfficialObsWebsocket",
+                          side_effect=[safety, observer]), patch.object(
+                          pipeline, "send_to_native_live2d_session_with_observation", send):
+            with self.assertRaisesRegex(RuntimeError, "OBS 화면·음성 동시 관찰 실패"):
+                pipeline.verify_official_chat_live2d_obs(
+                    "OBS 검사 중 장면 변경", obs_password="local", obs_input_name="Mic",
+                    operator_approved=True, voice_rights_confirmed=True)
+        self.assertEqual(send.call_count, 1)
+
     def test_active_obs_recording_denies_prompt_without_side_effect(self):
         obs = make_obs()
         obs._client.get_record_status = lambda: SimpleNamespace(output_active=True)
