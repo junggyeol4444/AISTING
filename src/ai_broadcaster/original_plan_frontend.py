@@ -358,6 +358,9 @@ class OfficialLipSyncEvidence:
     # Old viewer builds return zero (not evidence of time alignment).
     first_audio_mouth_monotonic: float = 0.0
     last_audio_mouth_monotonic: float = 0.0
+    # 실제 승인된 같은 공식 브라우저 WebSocket의 서버 WAV RIFF/WAVE
+    # 헤더 후보 이벤트. 음성의 권리·재생·동일 화자 실증과는 별개이다.
+    official_wav_header_events: int = 0
 
     @property
     def verified_signal(self) -> bool:
@@ -432,10 +435,13 @@ def _parse_official_lipsync_evidence(reply: dict) -> OfficialLipSyncEvidence:
                 or first < 0 or last < first
                 or (overlapping > 0 and ((first == 0) != (last == 0)))):
             raise ValueError('실제 음성·입 움직임 관찰시각 오류')
+        wav_events = reply.get('official_wav_header_events', 0)
+        if type(wav_events) is not int or not 0 <= wav_events <= 4096:
+            raise ValueError('공식 WAV 이벤트 수량 오류')
         return OfficialLipSyncEvidence(
             samples, model_seen, canvas_seen, ids, float(rms), active,
             float(mouth), changes, renderer_active, overlapping,
-            float(first), float(last)
+            float(first), float(last), wav_events
         )
     except (KeyError, ValueError, TypeError) as exc:
         raise FrontendUnavailable('공식 Live2D 검사 결과에 유효하지 않은 데이터가 있습니다.') from exc
@@ -463,7 +469,9 @@ def _official_live2d_probe_script() -> str:
         "return JSON.stringify({canvas:visible,model:!!model,ids:count,"
         "lipsync:model?._lipsync===true,"
         "rms:(Number.isFinite(rms)?rms:null),"
-        "mouth:(Number.isFinite(mouth)?mouth:null)});"
+        "mouth:(Number.isFinite(mouth)?mouth:null),"
+        "ws_wav_header_events:(Number.isSafeInteger(window.__aistingSendAudit?.wavHeaderEvents)"
+        "?window.__aistingSendAudit.wavHeaderEvents:0)});"
         "})()"
     )
 
@@ -475,6 +483,7 @@ def _observe_actual_live2d_model(window, seconds: float) -> dict:
     ids = active = changing = renderer_active = overlapping = 0
     peak_rms = 0.0
     first_overlap = last_overlap = 0.0
+    wav_header_events = 0
     low = high = previous = None
     deadline = time.monotonic() + seconds
     script = _official_live2d_probe_script()
@@ -484,6 +493,10 @@ def _observe_actual_live2d_model(window, seconds: float) -> dict:
             item = json.loads(raw) if isinstance(raw, str) else None
             if isinstance(item, dict):
                 samples += 1
+                observed_wav_headers = item.get('ws_wav_header_events', 0)
+                if (type(observed_wav_headers) is int
+                        and 0 <= observed_wav_headers <= 4096):
+                    wav_header_events = max(wav_header_events, observed_wav_headers)
                 model_seen = model_seen or item.get('model') is True
                 canvas_seen = canvas_seen or item.get('canvas') is True
                 count = item.get('ids')
@@ -533,6 +546,7 @@ def _observe_actual_live2d_model(window, seconds: float) -> dict:
         'overlapping_audio_mouth_samples': overlapping,
         'first_audio_mouth_monotonic': first_overlap,
         'last_audio_mouth_monotonic': last_overlap,
+        'official_wav_header_events': wav_header_events,
     }
 
 
@@ -562,17 +576,32 @@ def _official_frontend_input_script(value: str, nonce: str) -> tuple[str, str, s
         "const el=nodes[0];const value=" + encoded + ";"
         "const nonce=" + marker + ";"
         "const original=WebSocket.prototype.send;"
-        "const audit={nonce:nonce,observed:false,original:original,wrapper:null};"
+        "const audit={nonce:nonce,observed:false,original:original,wrapper:null,"
+        "socket:null,listener:null,wavHeaderEvents:0};"
         "audit.wrapper=function(data){"
-        "const result=original.apply(this,arguments);"
+        "let matching=false;"
         "try{"
         "if(this.readyState===WebSocket.OPEN&&"
         "this.url==='ws://127.0.0.1:12393/client-ws'&&"
         "typeof data==='string'){"
         "const packet=JSON.parse(data);"
-        "if(packet.type==='text-input'&&packet.text===value)"
-        "audit.observed=true;"
+        "matching=packet.type==='text-input'&&packet.text===value;"
+        "if(matching&&!audit.listener){"
+        "audit.socket=this;"
+        "audit.listener=function(evt){try{"
+        "if(typeof evt.data!=='string')return;"
+        "const msg=JSON.parse(evt.data);"
+        "if(msg.type!=='audio'||typeof msg.audio!=='string'||"
+        "msg.audio.length<60||msg.audio.length>25165824)return;"
+        "const header=atob(msg.audio.slice(0,16));"
+        "if(header.slice(0,4)==='RIFF'&&header.slice(8,12)==='WAVE'&&"
+        "audit.wavHeaderEvents<4096)audit.wavHeaderEvents++;"
+        "}catch(_e){}};"
+        "this.addEventListener('message',audit.listener);"
+        "}"
         "}}catch(_err){}"
+        "const result=original.apply(this,arguments);"
+        "if(matching)audit.observed=true;"
         "return result;};"
         "window.__aistingSendAudit=audit;"
         "WebSocket.prototype.send=audit.wrapper;"
@@ -611,13 +640,16 @@ def _official_frontend_input_script(value: str, nonce: str) -> tuple[str, str, s
         "if(!audit||audit.nonce!==" + marker + ")return false;"
         "if(WebSocket.prototype.send===audit.wrapper)"
         "WebSocket.prototype.send=audit.original;"
+        "if(audit.socket&&audit.listener)"
+        "audit.socket.removeEventListener('message',audit.listener);"
         "delete window.__aistingSendAudit;return true;"
         "})()"
     )
     return input_script, submit_script, observed_script, cleanup_script
 
 
-def _submit_original_live2d_text(window, value: str) -> bool:
+def _submit_original_live2d_text(window, value: str, *,
+                                 on_accepted=None) -> bool:
     """Run official React input handler and observe its real WS text-input send."""
     accepted = False
     request_nonce = secrets.token_hex(16)
@@ -635,6 +667,10 @@ def _submit_original_live2d_text(window, value: str) -> bool:
                         accepted = True
                         break
                     time.sleep(0.05)
+        # 승인받은 공식 브라우저 입력과 같은 WebSocket의 오디오 헤더만
+        # 관찰한다. 완료 전 리스너를 지우면 실제 WAV 이벤트를 놓친다.
+        if accepted and on_accepted is not None:
+            on_accepted()
     except Exception:
         accepted = False
     finally:
@@ -685,9 +721,15 @@ def _native_frontend_input_worker(window, address: str | None = None,
                         conn.send_bytes(b'{"type":"input-with-lipsync-invalid"}')
                         continue
                 if isinstance(value, str) and 1 <= len(value.strip()) <= 4000:
-                    accepted = _submit_original_live2d_text(window, value)
-                    if accepted and request.get('type') == 'user-text-with-lipsync':
-                        evidence = _observe_actual_live2d_model(window, float(period))
+                    is_observed_turn = request.get('type') == 'user-text-with-lipsync'
+                    evidence = {}
+                    def collect_same_turn() -> None:
+                        evidence.update(_observe_actual_live2d_model(
+                            window, float(period)))
+                    accepted = _submit_original_live2d_text(
+                        window, value,
+                        on_accepted=collect_same_turn if is_observed_turn else None)
+                    if accepted and is_observed_turn:
                         conn.send_bytes(json.dumps({
                             'type': 'input-with-lipsync-result', 'accepted': True,
                             'evidence': evidence,

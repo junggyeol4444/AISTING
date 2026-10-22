@@ -46,7 +46,9 @@ class OfficialChatObsEvidence:
             "공식 AI·음성·Cubism 요청 왕복 " + measured(self.local_roundtrip_seconds)
             + " / 첫 Cubism 입·음성 표본 " + measured(self.first_cubism_audio_seconds)
             + " / OBS 첫 오디오 표본 " + measured(self.first_obs_audio_seconds)
-            + " / 시청자 E2E 별도 미검증"
+            + " / 공식 동일 WS WAV 헤더 이벤트 "
+            + str(getattr(self.lip, "official_wav_header_events", 0))
+            + "건(헤더 후보) / 시청자 E2E 별도 미검증"
         )
 
     @property
