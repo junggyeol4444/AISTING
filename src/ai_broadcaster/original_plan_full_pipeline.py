@@ -26,6 +26,13 @@ class OfficialChatObsEvidence:
     obs: "ActualObsProgramMediaObservation"
     # Positive signals observed at unrelated times cannot prove one turn.
     temporal_overlap_candidate: bool = False
+    # 운영자가 승인한 실제 공식 세션에서 측정한 시간만 표시한다.
+    # AI 요청 왕복에는 실제 로컬 모델·음성·Cubism 검사 시간이 함께 포함된다.
+    local_roundtrip_seconds: float | None = None
+    first_cubism_audio_seconds: float | None = None
+    first_obs_audio_seconds: float | None = None
+    # 녹화·송출을 시작하지 않았으므로 시청자 측 출력 지연은 별도 실증이다.
+    viewer_end_to_end_verified: bool = False
 
     @property
     def verified_observation(self) -> bool:
@@ -258,5 +265,25 @@ def verify_official_chat_live2d_obs(
         (sample for _, _, sample in observation if sample.coherent_media_candidate),
         observation[-1][2],
     )
+    # 원래 같은 발화 검증에 사용했던 실제 monotonic 표본을 시간 지표로
+    # 재사용한다. 시간 자료가 없거나 일치하지 않는 구간은 추정하지 않는다.
+    first_cubism_latency = (
+        round(mouth_first - prompt_started_at, 6)
+        if valid_mouth_window and prompt_started_at <= mouth_first <= prompt_finished_at
+        else None
+    )
+    matched_first_audio = getattr(
+        getattr(matching[0], "audio", None), "first_selected_signal_monotonic", None
+    ) if matching else None
+    first_obs_latency = (
+        round(matched_first_audio - prompt_started_at, 6)
+        if (type(matched_first_audio) in (float, int)
+            and math.isfinite(matched_first_audio)
+            and prompt_started_at <= matched_first_audio <= time.monotonic())
+        else None
+    )
     return OfficialChatObsEvidence(
-        lip=lip, obs=selected, temporal_overlap_candidate=bool(matching))
+        lip=lip, obs=selected, temporal_overlap_candidate=bool(matching),
+        local_roundtrip_seconds=round(prompt_finished_at - prompt_started_at, 6),
+        first_cubism_audio_seconds=first_cubism_latency,
+        first_obs_audio_seconds=first_obs_latency)

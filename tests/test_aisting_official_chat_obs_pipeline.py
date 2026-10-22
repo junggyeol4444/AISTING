@@ -70,6 +70,43 @@ class FullPipelineContracts(unittest.TestCase):
         send.assert_called_once_with(
             "한국어 테스트", operator_approved=True, duration=8.0)
 
+    def test_local_ai_voice_cubism_obs_latency_segments_from_measured_clock(self):
+        # 실제 검증 API에서 관찰한 monotonic 표본을 기록한다.
+        # 여기서는 외부 OBS·음성 요청을 모의하므로 실사용 성공은 아니다.
+        obs = make_obs()
+        def official_turn(*args, **kwargs):
+            time.sleep(0.035)
+            moment = time.monotonic()
+            return SimpleNamespace(
+                verified_signal=True,
+                first_audio_mouth_monotonic=moment,
+                last_audio_mouth_monotonic=moment)
+        with patch.object(pipeline, "OfficialObsWebsocket", return_value=obs), patch.object(
+            pipeline, "send_to_native_live2d_session_with_observation",
+            side_effect=official_turn) as send:
+            result = pipeline.verify_official_chat_live2d_obs(
+                "한국어 실제 경로 시간 측정",
+                obs_password="local", obs_input_name="Mic",
+                operator_approved=True, voice_rights_confirmed=True)
+        send.assert_called_once()
+        self.assertTrue(result.verified_observation)
+        self.assertGreaterEqual(result.local_roundtrip_seconds, 0.03)
+        self.assertIsNotNone(result.first_cubism_audio_seconds)
+        self.assertIsNotNone(result.first_obs_audio_seconds)
+        self.assertGreaterEqual(result.first_cubism_audio_seconds, 0)
+        self.assertGreaterEqual(result.first_obs_audio_seconds, 0)
+        self.assertFalse(result.viewer_end_to_end_verified)
+
+    def test_unmeasured_latency_never_becomes_fake_zero_or_viewer_proof(self):
+        # 시간 증거가 없는 기존 데이터는 '미측정'으로 둔다.
+        evidence = pipeline.OfficialChatObsEvidence(
+            lip=SimpleNamespace(verified_signal=False),
+            obs=SimpleNamespace(coherent_media_candidate=False))
+        self.assertIsNone(evidence.local_roundtrip_seconds)
+        self.assertIsNone(evidence.first_cubism_audio_seconds)
+        self.assertIsNone(evidence.first_obs_audio_seconds)
+        self.assertFalse(evidence.viewer_end_to_end_verified)
+
     def test_separate_positive_signals_without_time_overlap_are_not_verified(self):
         evidence = pipeline.OfficialChatObsEvidence(
             lip=SimpleNamespace(verified_signal=True),
