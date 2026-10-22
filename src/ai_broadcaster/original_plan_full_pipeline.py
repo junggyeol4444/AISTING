@@ -35,6 +35,21 @@ class OfficialChatObsEvidence:
     viewer_end_to_end_verified: bool = False
 
     @property
+    def latency_summary_ko(self) -> str:
+        """실측값만 표시하며 시청자 지연을 추정해 넣지 않는다."""
+        def measured(value: float | None) -> str:
+            if (type(value) in (int, float) and math.isfinite(value)
+                    and value >= 0):
+                return f"{value:.3f}초"
+            return "미측정"
+        return (
+            "공식 AI·음성·Cubism 요청 왕복 " + measured(self.local_roundtrip_seconds)
+            + " / 첫 Cubism 입·음성 표본 " + measured(self.first_cubism_audio_seconds)
+            + " / OBS 첫 오디오 표본 " + measured(self.first_obs_audio_seconds)
+            + " / 시청자 E2E 별도 미검증"
+        )
+
+    @property
     def verified_observation(self) -> bool:
         """Two real concurrent observations; NOT proof of encoded stream."""
         return bool(self.lip.verified_signal and self.obs.coherent_media_candidate

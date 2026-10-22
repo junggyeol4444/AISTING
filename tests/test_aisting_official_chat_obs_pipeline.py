@@ -97,6 +97,21 @@ class FullPipelineContracts(unittest.TestCase):
         self.assertGreaterEqual(result.first_obs_audio_seconds, 0)
         self.assertFalse(result.viewer_end_to_end_verified)
 
+    def test_korean_latency_summary_shows_measured_and_unmeasured_separately(self):
+        # 본인에게 보여주는 네이티브 GUI 지연 정보의 실측/미측정 구분.
+        measured = pipeline.OfficialChatObsEvidence(
+            lip=SimpleNamespace(verified_signal=False),
+            obs=SimpleNamespace(coherent_media_candidate=False),
+            local_roundtrip_seconds=4.25,
+            first_cubism_audio_seconds=1.75,
+            first_obs_audio_seconds=None)
+        message = measured.latency_summary_ko
+        self.assertIn("4.250초", message)
+        self.assertIn("1.750초", message)
+        self.assertIn("OBS 첫 오디오 표본 미측정", message)
+        self.assertIn("시청자 E2E 별도 미검증", message)
+        self.assertNotIn("실방송 검증 성공", message)
+
     def test_unmeasured_latency_never_becomes_fake_zero_or_viewer_proof(self):
         # 시간 증거가 없는 기존 데이터는 '미측정'으로 둔다.
         evidence = pipeline.OfficialChatObsEvidence(
