@@ -2090,3 +2090,10 @@ F) 원본 100단계 roadmap.json status는 completed=9, pending=91이며 **코�
 - 변경 코드를 안전한 GitHub `main` fast-forward로 반영하고, **같은 수정 HEAD** 전체 저장소 회귀/Windows EXE·GUI/OBS 실읽기/실제 로컬 Ollama/4플랫폼 읽기 CI 결과를 확인. 실패 시 소스·테스트 수정 후 전체 재검증하고 결과 원문 추가. 진행 중인 CI는 성공으로 쓰지 않음.
 - 실제 권리 있는 한국어 GPT-SoVITS WAV→공식 Cubism 입 움직임→OBS 동일 발화 오디오·영상 실증, 실제 4플랫폼 수백 명 채팅 무누락 및 24시간 방송 재연결, 최종 시청자 응답 **1~3초 달성**은 계속 **미완료**. 메모리·캐릭터·기존 사용자 설정·SQLite·원본 100단계 pending 및 다른 프로젝트/예약/Drive 미변경.
 - 다음 **96절**은 이번 수정 CI 실패/성공 결과와 실제 Ollama 프롬프트 처리·대기열 병목을 이어받고, 같은 기존 모델·사용자 설정 안에서 GPT-SoVITS→Cubism→OBS 실제 흐름의 남은 기능/검증을 소스부터 개발·검사·수정한다.
+
+
+### 95절 Windows 1차 실패 → 양의 구간을 갖는 모의 립싱크 검사 수정
+- 신규 strict overlap 소스 코드 HEAD `7824ec2433e1e64a171a90df9cf1a36682348990`의 [전체 회귀 39718127265](https://github.com/junggyeol4444/AISTING/actions/runs/39718127265) **success: 2,543개 실행, 2개 skipped, 실패 0**.
+- 하지만 [Windows 통합 39718127244](https://github.com/junggyeol4444/AISTING/actions/runs/39718127244)는 `windows-exe` **FAIL**. 네이티브 Windows 전체 테스트 321건 중 모의 OBS·Cubism 긍정 인증 테스트 4건 `test_existing_official_ai_turn_only_once_and_obs_read_only`, `test_local_ai_voice_cubism_obs_latency_segments_from_measured_clock`, `test_obs_monitor_owns_separate_connection`, `test_slow_korean_voice_uses_later_obs_meter_window`에서 `verified_observation=False`가 되어 실패. 기존 모의 입/RMS 표본이 시작·끝을 같은 순간으로 반환해 Windows 스케줄링에 따라 OBS 오디오 표본과 **0초짜리 경계 접촉**만 했기 때문. 이는 실제 OBS 연결/사용자 모델 실패나 500건 메시지 누락이 아니라 새 strict overlap 계약과 기존 긍정형 모의 표본 정의가 불일치한 **회귀 테스트 결함**. 같은 CI 다른 job 최종 상태는 별도 기록하며 전체 성공이라 주장하지 않음.
+- `tests/test_aisting_official_chat_obs_pipeline.py` 테스트만 보완: `make_obs`는 실제 모의 선택 입력 미터 구간 시작 시간을 사건 객체로 공유하고, 긍정 테스트 3종의 `first_audio_mouth_monotonic`을 그 OBS 오디오 **시작 시각**, `last_audio_mouth_monotonic`을 실제 모의 화자 마지막 시각으로 설정. 느린 한국어 발화 모의 테스트는 두 번째 OBS 검사 구간의 시작 시각과 실제 화자 종료 시각을 공유하고 40ms 검사 시간으로 안정화. **새 strict overlap 실 소스 완화/롤백 없음**, 경계 접촉 음성이 false인지 검증하는 별도 신규 테스트 원문도 그대로 유지. Windows 모의 성공을 실제 GPT-SoVITS·공식 Cubism·시청자 입증으로 오해하지 않는다.
+- 해당 수정본을 기존 main에 안전 fast-forward로 반영, 그 HEAD의 **전체 회귀·Windows EXE/GUI·OBS 읽기·실제 Ollama** 검사를 다시 실행하여 최종 기록해야 한다. 다른 원본 기획·로드맵·캐릭터·SQLite·모델 옵션/길이·계정/방송/Drive/예약 변경 없음.

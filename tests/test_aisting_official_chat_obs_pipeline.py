@@ -4,6 +4,7 @@ No real network, voice training, stream start, account access, OBS state changes
 """
 import sys
 import time
+import threading
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -17,6 +18,10 @@ def make_obs(*, confirmed=True, stable=True):
     class Obs:
         def __init__(self):
             self.probe_count = 0
+            # OBS 실제 양의 소리 구간과 모의 입 움직임이 같은 구간에서
+            # 발생하도록 검사 전용 사건 시각을 공유한다.
+            self.probe_started = threading.Event()
+            self.probe_started_at = None
             self._client = SimpleNamespace(
                 get_record_status=lambda: SimpleNamespace(output_active=False)
             )
@@ -29,6 +34,9 @@ def make_obs(*, confirmed=True, stable=True):
             # enough for the official-turn thread to finish (not instant-loop).
             import time
             began = time.monotonic()
+            if self.probe_started_at is None:
+                self.probe_started_at = began
+                self.probe_started.set()
             time.sleep(0.015)
             self.probe_count += 1
             ended = time.monotonic()
@@ -53,10 +61,12 @@ class FullPipelineContracts(unittest.TestCase):
     def test_existing_official_ai_turn_only_once_and_obs_read_only(self):
         obs = make_obs()
         def sampled_lip(*args, **kwargs):
-            time.sleep(0.01)
+            self.assertTrue(obs.probe_started.wait(2))
+            time.sleep(0.005)
             moment = time.monotonic()
             return SimpleNamespace(verified_signal=True,
-                first_audio_mouth_monotonic=moment, last_audio_mouth_monotonic=moment)
+                first_audio_mouth_monotonic=obs.probe_started_at,
+                last_audio_mouth_monotonic=moment)
         send = Mock(side_effect=sampled_lip)
         with patch.object(pipeline, "OfficialObsWebsocket", return_value=obs), (
             patch.object(pipeline, "send_to_native_live2d_session_with_observation", send)
@@ -75,11 +85,12 @@ class FullPipelineContracts(unittest.TestCase):
         # 여기서는 외부 OBS·음성 요청을 모의하므로 실사용 성공은 아니다.
         obs = make_obs()
         def official_turn(*args, **kwargs):
+            self.assertTrue(obs.probe_started.wait(2))
             time.sleep(0.035)
             moment = time.monotonic()
             return SimpleNamespace(
                 verified_signal=True,
-                first_audio_mouth_monotonic=moment,
+                first_audio_mouth_monotonic=obs.probe_started_at,
                 last_audio_mouth_monotonic=moment)
         with patch.object(pipeline, "OfficialObsWebsocket", return_value=obs), patch.object(
             pipeline, "send_to_native_live2d_session_with_observation",
@@ -298,10 +309,12 @@ class FullPipelineContracts(unittest.TestCase):
     def test_obs_monitor_owns_separate_connection(self):
         safety, monitor = make_obs(), make_obs()
         def sampled_lip(*args, **kwargs):
-            time.sleep(0.01)
+            self.assertTrue(monitor.probe_started.wait(2))
+            time.sleep(0.005)
             moment = time.monotonic()
             return SimpleNamespace(verified_signal=True,
-                first_audio_mouth_monotonic=moment, last_audio_mouth_monotonic=moment)
+                first_audio_mouth_monotonic=monitor.probe_started_at,
+                last_audio_mouth_monotonic=moment)
         with patch.object(
             pipeline, "OfficialObsWebsocket", side_effect=[safety, monitor]
         ) as factory, patch.object(
@@ -323,6 +336,7 @@ class FullPipelineContracts(unittest.TestCase):
         safety, monitor = make_obs(), make_obs(stable=False)
         second_window = threading.Event()
         prompt_started = threading.Event()
+        second_window_started_at = []
         send = Mock()
 
         def monitor_window(**kwargs):
@@ -332,8 +346,9 @@ class FullPipelineContracts(unittest.TestCase):
                 return SimpleNamespace(coherent_media_candidate=False)
             import time
             began = time.monotonic()
+            second_window_started_at.append(began)
             second_window.set()
-            time.sleep(0.01)
+            time.sleep(0.04)
             return SimpleNamespace(
                 coherent_media_candidate=True,
                 audio=SimpleNamespace(
@@ -348,7 +363,8 @@ class FullPipelineContracts(unittest.TestCase):
             )
             moment = time.monotonic()
             return SimpleNamespace(verified_signal=True,
-                first_audio_mouth_monotonic=moment, last_audio_mouth_monotonic=moment)
+                first_audio_mouth_monotonic=second_window_started_at[0],
+                last_audio_mouth_monotonic=moment)
 
         monitor.inspect_program_media = monitor_window
         send.side_effect = slow_official_turn
