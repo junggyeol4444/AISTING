@@ -14,7 +14,8 @@ from typing import TYPE_CHECKING
 
 from .original_plan_frontend import send_to_native_live2d_session_with_observation
 from .original_plan_obs import OfficialObsWebsocket
-from .obs_consecutive_audio import collect_obs_audio_times
+from .obs_consecutive_audio import collect_obs_audio_times, collect_obs_input_meter_levels
+from .official_ws_wav_obs_match import compare_official_pcm_obs_levels
 
 if TYPE_CHECKING:
     from .original_plan_frontend import OfficialLipSyncEvidence
@@ -36,6 +37,10 @@ class OfficialChatObsEvidence:
     viewer_end_to_end_verified: bool = False
     obs_audio_sample_times: tuple[float, ...] | None = None
     obs_audio_window_count: int = 0
+    # 공식 동일 WS에서 받은 WAV PCM16 윤곽과 OBS 실제 미터 레벨 비교.
+    official_wav_obs_score: float | None = None
+    official_wav_obs_sample_count: int = 0
+    official_wav_obs_lag_seconds: float | None = None
 
     @property
     def latency_summary_ko(self) -> str:
@@ -76,7 +81,28 @@ class OfficialChatObsEvidence:
                if self.pcm_obs_near_abs_p95_ms is not None else "미측정")
             + " / 실제 OBS 일치 관찰 구간 " + str(self.obs_audio_window_count)
             + "개 / 누적 유효 오디오 표본 " + str(len(self.obs_audio_sample_times or ()))
-            + "건 / 시청자 E2E 별도 미검증"
+            + "건 / 공식 WS WAV·OBS 실제 음량 상관 "
+            + (f"{self.official_wav_obs_score:.3f}"
+               if self.official_wav_obs_score is not None else "미측정")
+            + " / 실제 레벨 대응 표본 " + str(self.official_wav_obs_sample_count)
+            + "건 / WS WAV 수신 후 후보 지연 "
+            + (f"{self.official_wav_obs_lag_seconds:.3f}초"
+               if self.official_wav_obs_lag_seconds is not None else "미측정")
+            + " / 시청자 E2E 별도 미검증"
+        )
+
+    @property
+    def same_session_official_wav_obs_level_candidate(self) -> bool:
+        """동일 WS의 PCM 음량 윤곽 vs 동일 검사 OBS 입력 레벨 유사성.
+
+        WAV 재생/화자 동일성, Cubism 파라미터 구동 원인,
+        OBS 최종 인코딩이나 시청자 전달은 이 상관으로 증명할 수 없다.
+        """
+        return bool(
+            self.same_session_pcm_sample_pair_candidate
+            and self.official_wav_obs_score is not None
+            and self.official_wav_obs_score >= 0.85
+            and self.official_wav_obs_sample_count >= 12
         )
 
     @property
@@ -454,6 +480,22 @@ def verify_official_chat_live2d_obs(
     # 연속 OBS 관찰창 경계에 걸친 실제 오디오 표본 누적
     combined_audio_times, matched_window_count = collect_obs_audio_times(
         observation, mouth_first, mouth_last) if valid_mouth_window else ((), 0)
+    # 동일 공식 WebSocket이 실제 전달한 PCM16 WAV 첫 음량 정보와
+    # OBS의 같은 승인 검사 중 실제 선택 입력 미터 콜백을 결합한다.
+    pcm_first_received_at = getattr(
+        lip, "official_pcm_first_wav_received_monotonic", 0.0)
+    pcm_first_envelope = getattr(
+        lip, "official_pcm_first_wav_rms_envelope", ())
+    pcm_level_samples = (
+        collect_obs_input_meter_levels(
+            observation, since=pcm_first_received_at,
+            until=pcm_first_received_at + 12)
+        if type(pcm_first_received_at) in (int, float)
+        and math.isfinite(pcm_first_received_at) and pcm_first_received_at > 0
+        else ()
+    )
+    ws_pcm_score, ws_pcm_used, ws_pcm_lag = compare_official_pcm_obs_levels(
+        pcm_first_envelope, pcm_first_received_at, pcm_level_samples)
     # 연속 관찰 구간 중 실제 근접 표본이 가장 많은 후보를 선택한다.
     def candidate_quality(sample) -> tuple[int, int]:
         candidate = OfficialChatObsEvidence(
@@ -486,4 +528,7 @@ def verify_official_chat_live2d_obs(
         first_cubism_audio_seconds=first_cubism_latency,
         first_obs_audio_seconds=first_obs_latency,
         obs_audio_sample_times=combined_audio_times,
-        obs_audio_window_count=matched_window_count)
+        obs_audio_window_count=matched_window_count,
+        official_wav_obs_score=ws_pcm_score,
+        official_wav_obs_sample_count=ws_pcm_used,
+        official_wav_obs_lag_seconds=ws_pcm_lag)

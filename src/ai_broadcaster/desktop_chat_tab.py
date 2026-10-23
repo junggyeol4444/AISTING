@@ -1511,6 +1511,9 @@ class LocalChatTab(ttk.Frame):
                             " / " + ("OBS 영상 획득 경계·오디오·입 근접 표본 일치 후보" if getattr(
                                 evidence, "same_session_observed_video_audio_timing_candidate", False)
                                 else "OBS 영상 경계·오디오·입 동시성 미확인") +
+                            " / " + ("공식 동일 WS WAV·OBS 실제 음량 윤곽 유사 후보" if getattr(
+                                evidence, "same_session_official_wav_obs_level_candidate", False)
+                                else "공식 동일 WS WAV·OBS 음량 패턴 미확인") +
                             " · " + getattr(evidence, "latency_summary_ko", "지연 미측정") +
                             " · 실제 방송/시청자 출력은 별도 실증 필요")
                         if evidence.verified_observation:

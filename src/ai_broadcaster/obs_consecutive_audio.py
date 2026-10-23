@@ -53,3 +53,39 @@ def collect_obs_audio_times(
         collected.extend(near)
         window_count += 1
     return tuple(collected), window_count
+
+def collect_obs_input_meter_levels(
+    observations: Iterable[tuple[float, float, object]],
+    *,
+    since: float,
+    until: float,
+) -> tuple[tuple[float, float], ...]:
+    """같은 OBS 입력/프로그램 장면이 확인된 실제 레벨 콜백만 수집.
+
+    무음 샘플을 만들거나 보간하지 않는다. 연속 관찰창 경계의
+    시간 중복·역행도 후보에서 제외한다.
+    """
+    if not (_valid_time(since) and _valid_time(until) and since < until):
+        return ()
+    merged: list[tuple[float, float]] = []
+    for began, ended, sample in observations:
+        if not (_valid_time(began) and _valid_time(ended) and began < ended
+                and getattr(sample, "coherent_media_candidate", False)):
+            continue
+        audio = getattr(sample, "audio", None)
+        levels = getattr(audio, "selected_all_meter_level_samples", ())
+        if not isinstance(levels, tuple):
+            continue
+        if any(not isinstance(p, tuple) or len(p) != 2
+               or not _valid_time(p[0])
+               or type(p[1]) not in (int, float)
+               or not math.isfinite(p[1]) or not 0 <= p[1] <= 20
+               for p in levels):
+            continue
+        if any(x[0] >= y[0] for x, y in zip(levels, levels[1:])):
+            continue
+        for when, level in levels:
+            if began <= when <= ended and since <= when <= until:
+                if not merged or when > merged[-1][0]:
+                    merged.append((when, level))
+    return tuple(merged)
