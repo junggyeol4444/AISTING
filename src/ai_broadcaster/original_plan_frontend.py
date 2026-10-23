@@ -379,6 +379,9 @@ class OfficialLipSyncEvidence:
     official_pcm_mouth_last_monotonic: float = 0.0
     # 실제 Python 단조시계의 입·RMS 동시 관측 표본. 최근 64개만 메모리 유지.
     official_pcm_mouth_sample_times: tuple[float, ...] = ()
+    # 같은 공식 WebSocket에서 실제 WAV PCM16 음량만 채취(원본 보관 금지).
+    official_pcm_first_wav_rms_envelope: tuple[float, ...] = ()
+    official_pcm_first_wav_received_monotonic: float = 0.0
 
     @property
     def verified_signal(self) -> bool:
@@ -467,6 +470,16 @@ def _parse_official_lipsync_evidence(reply: dict) -> OfficialLipSyncEvidence:
         pcm_mouth_first = reply.get('official_pcm_mouth_first_monotonic', 0.0)
         pcm_mouth_last = reply.get('official_pcm_mouth_last_monotonic', 0.0)
         pcm_mouth_times = reply.get('official_pcm_mouth_sample_times', [])
+        pcm_envelope = reply.get('official_pcm_first_wav_rms_envelope', [])
+        pcm_received_at = reply.get('official_pcm_first_wav_received_monotonic', 0.0)
+        if (not isinstance(pcm_envelope, list) or len(pcm_envelope) > 160
+                or any(type(x) not in (int, float) or not math.isfinite(x)
+                       or x < 0 or x > 1 for x in pcm_envelope)
+                or type(pcm_received_at) not in (int, float)
+                or not math.isfinite(pcm_received_at) or pcm_received_at < 0
+                or (bool(pcm_envelope) != bool(pcm_received_at))
+                or (pcm_envelope and pcm_candidates == 0)):
+            raise ValueError('공식 WAV 음량 윤곽 또는 수신 시각 관측 형식 오류')
         if (not isinstance(pcm_mouth_times, list)
                 or len(pcm_mouth_times) > 64 or len(pcm_mouth_times) > pcm_mouth
                 or any(type(t) not in (int, float) or not math.isfinite(t) or t <= 0
@@ -515,7 +528,8 @@ def _parse_official_lipsync_evidence(reply: dict) -> OfficialLipSyncEvidence:
             pcm_candidates, pcm_unsupported, float(pcm_seconds),
             pcm_rate, pcm_channels, pcm_mouth,
             float(pcm_mouth_first), float(pcm_mouth_last),
-            tuple(float(t) for t in pcm_mouth_times)
+            tuple(float(t) for t in pcm_mouth_times),
+            tuple(float(v) for v in pcm_envelope), float(pcm_received_at)
         )
     except (KeyError, ValueError, TypeError) as exc:
         raise FrontendUnavailable('공식 Live2D 검사 결과에 유효하지 않은 데이터가 있습니다.') from exc
@@ -564,6 +578,10 @@ def _official_live2d_probe_script() -> str:
         "?window.__aistingSendAudit.firstRate:null),"
         "ws_pcm_first_channels:(Number.isSafeInteger(window.__aistingSendAudit?.firstChannels)"
         "?window.__aistingSendAudit.firstChannels:null),"
+        "ws_pcm_first_rms_envelope:(Array.isArray(window.__aistingSendAudit?.firstEnvelope)"
+        "?window.__aistingSendAudit.firstEnvelope:[]),"
+        "ws_pcm_first_rms_age_ms:(Number.isFinite(window.__aistingSendAudit?.firstEnvelopeAtMs)"
+        "?Math.max(0,performance.now()-window.__aistingSendAudit.firstEnvelopeAtMs):null),"
         "pcm_window_active:(window.__aistingSendAudit?.pcmWindowStartMs!=null&&"
         "window.__aistingSendAudit?.pcmWindowEndMs!=null&&"
         "performance.now()>=window.__aistingSendAudit.pcmWindowStartMs&&"
@@ -588,6 +606,8 @@ def _observe_actual_live2d_model(window, seconds: float) -> dict:
     pcm_mouth_window_samples = 0
     pcm_mouth_first = pcm_mouth_last = 0.0
     pcm_mouth_times: list[float] = []
+    pcm_first_rms_envelope: tuple[float, ...] = ()
+    pcm_first_received_monotonic = 0.0
     low = high = previous = None
     deadline = time.monotonic() + seconds
     script = _official_live2d_probe_script()
@@ -641,6 +661,17 @@ def _observe_actual_live2d_model(window, seconds: float) -> dict:
                 if (pcm_first_channels is None and type(channels) is int
                         and 1 <= channels <= 8):
                     pcm_first_channels = channels
+                first_envelope = item.get('ws_pcm_first_rms_envelope')
+                if (not pcm_first_rms_envelope and isinstance(first_envelope, list)
+                        and 8 <= len(first_envelope) <= 160
+                        and all(type(v) in (int, float) and math.isfinite(v)
+                                and 0 <= v <= 1 for v in first_envelope)):
+                    age_ms = item.get('ws_pcm_first_rms_age_ms')
+                    if (type(age_ms) in (int, float) and math.isfinite(age_ms)
+                            and 0 <= age_ms <= 12000):
+                        pcm_first_rms_envelope = tuple(float(v) for v in first_envelope)
+                        pcm_first_received_monotonic = max(
+                            0.0, time.monotonic() - float(age_ms) / 1000.0)
                 model_seen = model_seen or item.get('model') is True
                 canvas_seen = canvas_seen or item.get('canvas') is True
                 count = item.get('ids')
@@ -712,6 +743,8 @@ def _observe_actual_live2d_model(window, seconds: float) -> dict:
         'official_pcm_mouth_first_monotonic': pcm_mouth_first,
         'official_pcm_mouth_last_monotonic': pcm_mouth_last,
         'official_pcm_mouth_sample_times': pcm_mouth_times,
+        'official_pcm_first_wav_rms_envelope': list(pcm_first_rms_envelope),
+        'official_pcm_first_wav_received_monotonic': pcm_first_received_monotonic,
     }
 
 
@@ -746,7 +779,8 @@ def _official_frontend_input_script(value: str, nonce: str) -> tuple[str, str, s
         "riffLengthMatched:0,riffLengthMismatched:0,firstWavMs:null,"
         "pcmHeaders:0,pcmUnsupported:0,pcmSeconds:0,"
         "firstRate:null,firstChannels:null,sentAtMs:null,"
-        "pcmWindowStartMs:null,pcmWindowEndMs:null};"
+        "pcmWindowStartMs:null,pcmWindowEndMs:null,"
+        "firstEnvelope:null,firstEnvelopeAtMs:null};"
         "audit.wrapper=function(data){"
         "let matching=false;"
         "try{"
@@ -804,6 +838,27 @@ def _official_frontend_input_script(value: str, nonce: str) -> tuple[str, str, s
         "if(audit.firstRate===null)audit.firstRate=fmt.rate;"
         "if(audit.firstChannels===null)audit.firstChannels=fmt.channels;"
         "const receivedAt=performance.now();"
+        "if(audit.firstEnvelope===null&&fmt.kind===1&&fmt.bits===16&&"
+        "fmt.channels<=2&&pcmData>=fmt.align*16&&pcmData<=2097152){"
+        "try{"
+        "const b64=msg.audio.slice(0,Math.min(padded,Math.ceil((dataOff+pcmData)/3)*4));"
+        "const wavBytes=atob(b64);"
+        "const view=new DataView(new ArrayBuffer(wavBytes.length));"
+        "for(let k=0;k<wavBytes.length;k++)view.setUint8(k,wavBytes.charCodeAt(k));"
+        "const frames=pcmData/fmt.align;"
+        "const windowFrames=Math.max(1,Math.round(fmt.rate*0.05));"
+        "const energy=[];"
+        "for(let frame=0;frame<frames&&energy.length<160;){"
+        "let sum=0,used=0;"
+        "const stop=Math.min(frames,frame+windowFrames);"
+        "for(let n=frame;n<stop;n++)for(let ch=0;ch<fmt.channels;ch++){"
+        "const v=view.getInt16(dataOff+n*fmt.align+ch*2,true)/32768;"
+        "sum+=v*v;used++;}"
+        "energy.push(Math.sqrt(sum/Math.max(1,used)));frame=stop;}"
+        "if(energy.length>=8){audit.firstEnvelope=energy;"
+        "audit.firstEnvelopeAtMs=receivedAt;}"
+        "}catch(_pcmError){}"
+        "}"
         "if(audit.pcmWindowStartMs===null)audit.pcmWindowStartMs=receivedAt;"
         "audit.pcmWindowEndMs=Math.max(audit.pcmWindowEndMs||0,"
         "receivedAt+Math.min(12000,pcmData/fmt.byteRate*1000)+250);"
