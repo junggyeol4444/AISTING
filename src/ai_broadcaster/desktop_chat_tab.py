@@ -789,8 +789,11 @@ class LocalChatTab(ttk.Frame):
         self._twitch_reader_finished = False
         self._twitch_reader_error = None
         inbox = queue.SimpleQueue()
+        # AI 작업자와 수신 시각 큐를 같은 세션에 고정한다. 재연결 후
+        # 예전 작업자가 새 세션의 시각을 소비하면 로컬 지연이 왜곡된다.
+        arrival_times = queue.SimpleQueue()
         with self._live_ingress_lock:
-            self._ai_arrival_times = queue.SimpleQueue()
+            self._ai_arrival_times = arrival_times
             self._twitch_ai_inbox = inbox
         # The user's real Windows receiver gets fresh private diagnostics on
         # each connection; no message text or credentials enter this meter.
@@ -825,7 +828,8 @@ class LocalChatTab(ttk.Frame):
             args=(model, inbox, official, session),
             kwargs={"fast_official_mode": fast_official,
                     "first_wav_receipt_mode": first_wav_receipt,
-                    "stream_preview_mode": stream_preview},
+                    "stream_preview_mode": stream_preview,
+                    "arrival_times": arrival_times},
             daemon=True,
         ).start()
         self._twitch_start.configure(state="disabled")
@@ -930,7 +934,8 @@ class LocalChatTab(ttk.Frame):
                         official: bool = False, session=None, *,
                         reply_function=None, fast_official_mode: bool = False,
                         first_wav_receipt_mode: bool = False,
-                        stream_preview_mode: bool = False) -> None:
+                        stream_preview_mode: bool = False,
+                        arrival_times: queue.SimpleQueue | None = None) -> None:
         # Old direct-call regression contracts still use unscoped result
         # events; real UI connections always provide their unique session.
         def report(kind, value):
@@ -947,7 +952,10 @@ class LocalChatTab(ttk.Frame):
                 chat = inbox.get()
                 if chat is None or (session is not None and session._stop.is_set()):
                     break
-                arrivals = getattr(self, "_ai_arrival_times", None)
+                # 실제 GUI에서는 생성 시 전달한 세션 전용 시각 큐만 사용.
+                # 인자 없는 이전 직접 호출 검사만 기존 속성을 사용한다.
+                arrivals = (arrival_times if arrival_times is not None
+                            else getattr(self, "_ai_arrival_times", None))
                 try:
                     accepted_at = (arrivals.get_nowait()
                                    if arrivals is not None else None)
