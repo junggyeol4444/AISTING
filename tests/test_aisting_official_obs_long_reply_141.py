@@ -71,7 +71,7 @@ class 긴공식응답OBS관찰검사(unittest.TestCase):
                 raise RuntimeError("공식 응답보다 OBS 관찰창이 먼저 종료됨")
             return self.가상입결과()
 
-        with patch.object(pipeline, "OfficialObsWebsocket", 가상읽기전용OBS), \\
+        with patch.object(pipeline, "OfficialObsWebsocket", 가상읽기전용OBS), \
              patch.object(pipeline, "send_to_native_live2d_session_with_observation",
                           가상공식질문):
             result = pipeline.verify_official_chat_live2d_obs(
@@ -93,7 +93,7 @@ class 긴공식응답OBS관찰검사(unittest.TestCase):
             중지.set()
             return self.가상입결과()
 
-        with patch.object(pipeline, "OfficialObsWebsocket", 가상읽기전용OBS), \\
+        with patch.object(pipeline, "OfficialObsWebsocket", 가상읽기전용OBS), \
              patch.object(pipeline, "send_to_native_live2d_session_with_observation",
                           가상공식질문):
             with self.assertRaises(InterruptedError):
