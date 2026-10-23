@@ -17,6 +17,44 @@ class OfficialMediaStageTiming:
     obs_after_wav_seconds: float | None = None
     obs_minus_mouth_seconds: float | None = None
 
+    @property
+    def first_local_audio_seconds(self) -> float | None:
+        """이번 질문부터 OBS 선택 입력의 첫 음량 신호까지의 관측 시간."""
+        if self.wav_after_prompt_seconds is None or self.obs_after_wav_seconds is None:
+            return None
+        return round(self.wav_after_prompt_seconds + self.obs_after_wav_seconds, 6)
+
+    @property
+    def first_local_mouth_seconds(self) -> float | None:
+        """이번 질문부터 공식 Cubism 첫 입 움직임까지의 관측 시간."""
+        if self.wav_after_prompt_seconds is None or self.mouth_after_wav_seconds is None:
+            return None
+        return round(self.wav_after_prompt_seconds + self.mouth_after_wav_seconds, 6)
+
+    @property
+    def first_local_audio_video_seconds(self) -> float | None:
+        """둘 다 실제 관측된 경우에만 마지막 첫 신호의 로컬 시각차."""
+        audio = self.first_local_audio_seconds
+        mouth = self.first_local_mouth_seconds
+        return round(max(audio, mouth), 6) if audio is not None and mouth is not None else None
+
+    @property
+    def local_audio_video_over_three_seconds(self) -> bool | None:
+        """로컬 관측 한정 3초 초과. 시청자 종단간 성공 판정이 아니다."""
+        total = self.first_local_audio_video_seconds
+        return total > 3.0 if total is not None else None
+
+    @property
+    def longest_observed_stage_ko(self) -> str:
+        """병렬 관측의 인과관계는 추정하지 않고 최장 시간 구간만 표시."""
+        if self.first_local_audio_video_seconds is None:
+            return "미측정"
+        return max((
+            (self.wav_after_prompt_seconds, "질문→공식 WAV"),
+            (self.mouth_after_wav_seconds, "WAV→Cubism 첫 입"),
+            (self.obs_after_wav_seconds, "WAV→OBS 첫 입력"),
+        ), key=lambda item: item[0])[1]
+
     def describe_ko(self) -> str:
         def fmt(value: float | None) -> str:
             return "미측정" if value is None else f"{value:+.3f}초"
@@ -24,6 +62,10 @@ class OfficialMediaStageTiming:
                 + " / WAV→Cubism 첫 입 " + fmt(self.mouth_after_wav_seconds)
                 + " / WAV→OBS 첫 입력 미터 " + fmt(self.obs_after_wav_seconds)
                 + " / OBS 첫 입력−Cubism 첫 입 " + fmt(self.obs_minus_mouth_seconds)
+                + " / 로컬 첫 오디오·입 관측 완료 " + fmt(self.first_local_audio_video_seconds)
+                + " / 로컬 3초 초과 " + ("미측정" if self.local_audio_video_over_three_seconds is None
+                                       else "예" if self.local_audio_video_over_three_seconds else "아니요")
+                + " / 관측 최장 구간 " + self.longest_observed_stage_ko
                 + " (관측 콜백 시각차·시청자 전달 미검증)")
 
 

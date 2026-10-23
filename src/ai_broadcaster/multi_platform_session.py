@@ -263,10 +263,15 @@ class MultiPlatformReadOnlySession:
                     ),
                     "관측공백초": round(
                         self._observed_gap_seconds[code]
-                        + max(0.0, now - self._disconnect_started[code])
+                        + max(0.0, min(
+                            now, self._stop_started_at
+                            if self._stop_started_at is not None else now
+                        ) - self._disconnect_started[code])
                         if code in self._disconnect_started
                         else self._observed_gap_seconds[code], 6),
-                    "현재공백": code in self._disconnect_started,
+                    "현재공백": (
+                        code in self._disconnect_started and not self._stop.is_set()
+                    ),
                     "콜백수신": self._callback_chat_count[code],
                     "콜백전달완료": self._forwarded_chat_count[code],
                     "콜백전달오류": self._callback_error_count[code],
