@@ -10,7 +10,7 @@ import math
 import re
 import secrets
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable
 
 _CHANNEL = re.compile(r"[a-zA-Z0-9_]{3,25}\Z")
@@ -30,24 +30,33 @@ class TwitchChatLine:
     channel: str
     sender: str
     text: str
+    event_id: str | None = field(default=None, compare=False, repr=False)
 
 
 def parse_irc_chat_line(line: str, channel: str) -> TwitchChatLine | None:
     """Return every PRIVMSG addressed to this channel, including duplicates."""
     if not isinstance(line, str):
         raise TypeError("IRC line must be text")
-    # IRCv3 tags may precede the source nickname.
+    # IRCv3 tags may precede the source nickname. Only the real id tag
+    # can identify a retransmitted server event; do not dedupe chat text.
+    event_id = None
     if line.startswith("@"):
-        _, sep, line = line.partition(" ")
+        tags, sep, line = line.partition(" ")
         if not sep:
             return None
+        for tag in tags[1:].split(";"):
+            if tag.startswith("id="):
+                candidate = tag[3:]
+                if re.fullmatch(r"[A-Za-z0-9_-]{1,256}", candidate):
+                    event_id = candidate
+                break
     match = re.fullmatch(
         r":([^!\s]+)![^\s]*\s+PRIVMSG\s+#([A-Za-z0-9_]+)\s+:(.*)",
         line.rstrip("\r\n"),
     )
     if match is None or match.group(2).lower() != channel.lower():
         return None
-    return TwitchChatLine(channel.lower(), match.group(1), match.group(3))
+    return TwitchChatLine(channel.lower(), match.group(1), match.group(3), event_id)
 
 
 class TwitchReadOnlySession:

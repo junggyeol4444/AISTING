@@ -13,7 +13,7 @@ import re
 import ssl
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from urllib.parse import parse_qs, urlencode, urlsplit
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
@@ -25,6 +25,9 @@ class PlatformChat:
     sender: str
     text: str
     platform: str
+    # 서버가 제공한 실제 이벤트 ID만 재연결 중복 수신 확인에 사용한다.
+    # 동일한 본문·작성자의 별개 채팅은 절대 합치지 않는다.
+    event_id: str | None = field(default=None, compare=False, repr=False)
 
 
 def _json_get(url: str, *, timeout: float = 10, headers: dict | None = None) -> dict:
@@ -72,8 +75,17 @@ def parse_chzzk_frame(raw: str, channel: str) -> list[PlatformChat]:
         nick = profile.get("nickname") if isinstance(profile, dict) else None
         nick = nick or item.get("uid") or "anonymous"
         if item["msg"]:
-            # Preserve nonempty whitespace-only chat exactly.
-            out.append(PlatformChat(channel, str(nick), item["msg"], "chzzk"))
+            # 실제 서버 이벤트 ID가 있는 경우에만 재연결 중복 판별에 사용.
+            # ID가 없거나 유효하지 않으면 동일 문장도 모두 전달한다.
+            raw_id = item.get("msgId")
+            event_id = (str(raw_id) if type(raw_id) is int and raw_id >= 0
+                        else raw_id if type(raw_id) is str else None)
+            if (event_id is not None
+                    and (not 1 <= len(event_id) <= 256
+                         or any(ord(ch) < 33 or ord(ch) > 126 for ch in event_id))):
+                event_id = None
+            out.append(PlatformChat(
+                channel, str(nick), item["msg"], "chzzk", event_id))
     return out
 
 
