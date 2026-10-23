@@ -46,14 +46,19 @@ def collect_obs_audio_times(
     경로확정 = False
     선택경로 = None
     for began, ended, sample in observations:
-        if not (_valid_time(began) and _valid_time(ended) and began < ended
-                and bool(getattr(sample, "coherent_media_candidate", False))):
+        if not (_valid_time(began) and _valid_time(ended) and began < ended):
+            # 한 번 근거를 채택한 뒤의 불명확한 창을 건너뛰고
+            # 뒤의 표본을 같은 발화로 이어 붙이지 않는다.
+            if 경로확정:
+                break
             continue
         경로정상, 현재경로 = _관찰창_경로(sample)
-        if not 경로정상:
+        if not 경로정상 or not bool(getattr(sample, "coherent_media_candidate", False)):
+            if 경로확정:
+                break
             continue
-        # 같은 발화로 묶는 관찰창 사이에 선택 OBS 입력/장면/트랙이
-        # 바뀌면 뒤쪽 표본을 다른 발화의 근거로 섞지 않는다.
+        # 소리가 없는 중간 창도 실제 경로 연속성 검사에 포함한다.
+        # 다른 경로로 갔다가 돌아온 경우 역시 동일 발화로 결합하지 않는다.
         if 경로확정 and 현재경로 != 선택경로:
             break
         audio = getattr(sample, "audio", None)
@@ -100,12 +105,16 @@ def collect_obs_input_meter_levels(
     경로확정 = False
     선택경로 = None
     for began, ended, sample in observations:
-        if not (_valid_time(began) and _valid_time(ended) and began < ended
-                and getattr(sample, "coherent_media_candidate", False)):
+        if not (_valid_time(began) and _valid_time(ended) and began < ended):
+            if 경로확정:
+                break
             continue
         경로정상, 현재경로 = _관찰창_경로(sample)
-        if not 경로정상:
+        if not 경로정상 or not bool(getattr(sample, "coherent_media_candidate", False)):
+            if 경로확정:
+                break
             continue
+        # 레벨 0개인 중간 창도 입력/장면/트랙이 바뀌었는지 검사한다.
         if 경로확정 and 현재경로 != 선택경로:
             break
         audio = getattr(sample, "audio", None)
