@@ -1429,6 +1429,22 @@ class LocalChatTab(ttk.Frame):
                                 + (" · 실제 관측 구간 패턴 유사 후보"
                                    if payload.obs_wav_segment_candidate
                                    else " · 발화·쉼 대응 미확인")
+                                + (f" · OBS 연결 {payload.obs_connect_seconds:.3f}초"
+                                   if payload.obs_connect_seconds is not None
+                                   else " · OBS 연결 미측정")
+                                + (f" / 실제 GPT-SoVITS 합성 {payload.tts_synthesis_seconds:.3f}초"
+                                   if payload.tts_synthesis_seconds is not None
+                                   else " / 음성 합성 미측정")
+                                + (f" / OBS 입력 준비 {payload.obs_source_prepare_seconds:.3f}초"
+                                   if payload.obs_source_prepare_seconds is not None
+                                   else " / OBS 입력 준비 미측정")
+                                + (f" / OBS 미터 관측 {payload.obs_meter_observed_seconds:.3f}초"
+                                   if payload.obs_meter_observed_seconds is not None
+                                   else " / 미터 관측 미측정")
+                                + (f" / 합성 완료→OBS 첫 미터 {payload.tts_done_to_first_meter_seconds:.3f}초"
+                                   if payload.tts_done_to_first_meter_seconds is not None
+                                   else " / 합성 완료→OBS 첫 미터 미측정")
+                                + " · 각 단계 실제 로컬 시간이며 시청자 E2E 아님"
                                 + " · 파형 동일성·Live2D·시청자 송출은 별도 검사")
                         else:
                             self._tts_probe_status.set(

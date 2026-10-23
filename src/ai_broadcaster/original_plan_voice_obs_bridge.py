@@ -49,6 +49,12 @@ class RealVoiceObsResult:
     obs_wav_segment_candidate: bool = False
     obs_wav_speech_samples: int = 0
     obs_wav_silence_samples: int = 0
+    # 독립 단계별 실제 monotonic 시각 계측. 시청자 종단간 지연 아님.
+    obs_connect_seconds: float | None = None
+    tts_synthesis_seconds: float | None = None
+    obs_source_prepare_seconds: float | None = None
+    obs_meter_observed_seconds: float | None = None
+    tts_done_to_first_meter_seconds: float | None = None
 
 
 def verify_gpt_sovits_to_obs(
@@ -72,8 +78,10 @@ def verify_gpt_sovits_to_obs(
         raise PermissionError("이번 실제 GPT-SoVITS→OBS 연결 및 음성 사용 권리 승인이 필요합니다.")
     # Check OBS status BEFORE voice synthesis, so no audio is generated when
     # OBS is broadcasting or cannot be authenticated.
+    connection_started_at = time.monotonic()
     obs = OfficialObsWebsocket(obs_password, port=obs_port)
     state = obs.connect()
+    connection_ended_at = time.monotonic()
     if state.streaming:
         raise RuntimeError("OBS가 실제 방송 중일 때 임시 음성 입력 검사를 실행하지 않습니다.")
     client = obs._client
@@ -94,11 +102,13 @@ def verify_gpt_sovits_to_obs(
     kind_list = client.get_input_kind_list(False).input_kinds
     if "ffmpeg_source" not in kind_list:
         raise RuntimeError("실제 OBS 미디어 입력이 지원되지 않습니다.")
+    synthesis_started_at = time.monotonic()
     utterance = synthesize_local_gpt_sovits(
         reference_audio, reference_text, sentence, api_url=api_url,
         operator_approved=True, rights_confirmed=True,
         play_to_speaker=False, return_audio_bytes=True,
     )
+    synthesis_ended_at = time.monotonic()
     raw = utterance.wav_data
     if not raw or len(raw) < 44:
         raise RuntimeError("실제 GPT-SoVITS 음성 WAV를 전달받지 못했습니다.")
@@ -147,6 +157,7 @@ def verify_gpt_sovits_to_obs(
             # Synthesis can take minutes. OBS may have started streaming or
             # changed scenes since the original pre-synthesis permission check.
             # Refuse any new source before sending audio to an unknown scene.
+            source_prepare_started_at = time.monotonic()
             before_input = obs.status()
             if before_input.streaming:
                 raise RuntimeError("음성 합성 중 OBS 방송이 시작되어 입력 검사를 중단했습니다.")
@@ -178,6 +189,7 @@ def verify_gpt_sovits_to_obs(
                 raise RuntimeError("OBS 음성 입력 생성 도중 송출 또는 장면 상태가 변경되었습니다.")
             ensure_not_recording()
 
+            source_prepare_ended_at = time.monotonic()
             restart_requested_at = None
             restart_returned_at = None
 
@@ -197,10 +209,12 @@ def verify_gpt_sovits_to_obs(
                     input_name, "OBS_WEBSOCKET_MEDIA_INPUT_ACTION_RESTART")
                 restart_returned_at = time.monotonic()
 
+            meter_probe_started_at = time.monotonic()
             meters = obs.read_actual_audio_meters(
                 operator_approved=True, input_name=input_name,
                 duration=meter_duration,
                 start_action=start_exact_created_media_after_meter_subscription)
+            meter_probe_ended_at = time.monotonic()
             # OBS 서버는 미터 이벤트를 비동기로 전달한다. 재생 명령을
             # 보내기 이전의 양성 신호를 이번 WAV의 증거로 세지 않는다.
             # 늦게 도착한 실제 양성 시각은 추정하지 않고 별도 구분한다.
@@ -278,6 +292,17 @@ def verify_gpt_sovits_to_obs(
                     and during_wav and segment_result.candidate),
                 obs_wav_speech_samples=segment_result.voiced_samples,
                 obs_wav_silence_samples=segment_result.silent_samples,
+                obs_connect_seconds=round(
+                    connection_ended_at - connection_started_at, 6),
+                tts_synthesis_seconds=round(
+                    synthesis_ended_at - synthesis_started_at, 6),
+                obs_source_prepare_seconds=round(
+                    source_prepare_ended_at - source_prepare_started_at, 6),
+                obs_meter_observed_seconds=round(
+                    meter_probe_ended_at - meter_probe_started_at, 6),
+                tts_done_to_first_meter_seconds=(
+                    round(during_wav[0] - synthesis_ended_at, 6)
+                    if during_wav else None),
             )
             if not result.actual_signal:
                 raise RuntimeError("OBS가 GPT-SoVITS 실제 WAV 입력 신호를 확인하지 못했습니다.")
