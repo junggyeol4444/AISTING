@@ -293,6 +293,24 @@ class OfficialChatObsEvidence:
                     and self.temporal_overlap_candidate)
 
 
+def _await_official_prompt_start(
+    prompt_started: threading.Event,
+    cancel_observation: threading.Event,
+    cancel_event: threading.Event | None,
+) -> bool:
+    """OBS 관찰 준비 뒤 실제 질문 신호까지 대기하되 취소는 즉시 확인한다.
+
+    고정 8초 대기 만료로 관찰자가 먼저 종료된 채 질문이 발송되는 상황을
+    막는다. 주기적인 확인은 인위적인 AI 응답 지연을 추가하지 않는다.
+    """
+    while True:
+        if cancel_observation.is_set() or (cancel_event is not None and cancel_event.is_set()):
+            return False
+        if prompt_started.wait(timeout=0.1):
+            return not (cancel_observation.is_set() or
+                        (cancel_event is not None and cancel_event.is_set()))
+
+
 def verify_official_chat_live2d_obs(
     text: str,
     *,
@@ -376,6 +394,7 @@ def verify_official_chat_live2d_obs(
     send_finished = threading.Event()
     prompt_started = threading.Event()
     cancel_observation = threading.Event()
+    first_capture_ready = threading.Event()
     monitor_ended_before_reply = []
     lip = None
     send_failure = None
@@ -423,7 +442,8 @@ def verify_official_chat_live2d_obs(
             started.set()
             # Do not let fast callbacks (or a slow OBS safety preflight) use
             # up the audio observation budget BEFORE the actual user turn.
-            if not prompt_started.wait(timeout=8) or cancel_observation.is_set():
+            if not _await_official_prompt_start(
+                    prompt_started, cancel_observation, cancel_event):
                 return
             # 실제 한국어 GPT-SoVITS 응답이 느릴 때 고정 6개 창(최대 18초)이
             # 먼저 소진되어 공식 입·음성 실측을 놓치지 않도록 한다.
@@ -436,6 +456,9 @@ def verify_official_chat_live2d_obs(
                 if observation_ready_to_finish():
                     break
                 monitor_still_offline()
+                # 첫 읽기 전 안전 확인까지 끝난 뒤에만 질문 전송을 허용한다.
+                # 관찰 준비 이전의 빠른 WAV/입 움직임을 놓치지 않는다.
+                first_capture_ready.set()
                 capture_started = time.monotonic()
                 sample = observer.inspect_program_media(
                     operator_approved=True, input_name=obs_input_name,
@@ -481,10 +504,30 @@ def verify_official_chat_live2d_obs(
         prompt_started.set()
         monitor.join(timeout=2)
         raise
+    # 관찰자가 실제 첫 OBS 표본을 읽을 준비가 되기 전에는
+    # 승인된 질문조차 발송하지 않는다. 실패·취소는 미전송으로 분류한다.
+    prompt_started.set()
+    try:
+        deadline = time.monotonic() + 3.0
+        while not first_capture_ready.is_set() and not errors:
+            check_cancelled()
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            first_capture_ready.wait(timeout=min(0.05, remaining))
+        if errors:
+            raise RuntimeError("OBS 첫 표본 준비 중 안전 검사 실패 · 질문 미전송") from errors[0]
+        if not first_capture_ready.is_set():
+            raise RuntimeError("OBS 첫 표본 준비 시간 초과 · 질문 미전송")
+        ensure_offline()
+        check_cancelled()
+    except Exception:
+        cancel_observation.set()
+        monitor.join(timeout=2)
+        raise
     prompt_started_at = time.monotonic()
     prompt_finished_at = prompt_started_at
     try:
-        prompt_started.set()
         check_cancelled()
         lip = send_to_native_live2d_session_with_observation(
             text, operator_approved=True, duration=duration
