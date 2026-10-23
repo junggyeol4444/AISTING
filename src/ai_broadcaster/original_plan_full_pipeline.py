@@ -425,10 +425,12 @@ def verify_official_chat_live2d_obs(
             # up the audio observation budget BEFORE the actual user turn.
             if not prompt_started.wait(timeout=8) or cancel_observation.is_set():
                 return
-            # A single 8-second OBS probe can finish before the official
-            # GPT-SoVITS speech starts. Observe bounded consecutive windows
-            # (up to 6 x 3 seconds) through the actual question response.
-            for _ in range(6):
+            # 실제 한국어 GPT-SoVITS 응답이 느릴 때 고정 6개 창(최대 18초)이
+            # 먼저 소진되어 공식 입·음성 실측을 놓치지 않도록 한다.
+            # 이미 승인된 단일 질문이 끝날 때까지 OBS를 읽기 전용으로 관찰하고,
+            # 응답 종료 후에는 기존 운영자 지정 duration 범위까지만 관찰한다.
+            # 추가 질문·방송·녹화·음성 재생을 시작하지 않는다.
+            while True:
                 if cancel_observation.is_set() or (cancel_event is not None and cancel_event.is_set()):
                     break
                 if observation_ready_to_finish():
