@@ -1198,6 +1198,8 @@ class LocalChatTab(ttk.Frame):
                 f" / GUI 전달 {state['콜백전달완료']}건"
                 f" / 전달 오류 {state['콜백전달오류']}건"
                 f" / 중단 {state['콜백전달중단']}건"
+                f" / 동일 서버 이벤트 ID 재수신 차단 {state.get('서버이벤트ID재수신차단', 0)}건"
+                f" / 이벤트 ID 없는 수신 {state.get('서버이벤트ID없음', 0)}건"
                 f" / 전달 최대 {state['콜백전달최대초']:.2f}초"
                 f" / 재연결 {state['재연결완료']}회"
                 f" / 읽기 시도 {state['실제읽기시도']}회"

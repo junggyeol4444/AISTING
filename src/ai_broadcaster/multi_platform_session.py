@@ -60,6 +60,7 @@ class MultiPlatformReadOnlySession:
         # 본문/닉네임으로는 절대 합치지 않으며 ID 없는 사건은 모두 전달.
         # 수신기 콜백이 AI FIFO 수용에 성공한 ID만 최근 5만 개 유지한다.
         self._replayed_event_id_count = {code: 0 for code in channels}
+        self._missing_event_id_count = {code: 0 for code in channels}
         self._recent_event_ids = {code: deque() for code in channels}
         self._seen_event_ids = {code: set() for code in channels}
         # 읽기 루프가 실제 시도/예외를 관측한 횟수만 기록한다.
@@ -106,15 +107,17 @@ class MultiPlatformReadOnlySession:
                         if not isinstance(item, PlatformChat) or item.platform != code:
                             raise ValueError("채팅 플랫폼 식별자가 올바르지 않습니다.")
                         event_id = item.event_id
+                        with self._emit_lock:
+                            self._callback_chat_count[code] += 1
+                            self._last_chat_at[code] = time.monotonic()
+                            if event_id is None:
+                                self._missing_event_id_count[code] += 1
                         if event_id is not None and event_id in self._seen_event_ids[code]:
                             # 같은 플랫폼·같은 세션에서 이미 AI FIFO에 넣은
                             # 서버 사건의 재전달만 막는다. 별개 채팅은 보존.
                             with self._emit_lock:
                                 self._replayed_event_id_count[code] += 1
                             return True
-                        with self._emit_lock:
-                            self._callback_chat_count[code] += 1
-                            self._last_chat_at[code] = time.monotonic()
                         started = time.monotonic()
                         try:
                             accepted = self._emit("chat", item)
@@ -253,6 +256,7 @@ class MultiPlatformReadOnlySession:
                     "콜백전달오류": self._callback_error_count[code],
                     "콜백전달중단": self._callback_aborted_count[code],
                     "서버이벤트ID재수신차단": self._replayed_event_id_count[code],
+                    "서버이벤트ID없음": self._missing_event_id_count[code],
                     "콜백전달누적초": round(self._callback_emit_total_seconds[code], 6),
                     "콜백전달최대초": round(self._callback_emit_max_seconds[code], 6),
                     "실제읽기시도": self._reader_attempts[code],

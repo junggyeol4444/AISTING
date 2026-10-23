@@ -131,8 +131,12 @@ def parse_youtube_page(page: dict, channel: str) -> list[PlatformChat]:
         text = snippet.get("displayMessage")
         if not isinstance(text, str) or not text:
             continue
-        result.append(PlatformChat(channel,
-                    str(author.get("displayName") or "YouTube 시청자"), text, "youtube"))
+        raw_id = item.get("id")
+        event_id = (raw_id if isinstance(raw_id, str)
+                    and 1 <= len(raw_id) <= 256 else None)
+        result.append(PlatformChat(
+            channel, str(author.get("displayName") or "YouTube 시청자"),
+            text, "youtube", event_id))
     return result
 
 
