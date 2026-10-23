@@ -70,6 +70,9 @@ class LocalChatTab(ttk.Frame):
         self._chat_platform = tk.StringVar(value='트위치')
         self._multi_channels = {name: tk.StringVar() for name in ('twitch','chzzk','soop','youtube')}
         self._official_live2d = tk.BooleanVar(value=False)
+        # 공식 창으로 기존 텍스트만 한 번 전달하는 실시간 경로.
+        # 립싱크 실증은 기존 운영자 단독 검사에서 그대로 수행한다.
+        self._official_fast_send = tk.BooleanVar(value=True)
         self._youtube_api_key = tk.StringVar()
         self._youtube_oauth_token = tk.StringVar()
         self._oauth_busy = False
@@ -218,6 +221,11 @@ class LocalChatTab(ttk.Frame):
                           width=width).pack(side="left", padx=(0, 12))
         ttk.Checkbutton(self, text="공식 Open-LLM-VTuber/Live2D 창으로 채팅 전달 (한 세션 · Ollama 중복 호출 없음)",
                         variable=self._official_live2d).pack(anchor="w", pady=(4, 0), before=model_row)
+        ttk.Checkbutton(
+            self,
+            text="공식 창 빠른 전송: 채팅당 8초 립싱크 실증 대기 생략 (전송 확인만 · 기본 켜짐)",
+            variable=self._official_fast_send,
+        ).pack(anchor="w", pady=(2, 1), before=model_row)
         ttk.Label(self, textvariable=self._twitch_status, wraplength=600).pack(
             anchor="w", pady=(2, 5), before=model_row)
         ttk.Label(self, textvariable=self._platform_health_status,
@@ -671,7 +679,9 @@ class LocalChatTab(ttk.Frame):
                 "연결 후 들어오는 모든 플랫폼 채팅을 기존 공식 Live2D 창의 "
                 "Open-LLM-VTuber 서버에 1회씩 전달합니다. 공식 서버 설정에 따라 "
                 "AI·음성·기억/외부 접속이 발생할 수 있습니다. "
-                "Live2D 창을 먼저 열고 공식 서버의 무료·로컬 모델 설정을 확인했습니까?",
+                "Live2D 창을 먼저 열고 공식 서버의 무료·로컬 모델 설정을 확인했습니까? "
+                "빠른 전송을 선택하면 공식 WebSocket의 질문 전달까지만 확인하고 "
+                "각 채팅의 음성·입 움직임은 자동으로 실증하지 않습니다.",
                 parent=self):
             return
         choice = self._chat_platform.get()
@@ -755,6 +765,7 @@ class LocalChatTab(ttk.Frame):
         self._twitch_received = 0
         self._twitch_replied = 0
         self._twitch_ai_failures = 0
+        self._twitch_official_forwarded = 0
         self._twitch_reader_finished = False
         self._twitch_reader_error = None
         inbox = queue.SimpleQueue()
@@ -783,8 +794,11 @@ class LocalChatTab(ttk.Frame):
         self._twitch_active_workers.add(session)
         # One worker calls the EXISTING local Ollama conversation in order.
         # No extra model service, intentional delay or platform chat posting.
+        fast_official = bool(self._official_fast_send.get()) if official else False
         threading.Thread(
-            target=self._work_twitch_ai, args=(model, inbox, official, session),
+            target=self._work_twitch_ai,
+            args=(model, inbox, official, session),
+            kwargs={"fast_official_mode": fast_official},
             daemon=True,
         ).start()
         self._twitch_start.configure(state="disabled")
@@ -887,7 +901,7 @@ class LocalChatTab(ttk.Frame):
 
     def _work_twitch_ai(self, model: str, inbox: queue.SimpleQueue,
                         official: bool = False, session=None, *,
-                        reply_function=None) -> None:
+                        reply_function=None, fast_official_mode: bool = False) -> None:
         # Old direct-call regression contracts still use unscoped result
         # events; real UI connections always provide their unique session.
         def report(kind, value):
@@ -938,15 +952,29 @@ class LocalChatTab(ttk.Frame):
                     # model in ONE upstream conversation. Never duplicate this
                     # turn by also submitting to the separate Ollama model.
                     try:
-                        from .original_plan_frontend import send_to_native_live2d_session_with_observation
-                        evidence = send_to_native_live2d_session_with_observation(
-                            chat.text, operator_approved=True, duration=8)
+                        if fast_official_mode:
+                            # 기존 실제 공식 React / WS 1회 전달 확인 경로.
+                            # 8초 실증 샘플링이 AI FIFO의 다음 채팅까지
+                            # 막지 않지만, 서버 답변/음성 성공은 미확인이다.
+                            from .original_plan_frontend import send_to_native_live2d_session
+                            accepted = send_to_native_live2d_session(
+                                chat.text, operator_approved=True)
+                            if accepted is not True:
+                                raise RuntimeError("공식 WebSocket 실제 전송 미확인")
+                        else:
+                            from .original_plan_frontend import send_to_native_live2d_session_with_observation
+                            evidence = send_to_native_live2d_session_with_observation(
+                                chat.text, operator_approved=True, duration=8)
                     except Exception as exc:
                         attempt_failed = True
                         report("twitch_ai_error", (chat, type(exc).__name__))
                     else:
-                        attempt_failed = not bool(evidence.verified_signal)
-                        report("twitch_live2d_ok", (chat, evidence))
+                        if fast_official_mode:
+                            # 결과를 성공 답변으로 계수하지 않는다.
+                            report("twitch_live2d_forwarded", chat)
+                        else:
+                            attempt_failed = not bool(evidence.verified_signal)
+                            report("twitch_live2d_ok", (chat, evidence))
                     finally:
                         report_measured_elapsed()
                     continue
@@ -1280,6 +1308,17 @@ class LocalChatTab(ttk.Frame):
                             "실제 채팅 " + str(self._twitch_received)
                             + "건 · AI 응답 " + str(self._twitch_replied)
                             + "건 · AI 오류 " + str(self._twitch_ai_failures) + "건")
+                    elif kind == "twitch_live2d_forwarded":
+                        chat = payload
+                        self._twitch_official_forwarded += 1
+                        self._append(
+                            "공식 WebSocket 채팅 전달 확인 · 모델 답변·GPT-SoVITS "
+                            "음성·입 움직임은 미검증: " + chat.sender)
+                        self._twitch_status.set(
+                            "공식 채팅 전달 확인 " + str(self._twitch_official_forwarded)
+                            + "건 · 실제 답변/립싱크 실증 "
+                            + str(self._twitch_replied) + "건 · 오류 "
+                            + str(self._twitch_ai_failures) + "건")
                     elif kind == "twitch_live2d_ok":
                         chat, evidence = payload
                         if evidence.verified_signal:
