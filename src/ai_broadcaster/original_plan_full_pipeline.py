@@ -456,15 +456,26 @@ def verify_official_chat_live2d_obs(
                 if observation_ready_to_finish():
                     break
                 monitor_still_offline()
-                # 첫 읽기 전 안전 확인까지 끝난 뒤에만 질문 전송을 허용한다.
-                # 관찰 준비 이전의 빠른 WAV/입 움직임을 놓치지 않는다.
-                first_capture_ready.set()
+                # 공식 OBS 구현에서는 실제 오디오 미터 구독 등록 완료
+                # 신호를 받은 후에만 질문 전송을 허용한다.
                 capture_started = time.monotonic()
-                sample = observer.inspect_program_media(
-                    operator_approved=True, input_name=obs_input_name,
-                    duration=min(float(duration), 3.0),
-                    observe_program_motion=True,
-                )
+                ready_capture = getattr(
+                    observer, "inspect_program_media_with_meter_ready", None)
+                if callable(ready_capture):
+                    sample = ready_capture(
+                        ready_action=first_capture_ready.set,
+                        operator_approved=True, input_name=obs_input_name,
+                        duration=min(float(duration), 3.0),
+                        observe_program_motion=True,
+                    )
+                else:
+                    # 이전 가상 OBS 계약검사 대역은 미터 구독 기능이 없다.
+                    first_capture_ready.set()
+                    sample = observer.inspect_program_media(
+                        operator_approved=True, input_name=obs_input_name,
+                        duration=min(float(duration), 3.0),
+                        observe_program_motion=True,
+                    )
                 capture_ended = time.monotonic()
                 # 검사 도중 사용자가 녹화 또는 방송을 잠시 시작한
                 # 경우에도 정상 관측으로 채택하지 않는다.

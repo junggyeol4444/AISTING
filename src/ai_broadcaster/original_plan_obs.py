@@ -1081,7 +1081,8 @@ class OfficialObsWebsocket:
 
     def inspect_program_media(self, *, operator_approved: bool = False,
                               input_name: str, duration: float = 3.0,
-                              observe_program_motion: bool = False
+                              observe_program_motion: bool = False,
+                              meter_ready_action=None,
                               ) -> ActualObsProgramMediaObservation:
         """Read one real OBS scene frame and the selected input's meter.
 
@@ -1094,6 +1095,8 @@ class OfficialObsWebsocket:
             raise PermissionError('OBS 실제 화면·오디오 통합 관찰 승인이 필요합니다.')
         if type(observe_program_motion) is not bool:
             raise ValueError('OBS 영상 변화 관찰 선택값이 잘못되었습니다.')
+        if meter_ready_action is not None and not callable(meter_ready_action):
+            raise ValueError('OBS 미터 구독 준비 콜백 형식 오류')
         if (not isinstance(input_name, str) or not 1 <= len(input_name) <= 128
                 or input_name != input_name.strip()
                 or any(ord(char) < 32 for char in input_name)):
@@ -1117,8 +1120,12 @@ class OfficialObsWebsocket:
             raise ObsConnectionError(
                 'OBS 영상 검사 도중 장면/송출 상태가 변경되어 오디오 경로 결합을 중단했습니다.'
             )
+        # 첫 화면 캡처 시점이 아니라 실제 OBS 미터 이벤트 구독 등록
+        # 이후에만 질문을 보내도록 준비 신호를 전달한다.
         audio = self.read_actual_audio_meters(
             operator_approved=True, duration=duration, input_name=input_name,
+            **({"start_action": meter_ready_action}
+               if meter_ready_action is not None else {}),
         )
         # 기존 장면·오디오 읽기 흐름은 보존한다. 운영자가 위 통합 검사로
         # 요청한 경우에만 두 번째 실제 프로그램 영상 프레임을 가져온다.
@@ -1175,6 +1182,20 @@ class OfficialObsWebsocket:
         # PNG and meter still do NOT prove actual broadcast audio/video.
         after_route = self.status()
         return replace(preliminary, audio=audio, after_route=after_route)
+
+    def inspect_program_media_with_meter_ready(
+        self, *, ready_action, operator_approved: bool = False,
+        input_name: str, duration: float = 3.0,
+        observe_program_motion: bool = False,
+    ) -> ActualObsProgramMediaObservation:
+        """OBS 실제 미터 이벤트 구독 완료 시점에만 준비 신호를 전달한다."""
+        if not callable(ready_action):
+            raise ValueError('OBS 미터 준비 신호 형식 오류')
+        return self.inspect_program_media(
+            operator_approved=operator_approved, input_name=input_name,
+            duration=duration, observe_program_motion=observe_program_motion,
+            meter_ready_action=ready_action,
+        )
 
     def set_scene(self, name: str, *, operator_confirmed: bool = False) -> ActualObsState:
         # Changing the on-air scene is an actual OBS control action. Require
