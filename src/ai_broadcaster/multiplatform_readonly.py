@@ -319,6 +319,9 @@ class SoopReadOnlySession(ReadOnlySession):
             join_sent = False
             entered = False
             next_ping = None
+            # 실제 서버 JOIN 승인 전에 받은 0005 채팅은 임의 폐기하거나
+            # 승인되지 않은 AI 호출로 전달하지 않고 동일 수신기 메모리에 보류.
+            startup_chats = []
             def parse_observed(raw, channel):
                 nonlocal frames_seen, join_sent, entered, next_ping
                 frames_seen += 1
@@ -337,7 +340,23 @@ class SoopReadOnlySession(ReadOnlySession):
                             self.emit("ready", self.channel)
                         elif code == "0007":
                             raise RuntimeError("SOOP 채팅 서버에서 연결 종료 응답을 받았습니다.")
-                return parse_soop_frame(raw, channel)
+                messages = parse_soop_frame(raw, channel)
+                if not entered:
+                    if len(startup_chats) + len(messages) > 4096:
+                        # 보유 가능한 수를 넘으면 연결 재시도 대상으로
+                        # 명시적 오류를 반환한다. 무음/채팅 내용 필터링 금지.
+                        raise RuntimeError(
+                            "SOOP JOIN 승인 전 채팅 임시 보관 한도 초과 · 누락 위험")
+                    startup_chats.extend(messages)
+                    return []
+                if startup_chats:
+                    # 같은 서버 프레임 안에서 JOIN 승인과 채팅이 함께 와도
+                    # 먼저 받은 원본 채팅부터 FIFO 순서대로 AI 큐에 전달.
+                    startup_chats.extend(messages)
+                    released = list(startup_chats)
+                    startup_chats.clear()
+                    return released
+                return messages
             def keepalive():
                 nonlocal next_ping
                 if entered and next_ping is not None and time.monotonic() >= next_ping:
