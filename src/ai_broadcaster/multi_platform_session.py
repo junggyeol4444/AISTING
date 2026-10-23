@@ -68,6 +68,8 @@ class MultiPlatformReadOnlySession:
         # 정상이 확인된 YouTube API 응답. 채팅 개수와 절대 혼동하지 않는다.
         self._transport_activity_count = {code: 0 for code in channels}
         self._last_transport_activity_at: dict[str, float] = {}
+        # 반열림 소켓 감지에 의한 복구와 네트워크 예외를 혼동하지 않는다.
+        self._transport_stalled_count = {code: 0 for code in channels}
         # 실제 ready 신호가 확인된 기간만 누적한다. 실제 네트워크
         # 무누락 또는 24시간 송출 성공과는 다른 읽기 전용 지표다.
         self._ready_interval_started: dict[str, float] = {}
@@ -117,6 +119,9 @@ class MultiPlatformReadOnlySession:
                                 self._callback_emit_total_seconds[code] += elapsed
                                 self._callback_emit_max_seconds[code] = max(
                                     self._callback_emit_max_seconds[code], elapsed)
+                    elif kind == "transport_stalled":
+                        with self._emit_lock:
+                            self._transport_stalled_count[code] += 1
                     elif kind == "transport_activity":
                         with self._emit_lock:
                             self._transport_activity_count[code] += 1
@@ -255,6 +260,7 @@ class MultiPlatformReadOnlySession:
                     "마지막채팅콜백경과초": round(now - self._last_chat_at[code], 3)
                     if code in self._last_chat_at else None,
                     "수신응답계수": self._transport_activity_count[code],
+                    "통신무응답재연결": self._transport_stalled_count[code],
                     "마지막통신응답경과초": round(
                         now - self._last_transport_activity_at[code], 3)
                     if code in self._last_transport_activity_at else None,

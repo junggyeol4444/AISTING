@@ -144,6 +144,10 @@ class ReadOnlySession:
     def _receive_socket(self, sock, parser, *, max_seconds=None, on_tick=None):
         import websocket
         deadline = time.monotonic() + max_seconds if max_seconds else None
+        # 빈 채팅방과 통신 정지는 다르다. 채팅 본문이 아니라
+        # 실제 서버 소켓 프레임의 도착 시간으로만 장기 반열림 감지.
+        # 10분간 어떠한 프레임도 없다면 재접속을 요청한다.
+        last_received_at = time.monotonic()
         while not self._stop.is_set():
             if deadline and time.monotonic() >= deadline:
                 return
@@ -153,6 +157,10 @@ class ReadOnlySession:
                 sock.settimeout(1)
                 data = sock.recv()
             except websocket.WebSocketTimeoutException:
+                if (max_seconds is None and not self._stop.is_set()
+                        and time.monotonic() - last_received_at >= 600):
+                    self.emit("transport_stalled", None)
+                    raise ConnectionError("채팅 소켓 서버 응답이 10분간 없어서 재연결합니다.")
                 continue
             except Exception:
                 # The operator may close the socket while recv() is blocking.
@@ -164,6 +172,7 @@ class ReadOnlySession:
                 return
             if not data:
                 raise RuntimeError("채팅 서버 연결이 종료됐습니다.")
+            last_received_at = time.monotonic()
             # 내용 없는 채팅방에서도 실제 WebSocket 프레임 수신은
             # 연결 활동의 증거다. 메타데이터만 전달하고 본문 저장 없음.
             self.emit("transport_activity", None)

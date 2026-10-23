@@ -1112,6 +1112,7 @@ class LocalChatTab(ttk.Frame):
                 f" / 복구 공백 3초 초과 {state['완료공백3초초과']}건"
                 f" / {gap_label} / {ratio_label} / {idle_label}"
                 f" / 소켓 프레임·API 응답 {state.get('수신응답계수', 0)}건"
+                f" / 통신 응답정지 재연결 {state.get('통신무응답재연결', 0)}회"
                 f" / {traffic_label}"
                 f" / 수신큐 완료대기 {block_stats['건수']}건"
                 f" / 대기 누적 {block_stats['총초']:.2f}초"

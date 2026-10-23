@@ -177,6 +177,9 @@ class TwitchReadOnlySession:
                 return
             self.emit("connecting", self.channel)
             buffer = ""
+            # IRC의 PING/서버 알림도 실제 통신 활동이다. 무채팅을
+            # 장애로 오판하지 않으며 15분간 무프레임이면 재접속한다.
+            last_received_at = time.monotonic()
             while not self._stop.is_set():
                 if deadline is not None and time.monotonic() >= deadline:
                     break
@@ -184,6 +187,10 @@ class TwitchReadOnlySession:
                     sock.settimeout(1.0)
                     data = sock.recv()
                 except websocket.WebSocketTimeoutException:
+                    if (deadline is None and not self._stop.is_set()
+                            and time.monotonic() - last_received_at >= 900):
+                        self.emit("transport_stalled", None)
+                        raise TwitchReadError("트위치 소켓 서버 응답이 15분간 없어 재연결합니다.")
                     continue
                 except Exception:
                     if self._stop.is_set():
@@ -195,6 +202,7 @@ class TwitchReadOnlySession:
                     raise TwitchReadError("트위치 채팅 응답 형식 오류")
                 if not data:
                     raise TwitchReadError("트위치 서버가 연결을 종료했습니다.")
+                last_received_at = time.monotonic()
                 self.emit("transport_activity", None)
                 buffer += data
                 # One split per frame avoids quadratic rescanning under load.
