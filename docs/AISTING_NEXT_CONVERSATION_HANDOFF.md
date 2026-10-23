@@ -2693,6 +2693,41 @@ F) 원본 100단계 roadmap.json status는 completed=9, pending=91이며 **코�
 
 최신 1~130절 전체 원문은 `docs/AISTING_HOURLY_FULL_HANDOFF.md` 및 `docs/hourly-handoff-appendices/`의 각 회차 원문에 누적 보존한다. 다음 재개는 현재 `main` HEAD와 두 문서 원문 및 `docs/ORIGINAL_PLAN.txt`, `docs/ROADMAP_100.md`, `config/roadmap.json`을 다시 확인하고, 실제 개발을 우선 진행한다.
 
+# AISTING 131회차 — 개발 중 인수인계 (2026-10-23)
+
+시작 main HEAD: `4c40d6495fbe248e0ca8b4cdbf74c13f7929f2f8`.
+
+실제 확인: 기존 1~130절 인수인계, 원본 기획·100단계 계획·로드맵, 기존 Twitch/4플랫폼/GUI 소스. Windows CI `39722213656` 최종 `completed/cancelled` (4개 하위 작업 성공, 한국 공개 채팅 1개 취소). Ollama 500건 CI `39720448468` 최종 `completed/success`이지만 500/500건 모두 3초 초과, p95 전체 2979.984초, FIFO 대기 2973.875초, 모델 7.875초. 실제 수백 명·24시간·시청자 E2E 검증 아님.
+
+이번 신규 개발 내용: Twitch IRC 서버가 명시적으로 `RECONNECT` 명령을 보냈을 때 현재 읽기 세션에서 기존 상위 다중 플랫폼 재연결 경로로 넘기도록 소스 수정안을 작성했다. 동일 WebSocket 프레임에 명령 뒤 채팅이 포함돼도 해당 채팅을 순서대로 전달한 뒤 재연결하도록 처리한다. 서버 명령과 시청자 본문 `RECONNECT`를 구분한다. 이 동작을 확인할 비네트워크 테스트 코드 3개를 작성했다.
+
+**반영 실패:** GitHub 쓰기 도구가 안전 검사에 차단되어 실제 main에 코드/문서/테스트를 반영하지 못했다. 로컬 변경 적용 스크립트·패치·테스트·인수인계 파일만 산출했다. 신규 테스트 실행·전체 회귀·Windows EXE/GUI·OBS·실모델 검증은 하지 않았다. 기존 main에 131절이 추가됐다고 보고하지 않는다. 다음 실행은 반드시 새 main HEAD를 조회하고, 현재 패치 적용 여부를 먼저 확인해야 한다. 권한/연결 문제가 해결되면 기존 main만 fast-forward 방식으로 적용하고 원본 전체 문서 1~130절 뒤에 이 회차를 131절로 추가한다.
+
+계속 개발할 것: 권리 확인된 한국어 GPT-SoVITS 실제 WAV→공식 Live2D Cubism 실제 입→OBS 같은 발화의 오디오/영상 인과 실증, 4플랫폼 실제 수백 건·수백 명 무누락, 24시간 재연결, AI·음성·영상·시청자 E2E 1~3초 병목. 완료 후 사용자 지정 순서대로 전체 회귀→Windows 네이티브 EXE/GUI·OBS·로컬 모델 통합검사→오류 수정→전체 재검증. 무단 계정·OAuth·송출·녹화·채팅 발신·보이스 모델 학습, 토큰 96/keep_alive 10m 임의 설정, 다른 프로젝트/Drive/예약 변경, 새 브랜치/force push/롤백 모두 수행하지 않았다.
+
+## 132. 2026-10-23 15:31 KST — Twitch 서버 RECONNECT 경로 누적 개발·미반영 인수인계
+
+### 시작 HEAD 및 기존 원문 보존
+- 현재 GitHub `junggyeol4444/AISTING/main` 최근 HEAD 조회 결과: `4c40d6495fbe248e0ca8b4cdbf74c13f7929f2f8`. 131회차 시작과 동일하며 이번 회차에서 원격 갱신 성공 없음.
+- 원본 `docs/AISTING_HOURLY_FULL_HANDOFF.md` 1~130절, `docs/AISTING_NEXT_CONVERSATION_HANDOFF.md`, 97절 부록, 원본 기획·100단계·JSON 로드맵, 실제 Twitch/다중 플랫폼 수신 소스 조회. 이전 원문을 삭제·대체하지 않았음.
+- 이전 131회차 패치 ZIP을 인계받았고, `src/ai_broadcaster/twitch_readonly.py`의 `RECONNECT` 처리가 현재 main에 아직 없는 것을 확인. 131회차 코드 패치와 기존 비네트워크 테스트 3개를 본 ZIP에 다시 동봉.
+
+### 이번 회차 개발
+- **새 파일 작성**: `test_twitch_reconnect_coordinator_132.py`. 실제 기존 `MultiPlatformReadOnlySession`을 사용하고 Twitch 수신기만 모의 객체로 대체하여 첫 수신기가 서버 `RECONNECT` 예외를 낸 뒤 상위 재연결 루프가 새 수신기를 생성하고, 서버 이벤트 ID가 서로 다른 같은 본문 채팅 2건을 모두 기존 AI 수용 콜백으로 전달하며, 재연결 관측 횟수/공백 표본이 누적되는 경로를 검증하도록 작성.
+- 이 테스트는 외부 채팅·모델·OBS를 실행하지 않는다. 실제 Twitch 서버 RECONNECT·수백 명·24시간 무누락 증거가 아니다.
+- 131회차 패치 `AISTING_131_Twitch_RECONNECT.patch`와 적용 스크립트, 테스트 3개는 그대로 보존.
+- **원격 반영 실패**: `src/ai_broadcaster/twitch_readonly.py`에 대해 GitHub `update_file`을 실제 호출했으나 `This tool call was blocked by OpenAI's safety checks`로 거절됨. 따라서 코드·테스트·문서의 GitHub main 커밋 없음. 다른 쓰기 우회, force push, 새 브랜치 생성 없음.
+
+### CI 실제 확인과 실패/한계
+- Windows `39722213656`: 하위 작업 4개 성공(OBS 읽기, Twitch 공개 읽기, Windows EXE, Ollama 로컬) / `korean-public-chat-readonly` 취소. 전체 성공 아님. 취소 작업 ID `119638028931`의 로그 조회는 GitHub API 404 `BlobNotFound`로 실패.
+- 실제 Ollama 500건 `39720448468`: 작업 성공 종료, 합성 채팅 500건 완료. **3초 초과 500건**, 전체 p95 `2979.984초`, FIFO 대기 p95 `2973.875초`, AI 처리 p95 `7.875초`. 실제 500명/24시간/시청자 E2E 성공 아님. 원격 로그에서 위 수치 재확인.
+- 최신 131/132 코드의 전체 회귀, Windows EXE/GUI, 실제 Twitch·4플랫폼·24시간, 권리 있는 한국어 GPT-SoVITS WAV→공식 Live2D Cubism 입→OBS 동일 발화, 시청자 E2E 1~3초 통합 검사는 수행하지 않았음.
+
+### 중단 상태·다음 회차
+- GitHub main에는 131/132 개발 코드가 아직 없음. 다음 회차는 최신 main HEAD 재확인 후 `AISTING_131_Twitch_RECONNECT.patch` 적용 여부부터 확인, 새 테스트 `test_twitch_reconnect_coordinator_132.py` 포함하여 **기존 main만 fast-forward** 반영 시도. 새 테스트는 실행 결과가 없으므로 PASS라고 표시하지 않는다.
+- 개발 미완료 핵심은 실제 권리 있는 GPT-SoVITS 한국어 WAV→공식 Cubism 입→OBS 동일 발화 실증, 4플랫폼 실제 수백 명·수백 채팅 무누락, 24시간 안정성, AI·음성·영상·시청자 E2E 1~3초 지연 개선이다. 전체 개발 완료 후 전체 회귀→Windows EXE/GUI·OBS·실모델 통합→오류 수정→전체 재검증 순서 유지.
+- 캐릭터·SQLite·사용자 설정·원본 기획·기존 인수인계, 다른 프로젝트·Drive·다른 예약·계정/OAuth·방송/녹화/채팅 발신·보이스 훈련 모두 변경/실행하지 않았음. 사용자 요청 없는 96토큰/keep_alive 10m 설정 변경 없음.
+
 ## 133. 2026-10-23 16:30 KST — AISTING 서버 RECONNECT 누적 개발 및 GitHub main 반영
 
 ### 이번 시작 기준과 기존 사용자 지시 원문 보존
