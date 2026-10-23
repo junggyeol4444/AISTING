@@ -25,6 +25,42 @@ if TYPE_CHECKING:
     from .original_plan_obs import ActualObsProgramMediaObservation
 
 
+def _coherent_mouth_obs_window(began, ended, sample, mouth_first, mouth_last) -> bool:
+    """실제 단조시계 입 움직임과 OBS 유효 입력 표본의 양수 길이 교집합."""
+    audio = getattr(sample, "audio", None)
+    first = getattr(audio, "first_selected_signal_monotonic", None)
+    last = getattr(audio, "last_selected_signal_monotonic", None)
+    values = (began, ended, mouth_first, mouth_last, first, last)
+    return bool(
+        getattr(sample, "coherent_media_candidate", False)
+        and all(type(value) in (int, float) and math.isfinite(value)
+                for value in values)
+        and 0 < began < ended
+        and 0 < mouth_first < mouth_last
+        and began <= first < last <= ended
+        and first < mouth_last and last > mouth_first
+    )
+
+
+def _observed_mouth_obs_overlap(observation, lip, prompt_started_at, prompt_finished_at) -> bool:
+    """한 질문의 공식 입 움직임과 실제 OBS 미터가 겹쳤을 때만 참.
+
+    다른 발화·시청자 출력의 증명은 아니다. 테스트에서는 모의 표본만 사용.
+    """
+    if lip is None:
+        return False
+    mouth_first = getattr(lip, "first_audio_mouth_monotonic", None)
+    mouth_last = getattr(lip, "last_audio_mouth_monotonic", None)
+    values = (prompt_started_at, prompt_finished_at, mouth_first, mouth_last)
+    if (not all(type(value) in (int, float) and math.isfinite(value)
+                for value in values)
+            or not (0 < prompt_started_at <= mouth_first < mouth_last
+                    <= prompt_finished_at)):
+        return False
+    return any(_coherent_mouth_obs_window(began, ended, sample, mouth_first, mouth_last)
+               for began, ended, sample in observation)
+
+
 @dataclass(frozen=True)
 class OfficialChatObsEvidence:
     lip: "OfficialLipSyncEvidence"
@@ -341,6 +377,21 @@ def verify_official_chat_live2d_obs(
     prompt_started = threading.Event()
     cancel_observation = threading.Event()
     monitor_ended_before_reply = []
+    lip = None
+    send_failure = None
+
+    def observation_ready_to_finish() -> bool:
+        # 빠른 공식 응답 직후에도 실제 OBS 입·오디오 교집합을 확인할 때까지
+        # 기존 관찰 시간 범위 안에서 읽는다. 실패 시 추가 대기는 하지 않는다.
+        if not send_finished.is_set():
+            return False
+        if send_failure is not None:
+            return True
+        if _observed_mouth_obs_overlap(
+                observation, lip, prompt_started_at, prompt_finished_at):
+            return True
+        # 운영자가 기존에 지정한 관찰 시간만 사용하며 새 지연 옵션은 없다.
+        return time.monotonic() >= prompt_finished_at + float(duration)
 
     def obs_worker() -> None:
         # OBS WebSocket request/reply clients are not assumed thread-safe.
@@ -380,7 +431,7 @@ def verify_official_chat_live2d_obs(
             for _ in range(6):
                 if cancel_observation.is_set() or (cancel_event is not None and cancel_event.is_set()):
                     break
-                if send_finished.is_set() and observation:
+                if observation_ready_to_finish():
                     break
                 monitor_still_offline()
                 capture_started = time.monotonic()
@@ -394,7 +445,7 @@ def verify_official_chat_live2d_obs(
                 # 경우에도 정상 관측으로 채택하지 않는다.
                 monitor_still_offline()
                 observation.append((capture_started, capture_ended, sample))
-                if send_finished.is_set():
+                if observation_ready_to_finish():
                     break
             if not send_finished.is_set() and not cancel_observation.is_set() and not (
                     cancel_event is not None and cancel_event.is_set()):
@@ -428,8 +479,6 @@ def verify_official_chat_live2d_obs(
         prompt_started.set()
         monitor.join(timeout=2)
         raise
-    lip = None
-    send_failure = None
     prompt_started_at = time.monotonic()
     prompt_finished_at = prompt_started_at
     try:
@@ -487,20 +536,8 @@ def verify_official_chat_live2d_obs(
     # 3-second video+audio inspection window that could include unrelated
     # noise before/after the Cubism mouth change.
     def same_utterance_window(began, ended, sample):
-        if not valid_mouth_window or not sample.coherent_media_candidate:
-            return False
-        audio = getattr(sample, "audio", None)
-        first = getattr(audio, "first_selected_signal_monotonic", 0.0)
-        last = getattr(audio, "last_selected_signal_monotonic", 0.0)
-        if (type(first) not in (int, float) or type(last) not in (int, float)
-                or not math.isfinite(first) or not math.isfinite(last)
-                or not (began <= first < last <= ended)):
-            return False
-        # The same monotonic clock is used by both native Windows OBS events
-        # and official WebView2/Cubism evidence; NO broad window shortcut.
-        # 경계점 하나에서만 맞닿은 소리/입 표본은 겹친 지속시간이
-        # 0이다. 이전/다음 발화가 우연히 경계에 닿아도 동일 발화가 아니다.
-        return first < mouth_last and last > mouth_first
+        return bool(valid_mouth_window and _coherent_mouth_obs_window(
+            began, ended, sample, mouth_first, mouth_last))
 
     matching = [sample for began, ended, sample in observation
                 if same_utterance_window(began, ended, sample)]
