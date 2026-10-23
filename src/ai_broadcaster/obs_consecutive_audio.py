@@ -16,11 +16,18 @@ def _관찰창_경로(sample: object) -> tuple[bool, object | None]:
     과거 가상 검사에는 경로 객체가 없으므로 두 값 모두 없는 경우만
     동일한 미지정 경로로 취급한다. 실제 OBS 객체는 경로를 제공한다.
     """
-    before = getattr(sample, "before_audio_route", None)
-    after = getattr(sample, "after_audio_route", None)
-    if (before is None) != (after is None):
+    # 과거 가상 객체는 두 경로 속성이 모두 없을 때만 호환한다.
+    # 실제 OBS 관찰 객체에 속성은 있으나 값이 None이면 경로를 확인하지
+    # 못한 상태다. 이를 '경로 미지정'으로 합쳐 동일 발화로 오판하지 않는다.
+    before_exists = hasattr(sample, "before_audio_route")
+    after_exists = hasattr(sample, "after_audio_route")
+    if not before_exists and not after_exists:
+        return True, None
+    if not (before_exists and after_exists):
         return False, None
-    if before is not None and before != after:
+    before = getattr(sample, "before_audio_route")
+    after = getattr(sample, "after_audio_route")
+    if before is None or after is None or before != after:
         return False, None
     return True, before
 
