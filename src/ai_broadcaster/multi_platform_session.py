@@ -63,6 +63,8 @@ class MultiPlatformReadOnlySession:
         self._callback_emit_samples = {code: deque(maxlen=512) for code in channels}
         self._callback_emit_over_three_seconds = {code: 0 for code in channels}
         self._callback_aborted_count = {code: 0 for code in channels}
+        # 상태 알림 실패는 수신기 재연결 실패와 별도로 관측한다.
+        self._status_emit_failure_count = {code: 0 for code in channels}
         # 실제 서버 이벤트 ID가 재연결 뒤 다시 온 경우만 중복 전송 차단.
         # 본문/닉네임으로는 절대 합치지 않으며 ID 없는 사건은 모두 전달.
         # 수신기 콜백이 AI FIFO 수용에 성공한 ID만 최근 5만 개 유지한다.
@@ -196,13 +198,13 @@ class MultiPlatformReadOnlySession:
                             else:
                                 gap = None
                         if gap is None:
-                            self._emit(kind, code + " 공개 채팅 연결")
+                            self._emit_status_safely(code, kind, code + " 공개 채팅 연결")
                         else:
-                            self._emit(
-                                "ready", code + " 공개 채팅 재연결 완료 · 관측된 수신 공백 "
+                            self._emit_status_safely(
+                                code, "ready", code + " 공개 채팅 재연결 완료 · 관측된 수신 공백 "
                                 + f"{gap:.2f}초 · 누락 여부는 실증 불가")
                     elif kind == "error":
-                        self._emit("error", code + " 공개 채팅 연결 오류")
+                        self._emit_status_safely(code, "error", code + " 공개 채팅 연결 오류")
             return callback
 
         # 한 운영자 수신 세션의 실제 YouTube 채팅 ID·페이지 위치만 공유한다.
@@ -233,6 +235,20 @@ class MultiPlatformReadOnlySession:
         # Construct and validate every reader before starting any network I/O.
         for code, channel in channels.items():
             self._readers[code] = factories[code](channel.strip(), self._callbacks[code])
+
+    def _emit_status_safely(self, code: str, kind: str, detail: str) -> bool:
+        """상태 알림 GUI 예외가 공개 채팅 수신/재연결 작업을 끝내지 않게 한다.
+
+        채팅 자체는 이 경로로 보내지 않으며, 채팅 전달 실패는 그대로 전파한다.
+        알림 실패 횟수만 메모리에 기록하고 민감한 예외 본문은 저장하지 않는다.
+        """
+        try:
+            self._emit(kind, detail)
+            return True
+        except Exception:
+            with self._emit_lock:
+                self._status_emit_failure_count[code] += 1
+            return False
 
     def reconnect_snapshot(self) -> dict[str, dict[str, float | int | bool]]:
         """실제 재연결 준비 완료 횟수·관측 공백만 메모리에서 조회한다.
@@ -285,6 +301,7 @@ class MultiPlatformReadOnlySession:
                     "콜백전달완료": self._forwarded_chat_count[code],
                     "콜백전달오류": self._callback_error_count[code],
                     "콜백전달중단": self._callback_aborted_count[code],
+                    "상태알림전달실패": self._status_emit_failure_count[code],
                     "서버이벤트ID재수신차단": self._replayed_event_id_count[code],
                     "서버이벤트ID없음": self._missing_event_id_count[code],
                     "콜백전달누적초": round(self._callback_emit_total_seconds[code], 6),
@@ -450,7 +467,7 @@ class MultiPlatformReadOnlySession:
                             # 오류 알림은 플랫폼 공용 상태 잠금 밖에서
                             # GUI 큐로 전달한다. 다른 수신기의 진행을 막지 않는다.
                             if not self._stop.is_set():
-                                self._emit("error", code + " 읽기 실패 (" +
+                                self._emit_status_safely(code, "error", code + " 읽기 실패 (" +
                                            type(exc).__name__ + ")")
                             # Finite Windows probes must not retry after failure.
                             if max_seconds is not None:
@@ -461,10 +478,10 @@ class MultiPlatformReadOnlySession:
                             # 장시간 장애 중에도 운영자가 Stop할 때까지 재연결한다.
                             if failures == 4 or failures % 30 == 0:
                                 if not self._stop.is_set():
-                                    self._emit("error", code +
+                                    self._emit_status_safely(code, "error", code +
                                                " 재연결 3회 이상 실패 · 수신 공백 지속 · 재시도 중")
                             if not self._stop.is_set():
-                                self._emit("error", code +
+                                self._emit_status_safely(code, "error", code +
                                            " 수신 연결 끊김 · 재연결 대기 중 (공백 가능)")
                             # 재연결 횟수가 커져도 거대한 정수 계산을 피한다.
                             # Twitch IRC 서버의 명시적 RECONNECT는 즉시 새 연결을
@@ -481,7 +498,7 @@ class MultiPlatformReadOnlySession:
                                         self._channels[code], self._callbacks[code])
                                 except Exception as reconnect_error:
                                     if not self._stop.is_set():
-                                        self._emit("error", code + " 재연결 준비 실패 (" +
+                                        self._emit_status_safely(code, "error", code + " 재연결 준비 실패 (" +
                                                    type(reconnect_error).__name__ + ")")
                                     if self._stop.wait(min(2 ** min(failures - 1, 2), 4)):
                                         break
@@ -507,7 +524,7 @@ class MultiPlatformReadOnlySession:
                         if not self._stop.is_set():
                             detail = (f" · 나머지 {remaining}개 채널은 상태 개별 확인"
                                       if remaining else " · 선택한 모든 채널의 읽기 작업 종료")
-                            self._emit("reader_stopped",
+                            self._emit_status_safely(code, "reader_stopped",
                                        code + " 채팅 수신 종료" + detail)
             workers = [
                 threading.Thread(target=read_one, args=(code, reader),
