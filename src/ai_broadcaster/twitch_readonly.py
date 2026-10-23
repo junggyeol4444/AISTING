@@ -19,6 +19,7 @@ _IRC_PREFIX = r"^(?:@\S+\s+)?(?::\S+\s+)?"
 _JOIN_ACK = re.compile(_IRC_PREFIX + r"366\s+\S+\s+#([A-Za-z0-9_]+)(?=\s|$)", re.I)
 _AUTH_NOTICE = re.compile(_IRC_PREFIX + r"NOTICE(?:\s|$)", re.I)
 _WELCOME = re.compile(_IRC_PREFIX + r"001(?:\s|$)", re.I)
+_SERVER_RECONNECT = re.compile(_IRC_PREFIX + r"RECONNECT(?:\s|$)", re.I)
 
 
 class TwitchReadError(RuntimeError):
@@ -222,6 +223,7 @@ class TwitchReadOnlySession:
                     *complete_lines, buffer = buffer.split("\r\n")
                 else:
                     complete_lines = ()
+                server_requested_reconnect = False
                 for line in complete_lines:
                     if self._stop.is_set():
                         break
@@ -234,6 +236,9 @@ class TwitchReadOnlySession:
                             if self._stop.is_set():
                                 break
                             raise
+                    elif _SERVER_RECONNECT.match(line):
+                        # 동일 프레임 뒤쪽의 채팅도 먼저 수용한 뒤 상위 재연결기로 알린다.
+                        server_requested_reconnect = True
                     elif _AUTH_NOTICE.match(line) and (
                         "Login authentication failed" in line or "Improperly formatted auth" in line
                     ):
@@ -268,6 +273,8 @@ class TwitchReadOnlySession:
                                     "트위치 채팅이 AI 수신 큐에 수용되지 않았습니다."
                                 )
                             received += 1
+                if server_requested_reconnect and not self._stop.is_set():
+                    raise TwitchReadError("트위치 서버 RECONNECT 요청 · 재연결 필요")
                 if not self._stop.is_set() and len(buffer) > 65536:
                     raise TwitchReadError("트위치 미완성 채팅 줄 크기 한도 초과")
             if not ready and not self._stop.is_set():
