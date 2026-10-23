@@ -1036,7 +1036,8 @@ class LocalChatTab(ttk.Frame):
                             def on_stream_chunk(delta: str) -> None:
                                 nonlocal partial_preview, received_chars, last_progress_at
                                 if session is not None and session._stop.is_set():
-                                    return
+                                    # 끝난 세션의 추가 토큰/미리보기는 막는다.
+                                    raise RuntimeError("운영자 중지 · 부분 텍스트 폐기")
                                 received_chars += len(delta)
                                 if len(partial_preview) < 160:
                                     partial_preview += delta[:160-len(partial_preview)]
@@ -1049,9 +1050,16 @@ class LocalChatTab(ttk.Frame):
                                         max(0.0, now - model_started_at)))
                             result = local_runner.reply(
                                 chat.text, sender=actor,
-                                on_stream_chunk=on_stream_chunk)
+                                on_stream_chunk=on_stream_chunk,
+                                should_cancel=(
+                                    (lambda: session._stop.is_set())
+                                    if session is not None else None))
                         else:
-                            result = local_runner.reply(chat.text, sender=actor)
+                            result = local_runner.reply(
+                                chat.text, sender=actor,
+                                should_cancel=(
+                                    (lambda: session._stop.is_set())
+                                    if session is not None else None))
                     else:
                         result = reply_function(
                             model, chat.text, sender=actor,
@@ -1338,7 +1346,7 @@ class LocalChatTab(ttk.Frame):
                         # AI 답변·발화·기억/방송 성공으로 계수하지 않는다.
                         self._twitch_status.set(
                             f"로컬 Ollama 생성 중 {chars}글자 · "
-                            f"첫 토큰 이후 {local_seconds:.2f}초 경과"
+                            f"모델 처리 시작 후 {local_seconds:.2f}초 경과"
                             " · 미완성 임시 텍스트 · 방송 발신/기억 저장 없음: "
                             + preview[:160])
                     elif kind == "twitch_ai_ok":

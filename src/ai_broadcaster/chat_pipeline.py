@@ -42,7 +42,8 @@ class ChatPipeline:
         self.post_delivery_errors: list[Exception] = []
 
     def process_next(
-            self, *, on_stream_chunk: Callable[[str], None] | None = None
+            self, *, on_stream_chunk: Callable[[str], None] | None = None,
+            should_cancel: Callable[[], bool] | None = None
     ) -> ProcessedChat | None:
         message = self.queue.peek_chat()
         if message is None:
@@ -55,12 +56,18 @@ class ChatPipeline:
                 streaming = getattr(self.generator, "generate_stream", None)
                 if not callable(streaming):
                     raise RuntimeError("선택한 AI 생성기는 실제 스트리밍을 지원하지 않습니다.")
-                reply = streaming(message, on_stream_chunk)
+                reply = streaming(message, on_stream_chunk, should_cancel=should_cancel)
             else:
                 reply = self.generator.generate(message)
+            if should_cancel is not None and should_cancel():
+                # Ollama 응답을 받았더라도 운영자 Stop 뒤에는
+                # 출력·SQLite 기억·FIFO 완료 처리하지 않는다.
+                raise RuntimeError("운영자 중지 · 로컬 AI 답변 출력/기억 확정 금지")
             if not isinstance(reply, str) or not reply.strip():
                 raise ValueError("generator must return a nonempty reply")
             self._prepared = ProcessedChat(original=message, reply=reply)
+        if should_cancel is not None and should_cancel():
+            raise RuntimeError("운영자 중지 · 준비된 답변 출력/기억 확정 금지")
         self.output.deliver(self._prepared.reply)
         self.queue.acknowledge_chat(message)
         result = self._prepared

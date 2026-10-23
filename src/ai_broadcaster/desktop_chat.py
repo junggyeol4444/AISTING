@@ -101,7 +101,10 @@ class LocalChatRunner:
         self.generator = LocalOllamaReplyGenerator(config, settings, memory=self.memory)
 
     def reply(self, text: str, *, sender: str,
-              on_stream_chunk: Callable[[str], None] | None = None) -> ChatResult:
+              on_stream_chunk: Callable[[str], None] | None = None,
+              should_cancel: Callable[[], bool] | None = None) -> ChatResult:
+        if should_cancel is not None and not callable(should_cancel):
+            raise TypeError("로컬 AI 처리 중지 확인 함수 오류")
         if on_stream_chunk is not None and not callable(on_stream_chunk):
             raise TypeError("로컬 생성 진행 표시 함수 오류")
         if not isinstance(text, str) or not text.strip() or len(text) > 4000:
@@ -115,8 +118,11 @@ class LocalChatRunner:
         fifo.receive_chat(ChatMessage(str(uuid4()), sender.strip(), text.strip()))
         output = _TextOutput()
         pipeline = ChatPipeline(fifo, self.generator, output)
-        outcome = (pipeline.process_next(on_stream_chunk=on_stream_chunk)
-                   if on_stream_chunk is not None else pipeline.process_next())
+        outcome = (pipeline.process_next(
+            on_stream_chunk=on_stream_chunk, should_cancel=should_cancel)
+            if on_stream_chunk is not None else
+            (pipeline.process_next(should_cancel=should_cancel)
+             if should_cancel is not None else pipeline.process_next()))
         if outcome is None:
             raise RuntimeError("로컬 AI 응답 처리 결과가 없습니다.")
         return ChatResult(

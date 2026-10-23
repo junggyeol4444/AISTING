@@ -137,8 +137,10 @@ class LocalOllamaReplyGenerator:
         self.last_server_timings_seconds = stages or None
         return reply
 
-    def generate_stream(self, message: ChatMessage,
-                        on_chunk: Callable[[str], None]) -> str:
+    def generate_stream(
+            self, message: ChatMessage,
+            on_chunk: Callable[[str], None],
+            should_cancel: Callable[[], bool] | None = None) -> str:
         """Ollama의 실제 NDJSON 생성 청크를 즉시 관찰하되 전체 답변만 확정.
 
         운영자가 GUI에서 선택한 세션에 한해 사용한다. 중간 청크는
@@ -148,6 +150,10 @@ class LocalOllamaReplyGenerator:
         self.last_server_timings_seconds = None
         if not isinstance(message, ChatMessage) or not callable(on_chunk):
             raise TypeError("로컬 AI 스트리밍 입력과 중간 표시 함수 오류")
+        if should_cancel is not None and not callable(should_cancel):
+            raise TypeError("로컬 AI 취소 확인 함수 오류")
+        if should_cancel is not None and should_cancel():
+            raise LocalModelError("운영자 수신 중지 · 스트리밍 요청을 시작하지 않습니다.")
         messages = [{"role": "system", "content": self.system}]
         if self.memory is not None:
             for exchange in self.memory.recent(self.config.max_context_exchanges):
@@ -174,9 +180,15 @@ class LocalOllamaReplyGenerator:
             with self._opener.open(
                     request, timeout=self.config.timeout_seconds) as response:
                 while True:
+                    if should_cancel is not None and should_cancel():
+                        raise LocalModelError(
+                            "운영자 수신 중지 · 미완성 스트리밍 답변 폐기")
                     line = response.readline(1_000_001)
                     if not line:
                         break
+                    if should_cancel is not None and should_cancel():
+                        raise LocalModelError(
+                            "운영자 수신 중지 · 수신한 조각 처리·기억 저장 금지")
                     total_bytes += len(line)
                     if total_bytes > 1_000_000 or len(line) > 1_000_000:
                         raise LocalModelError("로컬 AI 스트리밍 응답 한도 초과")
@@ -207,6 +219,8 @@ class LocalOllamaReplyGenerator:
                         break
         except (HTTPError, URLError, TimeoutError, OSError) as exc:
             raise LocalModelError("로컬 AI 스트리밍 연결 또는 수신 시간 초과") from exc
+        if should_cancel is not None and should_cancel():
+            raise LocalModelError("운영자 수신 중지 · 완료 직전 미확정 답변 폐기")
         if not finished:
             raise LocalModelError("로컬 AI 스트리밍 완료 확인 실패 · 중간 답변 저장 금지")
         reply = "".join(pieces)
