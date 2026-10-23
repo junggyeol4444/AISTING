@@ -14,7 +14,7 @@ from .multiplatform_readonly import (
     PlatformChat, ChzzkReadOnlySession, SoopReadOnlySession,
     YouTubeReadOnlySession, YouTubeChatResumeState,
 )
-from .twitch_readonly import TwitchChatLine, TwitchReadOnlySession
+from .twitch_readonly import TwitchChatLine, TwitchReadOnlySession, TwitchServerReconnect
 
 SUPPORTED = ("twitch", "chzzk", "soop", "youtube")
 
@@ -434,8 +434,12 @@ class MultiPlatformReadOnlySession:
                                 self._emit("error", code +
                                            " 수신 연결 끊김 · 재연결 대기 중 (공백 가능)")
                             # 재연결 횟수가 커져도 거대한 정수 계산을 피한다.
-                            if self._stop.wait(min(2 ** min(failures - 1, 2), 4)):
-                                break
+                            # Twitch IRC 서버의 명시적 RECONNECT는 즉시 새 연결을
+                            # 요구한다. 일반 통신 오류의 기존 1~4초 대기는 유지.
+                            # 실제 채팅 무누락·1~3초 응답을 보장하지는 않는다.
+                            if not isinstance(exc, TwitchServerReconnect):
+                                if self._stop.wait(min(2 ** min(failures - 1, 2), 4)):
+                                    break
                             # 실패한 옛 수신기는 재사용하지 않고 새 수신기만 재생성한다.
                             replacement = None
                             while replacement is None and not self._stop.is_set():
