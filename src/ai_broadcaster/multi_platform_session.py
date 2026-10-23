@@ -144,6 +144,15 @@ class MultiPlatformReadOnlySession:
                                 self._callback_emit_total_seconds[code] += elapsed
                                 self._callback_emit_max_seconds[code] = max(
                                     self._callback_emit_max_seconds[code], elapsed)
+                        # 수신기까지 실제 수용 여부를 반환한다. False를
+                        # 숨기면 WebSocket은 정상 전달로, YouTube는 다음
+                        # 페이지로 확정해 채팅이 조용히 유실될 수 있다.
+                        return accepted is not False
+                    elif kind == "server_replay":
+                        # YouTube 페이지 수신기가 자체 ID 재수신을
+                        # 차단한 경우도 GUI 진단 수치에서 누락하지 않는다.
+                        with self._emit_lock:
+                            self._replayed_event_id_count[code] += 1
                     elif kind == "transport_stalled":
                         with self._emit_lock:
                             self._transport_stalled_count[code] += 1
