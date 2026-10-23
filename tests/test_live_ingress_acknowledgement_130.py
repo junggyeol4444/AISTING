@@ -3,6 +3,9 @@
 여기서 확인하는 것은 프로그램 내부의 수용 여부와 커서 안전성이다.
 실제 채팅, 실사용자, 모델, Windows EXE 검증으로 해석하지 않는다.
 """
+import json
+import sys
+import types
 import unittest
 from unittest.mock import patch
 
@@ -66,6 +69,40 @@ class TestPlatformIngressAck(unittest.TestCase):
         self.assertEqual(state["콜백수신"], 3)
         self.assertEqual(state["콜백전달완료"], 2)
         self.assertEqual(state["서버이벤트ID재수신차단"], 1)
+
+    def test_chzzk_prejoin_overflow_reports_loss_risk_without_ai_enqueue(self):
+        from ai_broadcaster.multiplatform_readonly import ChzzkReadOnlySession
+
+        # 네트워크와 운영자 계정 접속이 없는 가짜 핸드셰이크 프레임.
+        # JOIN 승인 전 너무 많은 사건을 조용히 잘라내지 않아야 한다.
+        frame = json.dumps({
+            "cmd": 93101,
+            "bdy": [{"msg": "채팅", "uid": "viewer"} for _ in range(4097)],
+        })
+        class Socket:
+            def send(self, _payload):
+                return None
+            def settimeout(self, _timeout):
+                return None
+            def recv(self):
+                return frame
+            def close(self):
+                return None
+
+        received = []
+        fake_ws = types.SimpleNamespace(create_connection=lambda *_a, **_kw: Socket())
+        metadata = [
+            {"content": {"chatChannelId": "방송채팅방"}},
+            {"content": {"accessToken": "일회성읽기토큰"}},
+        ]
+        with patch.dict(sys.modules, {"websocket": fake_ws}), patch(
+                "ai_broadcaster.multiplatform_readonly._json_get",
+                side_effect=metadata):
+            with self.assertRaisesRegex(RuntimeError, "임시 보관 한도 초과"):
+                ChzzkReadOnlySession(
+                    "a" * 32, lambda kind, item: received.append(kind)).run(
+                        max_seconds=1)
+        self.assertNotIn("chat", received)
 
     def test_youtube_cursor_is_not_advanced_after_queue_rejection(self):
         resume = YouTubeChatResumeState()
