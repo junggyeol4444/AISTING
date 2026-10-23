@@ -48,7 +48,11 @@ def collect_obs_audio_times(
         near = [t for t in times if mouth_first - near_seconds <= t <= mouth_last + near_seconds]
         if not near:
             continue
-        if collected and near[0] <= collected[-1]:
+        # 연속 관찰창이 겹치더라도 뒤쪽의 새로운 실측 표본은 보존한다.
+        # 이미 수집한 시각 이하만 제외하며 가상 표본을 만들지 않는다.
+        if collected:
+            near = [t for t in near if t > collected[-1]]
+        if not near:
             continue
         collected.extend(near)
         window_count += 1
