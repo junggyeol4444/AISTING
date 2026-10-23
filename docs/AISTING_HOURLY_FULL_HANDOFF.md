@@ -3042,6 +3042,7 @@ F) 원본 100단계 roadmap.json status는 completed=9, pending=91이며 **코�
 - 진행 중 멈춘 것: 사용자 실계정/권리 있는 모델/Windows OBS·Cubism 실기기 접근이 필요한 검증 및 최신 CI 종료 확인.
 - 다음 회차: 현재 `main` HEAD 재확인, 96·145·146절 CI와 실패 로그 확인. `docs/AISTING_HOURLY_FULL_HANDOFF.md` 전체 1~146절·다음 대화 문서·과거 부록·기획·로드맵·설정·기존 main 실제 소스를 읽고 전체 기존 코드 개발을 이어간다. 개발 우선 → 전체 회귀·Windows 네이티브 EXE/GUI·OBS·로컬 모델 통합검사 → 오류 수정 → 전체 재검증. main fast-forward만 허용, 기존 매시간 예약 유지·중복 생성 금지.
 
+
 ## 147. 2026-10-24 — OBS 연속 관찰창 중간 경로 단절을 같은 발화로 합치지 않는 누적 개발
 
 ### 시작 상태와 원문 보존
