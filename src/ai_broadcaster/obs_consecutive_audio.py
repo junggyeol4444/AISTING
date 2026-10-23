@@ -10,6 +10,20 @@ from typing import Iterable
 def _valid_time(value: object) -> bool:
     return type(value) in (int, float) and math.isfinite(value) and value > 0
 
+def _관찰창_경로(sample: object) -> tuple[bool, object | None]:
+    """OBS 선택 입력/장면/트랙의 전후 경로가 같은지 확인한다.
+
+    과거 가상 검사에는 경로 객체가 없으므로 두 값 모두 없는 경우만
+    동일한 미지정 경로로 취급한다. 실제 OBS 객체는 경로를 제공한다.
+    """
+    before = getattr(sample, "before_audio_route", None)
+    after = getattr(sample, "after_audio_route", None)
+    if (before is None) != (after is None):
+        return False, None
+    if before is not None and before != after:
+        return False, None
+    return True, before
+
 def collect_obs_audio_times(
     observations: Iterable[tuple[float, float, object]],
     mouth_first: float,
@@ -29,10 +43,19 @@ def collect_obs_audio_times(
         return (), 0
     collected: list[float] = []
     window_count = 0
+    경로확정 = False
+    선택경로 = None
     for began, ended, sample in observations:
         if not (_valid_time(began) and _valid_time(ended) and began < ended
                 and bool(getattr(sample, "coherent_media_candidate", False))):
             continue
+        경로정상, 현재경로 = _관찰창_경로(sample)
+        if not 경로정상:
+            continue
+        # 같은 발화로 묶는 관찰창 사이에 선택 OBS 입력/장면/트랙이
+        # 바뀌면 뒤쪽 표본을 다른 발화의 근거로 섞지 않는다.
+        if 경로확정 and 현재경로 != 선택경로:
+            break
         audio = getattr(sample, "audio", None)
         first = getattr(audio, "first_selected_signal_monotonic", None)
         last = getattr(audio, "last_selected_signal_monotonic", None)
@@ -56,6 +79,8 @@ def collect_obs_audio_times(
             continue
         collected.extend(near)
         window_count += 1
+        if not 경로확정:
+            선택경로, 경로확정 = 현재경로, True
     return tuple(collected), window_count
 
 def collect_obs_input_meter_levels(
@@ -72,10 +97,17 @@ def collect_obs_input_meter_levels(
     if not (_valid_time(since) and _valid_time(until) and since < until):
         return ()
     merged: list[tuple[float, float]] = []
+    경로확정 = False
+    선택경로 = None
     for began, ended, sample in observations:
         if not (_valid_time(began) and _valid_time(ended) and began < ended
                 and getattr(sample, "coherent_media_candidate", False)):
             continue
+        경로정상, 현재경로 = _관찰창_경로(sample)
+        if not 경로정상:
+            continue
+        if 경로확정 and 현재경로 != 선택경로:
+            break
         audio = getattr(sample, "audio", None)
         levels = getattr(audio, "selected_all_meter_level_samples", ())
         if not isinstance(levels, tuple):
@@ -92,4 +124,6 @@ def collect_obs_input_meter_levels(
             if began <= when <= ended and since <= when <= until:
                 if not merged or when > merged[-1][0]:
                     merged.append((when, level))
+                    if not 경로확정:
+                        선택경로, 경로확정 = 현재경로, True
     return tuple(merged)
