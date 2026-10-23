@@ -52,6 +52,7 @@ def collect_obs_audio_times(
     window_count = 0
     경로확정 = False
     선택경로 = None
+    마지막_관찰창_시작 = None
     for began, ended, sample in observations:
         if not (_valid_time(began) and _valid_time(ended) and began < ended):
             # 한 번 근거를 채택한 뒤의 불명확한 창을 건너뛰고
@@ -68,6 +69,14 @@ def collect_obs_audio_times(
         # 다른 경로로 갔다가 돌아온 경우 역시 동일 발화로 결합하지 않는다.
         if 경로확정 and 현재경로 != 선택경로:
             break
+        # 동일 경로라도 관찰창 자체가 과거 시각으로 역행하면
+        # 뒤쪽 표본을 같은 발화의 시간순 증거로 합치지 않는다.
+        # 겹치는 창은 시작 시각이 역행하지 않는 한 허용한다.
+        if 경로확정 and began < 마지막_관찰창_시작:
+            break
+        # 무음 창도 순서 검증에 포함하여 뒤의 창이 거슬러 올라가지 못하게 한다.
+        if 경로확정:
+            마지막_관찰창_시작 = began
         audio = getattr(sample, "audio", None)
         first = getattr(audio, "first_selected_signal_monotonic", None)
         last = getattr(audio, "last_selected_signal_monotonic", None)
@@ -93,6 +102,7 @@ def collect_obs_audio_times(
         window_count += 1
         if not 경로확정:
             선택경로, 경로확정 = 현재경로, True
+            마지막_관찰창_시작 = began
     return tuple(collected), window_count
 
 def collect_obs_input_meter_levels(
@@ -111,6 +121,7 @@ def collect_obs_input_meter_levels(
     merged: list[tuple[float, float]] = []
     경로확정 = False
     선택경로 = None
+    마지막_관찰창_시작 = None
     for began, ended, sample in observations:
         if not (_valid_time(began) and _valid_time(ended) and began < ended):
             if 경로확정:
@@ -124,6 +135,14 @@ def collect_obs_input_meter_levels(
         # 레벨 0개인 중간 창도 입력/장면/트랙이 바뀌었는지 검사한다.
         if 경로확정 and 현재경로 != 선택경로:
             break
+        # 동일 경로라도 관찰창 자체가 과거 시각으로 역행하면
+        # 뒤쪽 표본을 같은 발화의 시간순 증거로 합치지 않는다.
+        # 겹치는 창은 시작 시각이 역행하지 않는 한 허용한다.
+        if 경로확정 and began < 마지막_관찰창_시작:
+            break
+        # 무음 창도 순서 검증에 포함하여 뒤의 창이 거슬러 올라가지 못하게 한다.
+        if 경로확정:
+            마지막_관찰창_시작 = began
         audio = getattr(sample, "audio", None)
         levels = getattr(audio, "selected_all_meter_level_samples", ())
         if not isinstance(levels, tuple):
@@ -142,4 +161,5 @@ def collect_obs_input_meter_levels(
                     merged.append((when, level))
                     if not 경로확정:
                         선택경로, 경로확정 = 현재경로, True
+                        마지막_관찰창_시작 = began
     return tuple(merged)
