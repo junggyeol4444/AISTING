@@ -298,6 +298,75 @@ def _invalidate_untrusted_native_bridge(conn) -> None:
         pass
 
 
+@dataclass(frozen=True)
+class OfficialFirstWavReceipt:
+    """같은 공식 WebSocket 관찰창의 실제 WAV 수신 후보.
+
+    서버 메시지에 원본 입력별 식별자가 없으므로 이전 발화의 잔여
+    WAV와 구별할 수 없고, 답변·입·OBS·시청자 완료 증거가 아니다.
+    """
+    accepted: bool
+    wav_received: bool
+    first_wav_seconds: float | None = None
+    observed_seconds: float = 0.0
+
+
+def send_to_native_live2d_session_with_first_wav(
+        text: str, *, operator_approved: bool = False,
+        wait_seconds: float = 3.0) -> OfficialFirstWavReceipt:
+    """기존 공식 입력 1회 후 짧게 실제 RIFF/WAVE 이벤트만 관찰한다.
+
+    명시적 운영자 승인 없이는 전송하지 않으며 다른 요청/음성은
+    절대로 재전송하지 않는다. 별도 립싱크 실증은 하지 않는다.
+    """
+    if operator_approved is not True:
+        raise PermissionError("공식 AI 실제 질문·WAV 응답 관찰 승인이 필요합니다.")
+    if not isinstance(text, str) or not text.strip() or len(text) > 4000:
+        raise FrontendUnavailable("공식 AI 질문은 1~4000글자여야 합니다.")
+    if (type(wait_seconds) not in (int, float)
+            or not math.isfinite(wait_seconds)
+            or not 0.5 <= wait_seconds <= 3.0):
+        raise ValueError("공식 WAV 확인 시간은 0.5~3초 범위로 입력하세요.")
+    child, conn = _native_viewer, _native_bridge
+    if child is None or child.poll() is not None or conn is None:
+        raise FrontendUnavailable("공식 Live2D Windows 창과 연결되어 있지 않습니다.")
+    with _native_send_lock:
+        try:
+            data = {"type": "user-text-first-wav", "text": text,
+                    "seconds": float(wait_seconds)}
+            conn.send_bytes(json.dumps(data, ensure_ascii=False).encode("utf-8"))
+            if not conn.poll(float(wait_seconds) + 9):
+                _invalidate_untrusted_native_bridge(conn)
+                raise FrontendUnavailable(
+                    "공식 WAV 관찰 응답 시간 초과 · 중복 전송하지 않습니다.")
+            response = json.loads(conn.recv_bytes(2048).decode("utf-8"))
+        except (OSError, EOFError, UnicodeError, ValueError) as exc:
+            _invalidate_untrusted_native_bridge(conn)
+            raise FrontendUnavailable(
+                "공식 WAV 응답 관찰 통신 실패 · 질문 자동 재전송 금지") from exc
+        if not isinstance(response, dict) or response.get("type") != "input-first-wav-result":
+            _invalidate_untrusted_native_bridge(conn)
+            raise FrontendUnavailable("공식 WAV 응답 관찰 메시지 형식 오류")
+        if response.get("accepted") is not True:
+            raise FrontendUnavailable("공식 React·WebSocket 입력 전송 확인 실패")
+        received = response.get("wav_received")
+        delay = response.get("first_wav_seconds")
+        observed = response.get("observed_seconds")
+        if (type(received) is not bool
+                or type(observed) not in (int, float)
+                or not math.isfinite(observed) or not 0 <= observed <= 4
+                or (delay is not None and (
+                    type(delay) not in (int, float) or not math.isfinite(delay)
+                    or delay < 0 or delay > 20))
+                or received != (delay is not None)):
+            _invalidate_untrusted_native_bridge(conn)
+            raise FrontendUnavailable("공식 WAV 응답 관찰 수치 오류")
+    return OfficialFirstWavReceipt(
+        accepted=True, wav_received=received,
+        first_wav_seconds=float(delay) if delay is not None else None,
+        observed_seconds=float(observed))
+
+
 def send_to_native_live2d_session_with_observation(
         text: str, *, operator_approved: bool = False,
         duration: float = 8.0) -> "OfficialLipSyncEvidence":
@@ -974,6 +1043,43 @@ def _submit_original_live2d_text(window, value: str, *,
     return accepted
 
 
+def _observe_first_wav_receipt(window, period: float) -> dict:
+    """기존 수신 WebSocket의 원래 RIFF 길이 일치 이벤트만 읽는다.
+
+    승인받은 기존 질문이 실제로 전송된 직후에만 사용한다.
+    WebSocket 프레임을 수정하거나 재생·송출하지 않는다.
+    """
+    if type(period) not in (int, float) or not math.isfinite(period) or not 0.5 <= period <= 3:
+        raise ValueError("WAV 관찰 기간 오류")
+    started = time.monotonic()
+    deadline = started + period
+    evidence = {"wav_received": False, "first_wav_seconds": None,
+                "observed_seconds": 0.0}
+    js = (
+        "(() => {"
+        "if(location.origin!=='http://127.0.0.1:12393')return null;"
+        "const a=window.__aistingSendAudit;"
+        "if(!a||a.observed!==true)return null;"
+        "return {count:Number.isSafeInteger(a.riffLengthMatched)?a.riffLengthMatched:0,"
+        "delay:Number.isFinite(a.firstWavMs)?a.firstWavMs/1000:null};"
+        "})()"
+    )
+    while time.monotonic() < deadline:
+        observed = window.evaluate_js(js)
+        if isinstance(observed, dict):
+            count, delay = observed.get("count"), observed.get("delay")
+            if (type(count) is int and count > 0
+                    and type(delay) in (int, float)
+                    and math.isfinite(delay) and 0 <= delay <= 20):
+                evidence["wav_received"] = True
+                evidence["first_wav_seconds"] = round(float(delay), 6)
+                break
+        time.sleep(0.05)
+    evidence["observed_seconds"] = round(
+        max(0.0, time.monotonic() - started), 6)
+    return evidence
+
+
 def _native_frontend_input_worker(window, address: str | None = None,
                                   auth_hex: str | None = None) -> None:
     """Connect authenticated Windows pipe even in PyInstaller --windowed mode.
@@ -1006,8 +1112,16 @@ def _native_frontend_input_worker(window, address: str | None = None,
                 conn.send_bytes(json.dumps(result).encode('utf-8'))
                 continue
             accepted = False
-            if isinstance(request, dict) and request.get('type') in ('user-text', 'user-text-with-lipsync'):
+            if isinstance(request, dict) and request.get('type') in (
+                    'user-text', 'user-text-with-lipsync', 'user-text-first-wav'):
                 value = request.get('text')
+                if request.get('type') == 'user-text-first-wav':
+                    period = request.get('seconds')
+                    if (type(period) not in (int, float)
+                            or not math.isfinite(period)
+                            or not 0.5 <= period <= 3):
+                        conn.send_bytes(b'{"type":"input-first-wav-invalid"}')
+                        continue
                 if request.get('type') == 'user-text-with-lipsync':
                     period = request.get('seconds')
                     if type(period) not in (int, float) or not 1 <= period <= 12:
@@ -1015,23 +1129,40 @@ def _native_frontend_input_worker(window, address: str | None = None,
                         continue
                 if isinstance(value, str) and 1 <= len(value.strip()) <= 4000:
                     is_observed_turn = request.get('type') == 'user-text-with-lipsync'
+                    is_first_wav = request.get('type') == 'user-text-first-wav'
                     evidence = {}
                     def collect_same_turn() -> None:
-                        evidence.update(_observe_actual_live2d_model(
-                            window, float(period)))
+                        if is_first_wav:
+                            evidence.update(_observe_first_wav_receipt(
+                                window, float(period)))
+                        else:
+                            evidence.update(_observe_actual_live2d_model(
+                                window, float(period)))
                     accepted = _submit_original_live2d_text(
                         window, value,
-                        on_accepted=collect_same_turn if is_observed_turn else None)
+                        on_accepted=collect_same_turn
+                        if (is_observed_turn or is_first_wav) else None)
+                    if accepted and is_first_wav:
+                        conn.send_bytes(json.dumps({
+                            'type': 'input-first-wav-result', 'accepted': True,
+                            'wav_received': evidence.get('wav_received') is True,
+                            'first_wav_seconds': evidence.get('first_wav_seconds'),
+                            'observed_seconds': evidence.get('observed_seconds', 0.0),
+                        }).encode('utf-8'))
+                        continue
                     if accepted and is_observed_turn:
                         conn.send_bytes(json.dumps({
                             'type': 'input-with-lipsync-result', 'accepted': True,
                             'evidence': evidence,
                         }).encode('utf-8'))
                         continue
-            reply_type = ('input-with-lipsync-result'
-                          if isinstance(request, dict) and
-                          request.get('type') == 'user-text-with-lipsync'
-                          else 'input-result')
+            reply_type = (
+                'input-first-wav-result' if isinstance(request, dict)
+                and request.get('type') == 'user-text-first-wav'
+                else ('input-with-lipsync-result'
+                      if isinstance(request, dict)
+                      and request.get('type') == 'user-text-with-lipsync'
+                      else 'input-result'))
             conn.send_bytes(json.dumps(
                 {'type': reply_type, 'accepted': accepted}
             ).encode('utf-8'))

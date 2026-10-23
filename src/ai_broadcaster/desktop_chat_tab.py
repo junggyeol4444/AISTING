@@ -73,6 +73,9 @@ class LocalChatTab(ttk.Frame):
         # 공식 창으로 기존 텍스트만 한 번 전달하는 실시간 경로.
         # 립싱크 실증은 기존 운영자 단독 검사에서 그대로 수행한다.
         self._official_fast_send = tk.BooleanVar(value=True)
+        # 사용자가 선택할 때만 같은 공식 WS의 실제 첫 RIFF/WAVE
+        # 관찰(최대 3초)을 수행. 빠른 전송 기본 동작은 그대로 둔다.
+        self._official_first_wav_receipt = tk.BooleanVar(value=False)
         self._youtube_api_key = tk.StringVar()
         self._youtube_oauth_token = tk.StringVar()
         self._oauth_busy = False
@@ -226,6 +229,12 @@ class LocalChatTab(ttk.Frame):
             text="공식 창 빠른 전송: 채팅당 8초 립싱크 실증 대기 생략 (전송 확인만 · 기본 켜짐)",
             variable=self._official_fast_send,
         ).pack(anchor="w", pady=(2, 1), before=model_row)
+        ttk.Checkbutton(
+            self,
+            text="빠른 전송 시 같은 공식 WebSocket의 첫 WAV 이벤트도 최대 3초 관찰"
+                 " (기본 꺼짐 · 이전 발화와 구분 불가)",
+            variable=self._official_first_wav_receipt,
+        ).pack(anchor="w", pady=(1, 1), before=model_row)
         ttk.Label(self, textvariable=self._twitch_status, wraplength=600).pack(
             anchor="w", pady=(2, 5), before=model_row)
         ttk.Label(self, textvariable=self._platform_health_status,
@@ -681,7 +690,9 @@ class LocalChatTab(ttk.Frame):
                 "AI·음성·기억/외부 접속이 발생할 수 있습니다. "
                 "Live2D 창을 먼저 열고 공식 서버의 무료·로컬 모델 설정을 확인했습니까? "
                 "빠른 전송을 선택하면 공식 WebSocket의 질문 전달까지만 확인하고 "
-                "각 채팅의 음성·입 움직임은 자동으로 실증하지 않습니다.",
+                "각 채팅의 음성·입 움직임은 자동으로 실증하지 않습니다. "
+                "선택한 짧은 첫 WAV 관찰도 이전 발화의 잔여 응답과 "
+                "구별하거나 OBS·시청자 출력을 보장하지 않습니다.",
                 parent=self):
             return
         choice = self._chat_platform.get()
@@ -766,6 +777,8 @@ class LocalChatTab(ttk.Frame):
         self._twitch_replied = 0
         self._twitch_ai_failures = 0
         self._twitch_official_forwarded = 0
+        self._twitch_official_wav_observed = 0
+        self._twitch_official_wav_unobserved = 0
         self._twitch_reader_finished = False
         self._twitch_reader_error = None
         inbox = queue.SimpleQueue()
@@ -795,10 +808,14 @@ class LocalChatTab(ttk.Frame):
         # One worker calls the EXISTING local Ollama conversation in order.
         # No extra model service, intentional delay or platform chat posting.
         fast_official = bool(self._official_fast_send.get()) if official else False
+        first_wav_receipt = (
+            bool(self._official_first_wav_receipt.get())
+            if fast_official else False)
         threading.Thread(
             target=self._work_twitch_ai,
             args=(model, inbox, official, session),
-            kwargs={"fast_official_mode": fast_official},
+            kwargs={"fast_official_mode": fast_official,
+                    "first_wav_receipt_mode": first_wav_receipt},
             daemon=True,
         ).start()
         self._twitch_start.configure(state="disabled")
@@ -901,7 +918,8 @@ class LocalChatTab(ttk.Frame):
 
     def _work_twitch_ai(self, model: str, inbox: queue.SimpleQueue,
                         official: bool = False, session=None, *,
-                        reply_function=None, fast_official_mode: bool = False) -> None:
+                        reply_function=None, fast_official_mode: bool = False,
+                        first_wav_receipt_mode: bool = False) -> None:
         # Old direct-call regression contracts still use unscoped result
         # events; real UI connections always provide their unique session.
         def report(kind, value):
@@ -953,12 +971,19 @@ class LocalChatTab(ttk.Frame):
                     # turn by also submitting to the separate Ollama model.
                     try:
                         if fast_official_mode:
-                            # 기존 실제 공식 React / WS 1회 전달 확인 경로.
-                            # 8초 실증 샘플링이 AI FIFO의 다음 채팅까지
-                            # 막지 않지만, 서버 답변/음성 성공은 미확인이다.
-                            from .original_plan_frontend import send_to_native_live2d_session
-                            accepted = send_to_native_live2d_session(
-                                chat.text, operator_approved=True)
+                            # 8초 실증 대기 없는 기존 1회 공식 WebSocket 전송.
+                            # 사용자가 선택한 경우에만 첫 실제 WAV 이벤트를
+                            # 최대 3초 관측한다. 이전 발화와의 구분은 불가.
+                            if first_wav_receipt_mode:
+                                from .original_plan_frontend import send_to_native_live2d_session_with_first_wav
+                                receipt = send_to_native_live2d_session_with_first_wav(
+                                    chat.text, operator_approved=True,
+                                    wait_seconds=3.0)
+                                accepted = receipt.accepted
+                            else:
+                                from .original_plan_frontend import send_to_native_live2d_session
+                                accepted = send_to_native_live2d_session(
+                                    chat.text, operator_approved=True)
                             if accepted is not True:
                                 raise RuntimeError("공식 WebSocket 실제 전송 미확인")
                         else:
@@ -970,8 +995,12 @@ class LocalChatTab(ttk.Frame):
                         report("twitch_ai_error", (chat, type(exc).__name__))
                     else:
                         if fast_official_mode:
-                            # 결과를 성공 답변으로 계수하지 않는다.
+                            # 텍스트 전송 성공과 서버 WAV 관측을 별도 집계.
+                            # wav_received라도 원인 발화나 출력까지는
+                            # 증명되지 않으므로 AI 응답 성공에 넣지 않는다.
                             report("twitch_live2d_forwarded", chat)
+                            if first_wav_receipt_mode:
+                                report("twitch_live2d_first_wav", (chat, receipt))
                         else:
                             attempt_failed = not bool(evidence.verified_signal)
                             report("twitch_live2d_ok", (chat, evidence))
@@ -1319,6 +1348,30 @@ class LocalChatTab(ttk.Frame):
                             + "건 · 실제 답변/립싱크 실증 "
                             + str(self._twitch_replied) + "건 · 오류 "
                             + str(self._twitch_ai_failures) + "건")
+                    elif kind == "twitch_live2d_first_wav":
+                        chat, receipt = payload
+                        if receipt.wav_received:
+                            self._twitch_official_wav_observed += 1
+                            first = (f"{receipt.first_wav_seconds:.3f}초"
+                                     if receipt.first_wav_seconds is not None
+                                     else "미측정")
+                            self._append(
+                                "[공식 WebSocket WAV 실관측] 첫 RIFF 길이 일치 "
+                                + first + " · 입력별 연관·입·OBS·시청자 미검증: "
+                                + chat.sender)
+                        else:
+                            self._twitch_official_wav_unobserved += 1
+                            self._append(
+                                "[공식 WebSocket WAV 미관측] 선택한 3초 내 "
+                                "유효 RIFF 이벤트 미확인 · 답변 실패로 단정하지 않음: "
+                                + chat.sender)
+                        self._twitch_status.set(
+                            "공식 텍스트 전달 " + str(self._twitch_official_forwarded)
+                            + "건 · WAV 관측 후보 "
+                            + str(self._twitch_official_wav_observed)
+                            + "건 · 미관측 "
+                            + str(self._twitch_official_wav_unobserved)
+                            + "건 · 실제 발화·립싱크·OBS 미검증")
                     elif kind == "twitch_live2d_ok":
                         chat, evidence = payload
                         if evidence.verified_signal:
