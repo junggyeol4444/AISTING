@@ -395,6 +395,9 @@ def verify_official_chat_live2d_obs(
     prompt_started = threading.Event()
     cancel_observation = threading.Event()
     first_capture_ready = threading.Event()
+    # OBS 미터 구독 후의 최종 안전 확인이 길어져도 실제 질문 전
+    # 관찰 예산이 먼저 소진되지 않도록 첫 관찰 시작을 질문에 맞춘다.
+    meter_capture_release = threading.Event()
     monitor_ended_before_reply = []
     lip = None
     send_failure = None
@@ -437,6 +440,15 @@ def verify_official_chat_live2d_obs(
                     raise RuntimeError("OBS 동시 관찰 중 녹화 시작 또는 상태 불명")
 
             monitor_still_offline()
+            def wait_for_prompt_after_meter_subscription() -> None:
+                # 실제 미터 이벤트 구독 완료를 메인 스레드에 알리되,
+                # 최종 송출·녹화·장면 확인이 끝나기 전에는 첫 관찰창의
+                # duration 카운트다운을 시작하지 않는다.
+                first_capture_ready.set()
+                if not _await_official_prompt_start(
+                        meter_capture_release, cancel_observation, cancel_event):
+                    raise InterruptedError("OBS 미터 관찰 시작 전 검사 중지")
+
             # No approved AI prompt is sent until the separate OBS monitor
             # has actually connected to the correct stopped scene.
             started.set()
@@ -463,7 +475,7 @@ def verify_official_chat_live2d_obs(
                     observer, "inspect_program_media_with_meter_ready", None)
                 if callable(ready_capture):
                     sample = ready_capture(
-                        ready_action=first_capture_ready.set,
+                        ready_action=wait_for_prompt_after_meter_subscription,
                         operator_approved=True, input_name=obs_input_name,
                         duration=min(float(duration), 3.0),
                         observe_program_motion=True,
@@ -497,11 +509,13 @@ def verify_official_chat_live2d_obs(
         # No prompt is sent. A late connected read-only worker must not sit
         # waiting for a request that this session has already rejected.
         cancel_observation.set()
+        meter_capture_release.set()
         prompt_started.set()
         monitor.join(timeout=1)
         raise RuntimeError("OBS 영상·음성 관찰을 시작하지 못했습니다.")
     if errors:
         cancel_observation.set()
+        meter_capture_release.set()
         prompt_started.set()
         monitor.join(timeout=1)
         raise RuntimeError("OBS 관찰 연결 준비 실패 · AI 질문을 보내지 않았습니다.") from errors[0]
@@ -512,6 +526,7 @@ def verify_official_chat_live2d_obs(
         check_cancelled()
     except Exception:
         cancel_observation.set()
+        meter_capture_release.set()
         prompt_started.set()
         monitor.join(timeout=2)
         raise
@@ -534,10 +549,14 @@ def verify_official_chat_live2d_obs(
         check_cancelled()
     except Exception:
         cancel_observation.set()
+        meter_capture_release.set()
         monitor.join(timeout=2)
         raise
     prompt_started_at = time.monotonic()
     prompt_finished_at = prompt_started_at
+    # 이 시점에만 실제 OBS 첫 미터 관찰창의 대기를 해제한다.
+    # 이미 승인된 질문은 아래에서 단 한 번 전송하며 재전송하지 않는다.
+    meter_capture_release.set()
     try:
         check_cancelled()
         lip = send_to_native_live2d_session_with_observation(
