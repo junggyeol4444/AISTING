@@ -177,6 +177,9 @@ class TwitchReadOnlySession:
                 return
             self.emit("connecting", self.channel)
             buffer = ""
+            # IRC JOIN 실제 승인 이전에 선행 도착한 PRIVMSG를 잃거나
+            # 승인되지 않은 AI 처리에 넣지 않도록 메모리에서 FIFO 보류.
+            startup_chats = []
             # IRC의 PING/서버 알림도 실제 통신 활동이다. 무채팅을
             # 장애로 오판하지 않으며 15분간 무프레임이면 재접속한다.
             last_received_at = time.monotonic()
@@ -230,11 +233,27 @@ class TwitchReadOnlySession:
                         if ack.group(1).lower() == self.channel and not ready:
                             ready = True
                             self.emit("ready", self.channel)
+                            for waiting_chat in startup_chats:
+                                if self._stop.is_set():
+                                    break
+                                if self.emit("chat", waiting_chat) is False:
+                                    raise TwitchReadError(
+                                        "트위치 JOIN 전 수신 채팅이 AI 큐에 수용되지 않았습니다."
+                                    )
+                                received += 1
+                            startup_chats.clear()
                     elif _WELCOME.match(line) and not ready:
                         self.emit("welcome", self.channel)
                     else:
                         chat = parse_irc_chat_line(line, self.channel)
                         if chat is not None:
+                            if not ready:
+                                if len(startup_chats) >= 4096:
+                                    raise TwitchReadError(
+                                        "트위치 JOIN 확인 전 임시 채팅 한도 초과 · 누락 위험"
+                                    )
+                                startup_chats.append(chat)
+                                continue
                             if self.emit("chat", chat) is False:
                                 raise TwitchReadError(
                                     "트위치 채팅이 AI 수신 큐에 수용되지 않았습니다."
