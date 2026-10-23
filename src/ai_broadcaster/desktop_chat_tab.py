@@ -1184,6 +1184,10 @@ class LocalChatTab(ttk.Frame):
             callback_p95 = state.get("콜백소요최근p95초")
             callback_label = ("콜백 소요 p95 미측정" if callback_p95 is None
                               else f"최근 콜백 소요 p95 {callback_p95:.2f}초")
+            callback_active = state.get("콜백전달진행초")
+            callback_active_label = (
+                "현재 전달 콜백 없음" if callback_active is None
+                else f"현재 전달 콜백 {callback_active:.2f}초 진행 중")
             observed_ratio = state.get("관측입장시간비율")
             ratio_label = ("입장 시간비율 미측정" if observed_ratio is None
                            else f"입장 관측비율 {observed_ratio * 100:.1f}%")
@@ -1213,6 +1217,7 @@ class LocalChatTab(ttk.Frame):
                 f" / 이벤트 ID 없는 수신 {state.get('서버이벤트ID없음', 0)}건"
                 f" / 전달 최대 {state['콜백전달최대초']:.2f}초"
                 f" / {callback_label}"
+                f" / {callback_active_label}"
                 f" / 콜백 소요 3초 초과 {state.get('콜백소요3초초과', 0)}건"
                 f" / 재연결 {state['재연결완료']}회"
                 f" / 읽기 시도 {state['실제읽기시도']}회"

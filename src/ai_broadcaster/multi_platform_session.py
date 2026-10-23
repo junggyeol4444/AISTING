@@ -55,6 +55,9 @@ class MultiPlatformReadOnlySession:
         self._callback_locks = {code: threading.Lock() for code in channels}
         self._callback_emit_total_seconds = {code: 0.0 for code in channels}
         self._callback_emit_max_seconds = {code: 0.0 for code in channels}
+        # 아직 끝나지 않은 실제 전달 콜백도 현재 경과를 관측한다.
+        # 완료된 콜백 p95만 보면 수 초 이상 멈춘 콜백을 놓칠 수 있다.
+        self._callback_inflight_started_at = {code: None for code in channels}
         # 실제 수신기→GUI/AI FIFO 콜백 소요시간의 최근 512건 p95.
         # 성공·거절·예외를 모두 측정하며 전달 성공으로 혼동하지 않는다.
         self._callback_emit_samples = {code: deque(maxlen=512) for code in channels}
@@ -123,6 +126,8 @@ class MultiPlatformReadOnlySession:
                                 self._replayed_event_id_count[code] += 1
                             return True
                         started = time.monotonic()
+                        with self._emit_lock:
+                            self._callback_inflight_started_at[code] = started
                         try:
                             accepted = self._emit("chat", item)
                         except Exception:
@@ -145,6 +150,7 @@ class MultiPlatformReadOnlySession:
                         finally:
                             elapsed = max(0.0, time.monotonic() - started)
                             with self._emit_lock:
+                                self._callback_inflight_started_at[code] = None
                                 self._callback_emit_total_seconds[code] += elapsed
                                 self._callback_emit_max_seconds[code] = max(
                                     self._callback_emit_max_seconds[code], elapsed)
@@ -236,6 +242,9 @@ class MultiPlatformReadOnlySession:
         """
         with self._emit_lock:
             now = time.monotonic()
+            # Stop 이후 경과를 운영 중 관측시간으로 잘못 누적하지 않는다.
+            if self._stop_started_at is not None:
+                now = min(now, self._stop_started_at)
             return {
                 code: {
                     "재연결완료": self._reconnect_count[code],
@@ -287,6 +296,11 @@ class MultiPlatformReadOnlySession:
                         ], 6) if self._callback_emit_samples[code] else None
                     ),
                     "콜백소요3초초과": self._callback_emit_over_three_seconds[code],
+                    "콜백전달진행중": self._callback_inflight_started_at[code] is not None,
+                    "콜백전달진행초": (
+                        round(max(0.0, now - self._callback_inflight_started_at[code]), 6)
+                        if self._callback_inflight_started_at[code] is not None else None
+                    ),
                     "실제읽기시도": self._reader_attempts[code],
                     "실제읽기실패": self._reader_failures[code],
                     "마지막읽기실패경과초": round(now - self._last_reader_failure_at[code], 3)
