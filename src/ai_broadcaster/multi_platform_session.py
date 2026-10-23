@@ -55,6 +55,10 @@ class MultiPlatformReadOnlySession:
         self._callback_locks = {code: threading.Lock() for code in channels}
         self._callback_emit_total_seconds = {code: 0.0 for code in channels}
         self._callback_emit_max_seconds = {code: 0.0 for code in channels}
+        # 실제 수신기→GUI/AI FIFO 콜백 소요시간의 최근 512건 p95.
+        # 성공·거절·예외를 모두 측정하며 전달 성공으로 혼동하지 않는다.
+        self._callback_emit_samples = {code: deque(maxlen=512) for code in channels}
+        self._callback_emit_over_three_seconds = {code: 0 for code in channels}
         self._callback_aborted_count = {code: 0 for code in channels}
         # 실제 서버 이벤트 ID가 재연결 뒤 다시 온 경우만 중복 전송 차단.
         # 본문/닉네임으로는 절대 합치지 않으며 ID 없는 사건은 모두 전달.
@@ -144,6 +148,9 @@ class MultiPlatformReadOnlySession:
                                 self._callback_emit_total_seconds[code] += elapsed
                                 self._callback_emit_max_seconds[code] = max(
                                     self._callback_emit_max_seconds[code], elapsed)
+                                self._callback_emit_samples[code].append(elapsed)
+                                self._callback_emit_over_three_seconds[code] += int(
+                                    elapsed > 3.0)
                         # 수신기까지 실제 수용 여부를 반환한다. False를
                         # 숨기면 WebSocket은 정상 전달로, YouTube는 다음
                         # 페이지로 확정해 채팅이 조용히 유실될 수 있다.
@@ -268,6 +275,13 @@ class MultiPlatformReadOnlySession:
                     "서버이벤트ID없음": self._missing_event_id_count[code],
                     "콜백전달누적초": round(self._callback_emit_total_seconds[code], 6),
                     "콜백전달최대초": round(self._callback_emit_max_seconds[code], 6),
+                    "콜백소요최근표본": len(self._callback_emit_samples[code]),
+                    "콜백소요최근p95초": (
+                        round(sorted(self._callback_emit_samples[code])[
+                            math.ceil(len(self._callback_emit_samples[code]) * 0.95) - 1
+                        ], 6) if self._callback_emit_samples[code] else None
+                    ),
+                    "콜백소요3초초과": self._callback_emit_over_three_seconds[code],
                     "실제읽기시도": self._reader_attempts[code],
                     "실제읽기실패": self._reader_failures[code],
                     "마지막읽기실패경과초": round(now - self._last_reader_failure_at[code], 3)
