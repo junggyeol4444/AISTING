@@ -14,6 +14,7 @@ from pathlib import Path
 
 from .original_plan_tts import synthesize_local_gpt_sovits
 from .original_plan_obs import OfficialObsWebsocket
+from .voice_waveform_meter_match import compare_voice_meter_envelope
 
 
 @dataclass(frozen=True)
@@ -35,6 +36,11 @@ class RealVoiceObsResult:
     last_obs_signal_after_restart_seconds: float | None = None
     obs_positive_samples_after_restart: int = 0
     obs_signal_during_wav_candidate: bool = False
+    # 실제 GPT-SoVITS 16-bit PCM 음량 변화와 OBS 선택 미터의
+    # 비율·시간 근접 유사성. 원본 파형 일치/동일 화자 증명 아님.
+    obs_wav_envelope_correlation: float | None = None
+    obs_wav_envelope_mapped_samples: int = 0
+    obs_wav_envelope_candidate: bool = False
 
 
 def verify_gpt_sovits_to_obs(
@@ -220,6 +226,14 @@ def verify_gpt_sovits_to_obs(
                 round(during_wav[-1] - restart_requested_at, 6)
                 if during_wav else None
             )
+            # 비교는 권리 확인 후 합성된 메모리 내 실제 WAV 바이트와
+            # OBS 고유 임시 입력의 실제 미터 콜백 강도만 사용한다.
+            # PCM 미지원 WAV는 허위 추론하지 않고 미측정으로 남긴다.
+            similarity, mapped_count = compare_voice_meter_envelope(
+                raw,
+                getattr(meters, "selected_signal_peak_samples", ()),
+                restart_requested_at if valid_restart_times else None,
+            )
             result = RealVoiceObsResult(
                 sample_rate=utterance.sample_rate,
                 channels=utterance.channels,
@@ -237,6 +251,12 @@ def verify_gpt_sovits_to_obs(
                 obs_positive_samples_after_restart=len(during_wav),
                 obs_signal_during_wav_candidate=bool(
                     meters.usable_output_candidate and during_wav),
+                obs_wav_envelope_correlation=similarity,
+                obs_wav_envelope_mapped_samples=mapped_count,
+                obs_wav_envelope_candidate=bool(
+                    meters.usable_output_candidate
+                    and during_wav and similarity is not None and similarity >= 0.8
+                    and mapped_count >= 8),
             )
             if not result.actual_signal:
                 raise RuntimeError("OBS가 GPT-SoVITS 실제 WAV 입력 신호를 확인하지 못했습니다.")

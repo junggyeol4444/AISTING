@@ -1411,7 +1411,15 @@ class LocalChatTab(ttk.Frame):
                                    f"{payload.first_obs_signal_after_restart_seconds:.3f}초"
                                    if payload.first_obs_signal_after_restart_seconds is not None
                                    else " · 첫 양성 표본 미측정")
-                                + " · Live2D·시청자 송출은 별도 검사")
+                                + (" · 실제 WAV·OBS 음량 변화 유사성 "
+                                   + f"{payload.obs_wav_envelope_correlation:.2f}"
+                                   + f"({payload.obs_wav_envelope_mapped_samples}표본)"
+                                   if payload.obs_wav_envelope_correlation is not None
+                                   else " · WAV·OBS 파형 음량 비교 미측정/지원 형식 부족")
+                                + (" · 관측 음량 패턴 유사 후보"
+                                   if payload.obs_wav_envelope_candidate
+                                   else " · 관측 음량 패턴 유사 조건 미충족")
+                                + " · 파형 동일성·Live2D·시청자 송출은 별도 검사")
                         else:
                             self._tts_probe_status.set(
                                 "음성/OBS 실증 미충족 · 유효한 미터 신호 없음")

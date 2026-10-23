@@ -72,6 +72,8 @@ class ActualObsAudioMeters:
     last_selected_signal_monotonic: float = 0.0
     # 선택된 OBS 입력의 실제 양수 미터 이벤트 최근 128개 (메모리 전용).
     selected_signal_sample_times: tuple[float, ...] = ()
+    # 선택 OBS 입력의 양성 오디오 미터 실제 콜백 시각+최대 레벨 128개.
+    selected_signal_peak_samples: tuple[tuple[float, float], ...] = ()
 
     @property
     def any_signal(self) -> bool:
@@ -841,6 +843,7 @@ class OfficialObsWebsocket:
         first_selected_signal_monotonic = 0.0
         last_selected_signal_monotonic = 0.0
         selected_signal_times: list[float] = []
+        selected_peak_samples: list[tuple[float, float]] = []
 
         def on_input_volume_meters(data: object) -> None:
             nonlocal count, selected_meter_events
@@ -877,8 +880,10 @@ class OfficialObsWebsocket:
                                     first_selected_signal_monotonic = sampled_at
                                 last_selected_signal_monotonic = sampled_at
                                 selected_signal_times.append(sampled_at)
+                                selected_peak_samples.append((sampled_at, max(channel_peaks)))
                                 if len(selected_signal_times) > 128:
                                     selected_signal_times.pop(0)
+                                    selected_peak_samples.pop(0)
 
         events = None
         try:
@@ -935,6 +940,7 @@ class OfficialObsWebsocket:
                 first_selected_signal_monotonic,
                 last_selected_signal_monotonic,
                 tuple(selected_signal_times),
+                tuple(selected_peak_samples),
             )
 
 
