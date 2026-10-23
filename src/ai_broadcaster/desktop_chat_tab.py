@@ -76,6 +76,9 @@ class LocalChatTab(ttk.Frame):
         # 사용자가 선택할 때만 같은 공식 WS의 실제 첫 RIFF/WAVE
         # 관찰(최대 3초)을 수행. 빠른 전송 기본 동작은 그대로 둔다.
         self._official_first_wav_receipt = tk.BooleanVar(value=False)
+        # 운영자 선택 시 로컬 Ollama 생성 진행 중인 일부 답변을
+        # 방송·TTS·SQLite 저장 없이 현재 GUI 상태 줄에만 표시.
+        self._local_stream_preview = tk.BooleanVar(value=False)
         self._youtube_api_key = tk.StringVar()
         self._youtube_oauth_token = tk.StringVar()
         self._oauth_busy = False
@@ -224,6 +227,10 @@ class LocalChatTab(ttk.Frame):
                           width=width).pack(side="left", padx=(0, 12))
         ttk.Checkbutton(self, text="공식 Open-LLM-VTuber/Live2D 창으로 채팅 전달 (한 세션 · Ollama 중복 호출 없음)",
                         variable=self._official_live2d).pack(anchor="w", pady=(4, 0), before=model_row)
+        ttk.Checkbutton(
+            self, text="로컬 Ollama 생성 중 답변 미리보기 (기본 꺼짐 · 방송/저장 없음)",
+            variable=self._local_stream_preview,
+        ).pack(anchor="w", pady=(2, 1), before=model_row)
         ttk.Checkbutton(
             self,
             text="공식 창 빠른 전송: 채팅당 8초 립싱크 실증 대기 생략 (전송 확인만 · 기본 켜짐)",
@@ -811,11 +818,14 @@ class LocalChatTab(ttk.Frame):
         first_wav_receipt = (
             bool(self._official_first_wav_receipt.get())
             if fast_official else False)
+        stream_preview = (
+            bool(self._local_stream_preview.get()) if not official else False)
         threading.Thread(
             target=self._work_twitch_ai,
             args=(model, inbox, official, session),
             kwargs={"fast_official_mode": fast_official,
-                    "first_wav_receipt_mode": first_wav_receipt},
+                    "first_wav_receipt_mode": first_wav_receipt,
+                    "stream_preview_mode": stream_preview},
             daemon=True,
         ).start()
         self._twitch_start.configure(state="disabled")
@@ -919,7 +929,8 @@ class LocalChatTab(ttk.Frame):
     def _work_twitch_ai(self, model: str, inbox: queue.SimpleQueue,
                         official: bool = False, session=None, *,
                         reply_function=None, fast_official_mode: bool = False,
-                        first_wav_receipt_mode: bool = False) -> None:
+                        first_wav_receipt_mode: bool = False,
+                        stream_preview_mode: bool = False) -> None:
         # Old direct-call regression contracts still use unscoped result
         # events; real UI connections always provide their unique session.
         def report(kind, value):
@@ -1018,7 +1029,29 @@ class LocalChatTab(ttk.Frame):
                         if local_runner is None:
                             local_runner = LocalChatRunner(
                                 model, use_committed_gui_character=True)
-                        result = local_runner.reply(chat.text, sender=actor)
+                        if stream_preview_mode:
+                            partial_preview = ""
+                            received_chars = 0
+                            last_progress_at = 0.0
+                            def on_stream_chunk(delta: str) -> None:
+                                nonlocal partial_preview, received_chars, last_progress_at
+                                if session is not None and session._stop.is_set():
+                                    return
+                                received_chars += len(delta)
+                                if len(partial_preview) < 160:
+                                    partial_preview += delta[:160-len(partial_preview)]
+                                now = time.monotonic()
+                                if (last_progress_at == 0.0
+                                        or now - last_progress_at >= 0.35):
+                                    last_progress_at = now
+                                    report("twitch_ai_stream_preview", (
+                                        partial_preview, received_chars,
+                                        max(0.0, now - model_started_at)))
+                            result = local_runner.reply(
+                                chat.text, sender=actor,
+                                on_stream_chunk=on_stream_chunk)
+                        else:
+                            result = local_runner.reply(chat.text, sender=actor)
                     else:
                         result = reply_function(
                             model, chat.text, sender=actor,
@@ -1299,6 +1332,15 @@ class LocalChatTab(ttk.Frame):
                             "실제 채팅 " + str(self._twitch_received)
                             + "건 · AI 응답 " + str(self._twitch_replied)
                             + "건 · AI 오류 " + str(self._twitch_ai_failures) + "건")
+                    elif kind == "twitch_ai_stream_preview":
+                        preview, chars, local_seconds = payload
+                        # 완료 전 스트림은 임시 GUI 텍스트일 뿐,
+                        # AI 답변·발화·기억/방송 성공으로 계수하지 않는다.
+                        self._twitch_status.set(
+                            f"로컬 Ollama 생성 중 {chars}글자 · "
+                            f"첫 토큰 이후 {local_seconds:.2f}초 경과"
+                            " · 미완성 임시 텍스트 · 방송 발신/기억 저장 없음: "
+                            + preview[:160])
                     elif kind == "twitch_ai_ok":
                         chat, result = payload
                         self._twitch_replied += 1

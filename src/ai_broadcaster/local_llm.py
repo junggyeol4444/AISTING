@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 from urllib.error import HTTPError, URLError
 from urllib.request import HTTPHandler, HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
@@ -134,6 +134,90 @@ class LocalOllamaReplyGenerator:
             duration = data.get(key)
             if type(duration) is int and 0 <= duration <= 10**18:
                 stages[key] = round(duration / 1_000_000_000, 6)
+        self.last_server_timings_seconds = stages or None
+        return reply
+
+    def generate_stream(self, message: ChatMessage,
+                        on_chunk: Callable[[str], None]) -> str:
+        """Ollama의 실제 NDJSON 생성 청크를 즉시 관찰하되 전체 답변만 확정.
+
+        운영자가 GUI에서 선택한 세션에 한해 사용한다. 중간 청크는
+        대화 기억·실제 방송/채팅/음성에 전달하지 않는다.
+        응답 스트림이 끝나지 않으면 원래 ChatPipeline은 출력/저장하지 않는다.
+        """
+        self.last_server_timings_seconds = None
+        if not isinstance(message, ChatMessage) or not callable(on_chunk):
+            raise TypeError("로컬 AI 스트리밍 입력과 중간 표시 함수 오류")
+        messages = [{"role": "system", "content": self.system}]
+        if self.memory is not None:
+            for exchange in self.memory.recent(self.config.max_context_exchanges):
+                messages.append({
+                    "role": "user", "content": f"{exchange.sender}: {exchange.user_text}",
+                })
+                messages.append({"role": "assistant", "content": exchange.reply})
+        messages.append({"role": "user", "content": f"{message.sender}: {message.text}"})
+        # num_predict, keep_alive 등 사용자 미승인 옵션을 넣지 않는다.
+        request = Request(
+            self.config.endpoint,
+            data=json.dumps({"model": self.config.model, "stream": True,
+                             "messages": messages},
+                            ensure_ascii=False).encode("utf-8"),
+            headers={"Content-Type": "application/json",
+                     "Accept": "application/x-ndjson"},
+            method="POST",
+        )
+        pieces: list[str] = []
+        chars = total_bytes = 0
+        finished = False
+        last_packet = None
+        try:
+            with self._opener.open(
+                    request, timeout=self.config.timeout_seconds) as response:
+                while True:
+                    line = response.readline(1_000_001)
+                    if not line:
+                        break
+                    total_bytes += len(line)
+                    if total_bytes > 1_000_000 or len(line) > 1_000_000:
+                        raise LocalModelError("로컬 AI 스트리밍 응답 한도 초과")
+                    try:
+                        packet = json.loads(line.decode("utf-8"))
+                    except (UnicodeDecodeError, ValueError) as exc:
+                        raise LocalModelError("로컬 AI 스트리밍 조각 형식 오류") from exc
+                    if not isinstance(packet, dict) or packet.get("error"):
+                        raise LocalModelError("로컬 AI 스트리밍 생성 오류")
+                    part = packet.get("message")
+                    if not isinstance(part, dict):
+                        raise LocalModelError("로컬 AI 스트리밍 응답 내용 형식 오류")
+                    delta = part.get("content", "")
+                    if not isinstance(delta, str):
+                        raise LocalModelError("로컬 AI 스트리밍 텍스트 형식 오류")
+                    chars += len(delta)
+                    if chars > self.config.max_reply_chars:
+                        raise LocalModelError("로컬 AI 응답 길이 제한을 넘었습니다.")
+                    if delta:
+                        pieces.append(delta)
+                        on_chunk(delta)
+                    done = packet.get("done")
+                    if type(done) is not bool:
+                        raise LocalModelError("로컬 AI 스트리밍 완료 플래그 오류")
+                    if done:
+                        finished = True
+                        last_packet = packet
+                        break
+        except (HTTPError, URLError, TimeoutError, OSError) as exc:
+            raise LocalModelError("로컬 AI 스트리밍 연결 또는 수신 시간 초과") from exc
+        if not finished:
+            raise LocalModelError("로컬 AI 스트리밍 완료 확인 실패 · 중간 답변 저장 금지")
+        reply = "".join(pieces)
+        if not reply.strip():
+            raise LocalModelError("로컬 AI 스트리밍 응답 내용이 비어 있습니다.")
+        stages = {}
+        for key in ("load_duration", "prompt_eval_duration",
+                    "eval_duration", "total_duration"):
+            value = last_packet.get(key)
+            if type(value) is int and 0 <= value <= 10**18:
+                stages[key] = round(value / 1_000_000_000, 6)
         self.last_server_timings_seconds = stages or None
         return reply
 

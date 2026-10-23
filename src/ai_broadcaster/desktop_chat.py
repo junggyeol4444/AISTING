@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 from uuid import uuid4
 
 from .chat_pipeline import ChatPipeline
@@ -99,7 +100,10 @@ class LocalChatRunner:
             settings["persona"]["speech_style"] = confirmed["style"]
         self.generator = LocalOllamaReplyGenerator(config, settings, memory=self.memory)
 
-    def reply(self, text: str, *, sender: str) -> ChatResult:
+    def reply(self, text: str, *, sender: str,
+              on_stream_chunk: Callable[[str], None] | None = None) -> ChatResult:
+        if on_stream_chunk is not None and not callable(on_stream_chunk):
+            raise TypeError("로컬 생성 진행 표시 함수 오류")
         if not isinstance(text, str) or not text.strip() or len(text) > 4000:
             raise ValueError("내용은 공백이 아닌 1~4000글자로 입력해 주세요.")
         if not isinstance(sender, str) or not sender.strip() or len(sender) > 160:
@@ -111,7 +115,8 @@ class LocalChatRunner:
         fifo.receive_chat(ChatMessage(str(uuid4()), sender.strip(), text.strip()))
         output = _TextOutput()
         pipeline = ChatPipeline(fifo, self.generator, output)
-        outcome = pipeline.process_next()
+        outcome = (pipeline.process_next(on_stream_chunk=on_stream_chunk)
+                   if on_stream_chunk is not None else pipeline.process_next())
         if outcome is None:
             raise RuntimeError("로컬 AI 응답 처리 결과가 없습니다.")
         return ChatResult(

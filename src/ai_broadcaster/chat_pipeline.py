@@ -7,7 +7,7 @@ Real LLM/TTS providers must be separately installed, approved, and connected.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Callable, Protocol
 
 from .session import ChatMessage, SessionController
 
@@ -41,7 +41,9 @@ class ChatPipeline:
         self._prepared: ProcessedChat | None = None
         self.post_delivery_errors: list[Exception] = []
 
-    def process_next(self) -> ProcessedChat | None:
+    def process_next(
+            self, *, on_stream_chunk: Callable[[str], None] | None = None
+    ) -> ProcessedChat | None:
         message = self.queue.peek_chat()
         if message is None:
             self._prepared = None
@@ -49,7 +51,13 @@ class ChatPipeline:
         if self._prepared is not None and self._prepared.original != message:
             raise RuntimeError("pending prepared reply no longer matches chat head")
         if self._prepared is None:
-            reply = self.generator.generate(message)
+            if on_stream_chunk is not None:
+                streaming = getattr(self.generator, "generate_stream", None)
+                if not callable(streaming):
+                    raise RuntimeError("선택한 AI 생성기는 실제 스트리밍을 지원하지 않습니다.")
+                reply = streaming(message, on_stream_chunk)
+            else:
+                reply = self.generator.generate(message)
             if not isinstance(reply, str) or not reply.strip():
                 raise ValueError("generator must return a nonempty reply")
             self._prepared = ProcessedChat(original=message, reply=reply)
