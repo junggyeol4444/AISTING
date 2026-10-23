@@ -257,7 +257,13 @@ class ChzzkReadOnlySession(ReadOnlySession):
                 if not isinstance(data, dict):
                     raise ValueError("치지직 접속 응답 형식 오류")
                 self.emit("transport_activity", None)
-                startup_chats.extend(parse_chzzk_frame(raw, self.channel))
+                handshake_chats = parse_chzzk_frame(raw, self.channel)
+                if len(startup_chats) + len(handshake_chats) > 4096:
+                    # 수천 건 수신 중 입장이 늦어지면 메모리를 무한
+                    # 축적하거나 오래된 메시지를 조용히 버리지 않는다.
+                    raise RuntimeError(
+                        "치지직 JOIN 승인 전 채팅 임시 보관 한도 초과 · 누락 위험")
+                startup_chats.extend(handshake_chats)
                 if data.get("cmd") == 10100 and isinstance(data.get("bdy"), dict) and data["bdy"].get("sid"):
                     accepted = True
                     break
@@ -687,6 +693,10 @@ class YouTubeReadOnlySession(ReadOnlySession):
                 message_id = (raw_id if isinstance(raw_id, str)
                               and 1 <= len(raw_id) <= 256 else None)
                 if message_id is not None and message_id in seen_message_ids:
+                    # 이전 연결에서 성공적으로 전달된 동일 서버 사건.
+                    # 채팅 본문으로 묶는 중복 제거가 아니며 수신 재생
+                    # 진단만 알리고 외부 채팅 발신은 수행하지 않는다.
+                    self.emit("server_replay", None)
                     continue
                 for item in chats:
                     if self._stop.is_set():
