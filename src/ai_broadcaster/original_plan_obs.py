@@ -74,6 +74,9 @@ class ActualObsAudioMeters:
     selected_signal_sample_times: tuple[float, ...] = ()
     # 선택 OBS 입력의 양성 오디오 미터 실제 콜백 시각+최대 레벨 128개.
     selected_signal_peak_samples: tuple[tuple[float, float], ...] = ()
+    # 선택된 입력의 실제 양성/무음 레벨을 50ms 구간당 1개까지 관측.
+    # 0 레벨도 보존하여 WAV 말하기·쉼 구간의 대응을 비교한다.
+    selected_all_meter_level_samples: tuple[tuple[float, float], ...] = ()
 
     @property
     def any_signal(self) -> bool:
@@ -844,6 +847,7 @@ class OfficialObsWebsocket:
         last_selected_signal_monotonic = 0.0
         selected_signal_times: list[float] = []
         selected_peak_samples: list[tuple[float, float]] = []
+        all_level_samples: list[tuple[float, float]] = []
 
         def on_input_volume_meters(data: object) -> None:
             nonlocal count, selected_meter_events
@@ -874,8 +878,19 @@ class OfficialObsWebsocket:
                         peaks[name] = max(peaks.get(name, 0.0), max(channel_peaks))
                         if input_name is not None and name == input_name:
                             selected_meter_events += 1
-                            if max(channel_peaks) > 0.001:
-                                sampled_at = time.monotonic()
+                            sampled_at = time.monotonic()
+                            # 신호가 0인 경우도 실제로 수신된 이벤트만
+                            # 보존한다. 관측하지 않은 무음 구간은 생성 금지.
+                            peak = max(channel_peaks)
+                            if (all_level_samples
+                                    and sampled_at - all_level_samples[-1][0] < 0.05):
+                                last_time, previous_peak = all_level_samples[-1]
+                                all_level_samples[-1] = (sampled_at, max(previous_peak, peak))
+                            else:
+                                all_level_samples.append((sampled_at, peak))
+                                if len(all_level_samples) > 256:
+                                    all_level_samples.pop(0)
+                            if peak > 0.001:
                                 if not first_selected_signal_monotonic:
                                     first_selected_signal_monotonic = sampled_at
                                 last_selected_signal_monotonic = sampled_at
@@ -941,6 +956,7 @@ class OfficialObsWebsocket:
                 last_selected_signal_monotonic,
                 tuple(selected_signal_times),
                 tuple(selected_peak_samples),
+                tuple(all_level_samples),
             )
 
 

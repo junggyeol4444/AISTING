@@ -15,6 +15,7 @@ from pathlib import Path
 from .original_plan_tts import synthesize_local_gpt_sovits
 from .original_plan_obs import OfficialObsWebsocket
 from .voice_waveform_meter_match import compare_voice_meter_envelope
+from .voice_observed_segments import compare_wav_obs_active_silence
 
 
 @dataclass(frozen=True)
@@ -41,6 +42,13 @@ class RealVoiceObsResult:
     obs_wav_envelope_correlation: float | None = None
     obs_wav_envelope_mapped_samples: int = 0
     obs_wav_envelope_candidate: bool = False
+    # 동일 1회 WAV 재생 요청 후, 발화/쉼 패턴의 실제 관찰값.
+    obs_wav_segment_score: float | None = None
+    obs_wav_segment_samples: int = 0
+    obs_wav_segment_lag_seconds: float | None = None
+    obs_wav_segment_candidate: bool = False
+    obs_wav_speech_samples: int = 0
+    obs_wav_silence_samples: int = 0
 
 
 def verify_gpt_sovits_to_obs(
@@ -234,6 +242,11 @@ def verify_gpt_sovits_to_obs(
                 getattr(meters, "selected_signal_peak_samples", ()),
                 restart_requested_at if valid_restart_times else None,
             )
+            segment_result = compare_wav_obs_active_silence(
+                raw,
+                getattr(meters, "selected_all_meter_level_samples", ()),
+                restart_requested_at if valid_restart_times else None,
+            )
             result = RealVoiceObsResult(
                 sample_rate=utterance.sample_rate,
                 channels=utterance.channels,
@@ -257,6 +270,14 @@ def verify_gpt_sovits_to_obs(
                     meters.usable_output_candidate
                     and during_wav and similarity is not None and similarity >= 0.8
                     and mapped_count >= 8),
+                obs_wav_segment_score=segment_result.score,
+                obs_wav_segment_samples=segment_result.samples,
+                obs_wav_segment_lag_seconds=segment_result.lag_seconds,
+                obs_wav_segment_candidate=bool(
+                    meters.usable_output_candidate
+                    and during_wav and segment_result.candidate),
+                obs_wav_speech_samples=segment_result.voiced_samples,
+                obs_wav_silence_samples=segment_result.silent_samples,
             )
             if not result.actual_signal:
                 raise RuntimeError("OBS가 GPT-SoVITS 실제 WAV 입력 신호를 확인하지 못했습니다.")

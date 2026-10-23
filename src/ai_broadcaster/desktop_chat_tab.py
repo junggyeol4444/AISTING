@@ -1419,6 +1419,16 @@ class LocalChatTab(ttk.Frame):
                                 + (" · 관측 음량 패턴 유사 후보"
                                    if payload.obs_wav_envelope_candidate
                                    else " · 관측 음량 패턴 유사 조건 미충족")
+                                + (" · WAV 말하기·쉼 대응 "
+                                   + f"{payload.obs_wav_segment_score:.2f}"
+                                   + f"({payload.obs_wav_segment_samples}표본,"
+                                   + f"발화 {payload.obs_wav_speech_samples},"
+                                   + f"쉼 {payload.obs_wav_silence_samples})"
+                                   if payload.obs_wav_segment_score is not None
+                                   else " · WAV 말하기·쉼 대응 미측정")
+                                + (" · 실제 관측 구간 패턴 유사 후보"
+                                   if payload.obs_wav_segment_candidate
+                                   else " · 발화·쉼 대응 미확인")
                                 + " · 파형 동일성·Live2D·시청자 송출은 별도 검사")
                         else:
                             self._tts_probe_status.set(
