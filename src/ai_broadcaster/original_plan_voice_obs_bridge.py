@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import math
 import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -26,6 +27,14 @@ class RealVoiceObsResult:
     wav_duration_seconds: float = 0.0
     meter_observation_seconds: float = 0.0
     observation_covers_wav_duration: bool = False
+    # 재생 명령 직전의 Python monotonic 시점부터 실제 미터 양성 시점까지.
+    # WAV와 OBS 믹서 사이의 로컬 관측 후보이며 출력 지연은 아님.
+    restart_requested_monotonic: float | None = None
+    restart_returned_monotonic: float | None = None
+    first_obs_signal_after_restart_seconds: float | None = None
+    last_obs_signal_after_restart_seconds: float | None = None
+    obs_positive_samples_after_restart: int = 0
+    obs_signal_during_wav_candidate: bool = False
 
 
 def verify_gpt_sovits_to_obs(
@@ -155,7 +164,11 @@ def verify_gpt_sovits_to_obs(
                 raise RuntimeError("OBS 음성 입력 생성 도중 송출 또는 장면 상태가 변경되었습니다.")
             ensure_not_recording()
 
+            restart_requested_at = None
+            restart_returned_at = None
+
             def start_exact_created_media_after_meter_subscription():
+                nonlocal restart_requested_at, restart_returned_at
                 # The only mutable target is the unique temporary source we
                 # created for THIS licensed utterance, never an existing
                 # recording/stream or the user's named OBS media input.
@@ -165,13 +178,48 @@ def verify_gpt_sovits_to_obs(
                         "OBS 미터 연결 도중 방송 또는 장면이 바뀌어 재생을 중단합니다.")
                 ensure_not_recording()
                 confirm_owned_input()
+                restart_requested_at = time.monotonic()
                 client.trigger_media_input_action(
                     input_name, "OBS_WEBSOCKET_MEDIA_INPUT_ACTION_RESTART")
+                restart_returned_at = time.monotonic()
 
             meters = obs.read_actual_audio_meters(
                 operator_approved=True, input_name=input_name,
                 duration=meter_duration,
                 start_action=start_exact_created_media_after_meter_subscription)
+            # OBS 서버는 미터 이벤트를 비동기로 전달한다. 재생 명령을
+            # 보내기 이전의 양성 신호를 이번 WAV의 증거로 세지 않는다.
+            # 늦게 도착한 실제 양성 시각은 추정하지 않고 별도 구분한다.
+            positive_times = tuple(getattr(meters, "selected_signal_sample_times", ()))
+            valid_restart_times = (
+                type(restart_requested_at) in (int, float)
+                and type(restart_returned_at) in (int, float)
+                and math.isfinite(restart_requested_at)
+                and math.isfinite(restart_returned_at)
+                and 0 < restart_requested_at <= restart_returned_at
+            )
+            after_restart = (
+                tuple(t for t in positive_times
+                      if type(t) in (int, float) and math.isfinite(t)
+                      and t >= restart_requested_at)
+                if valid_restart_times else ()
+            )
+            # OBS 동기화/재생 지연은 기기마다 다르므로 실제 시간만
+            # 보고하며 0.5초는 안전한 오탐 방지의 엄격한 판정이 아니다.
+            # WAV 예상 종료 후의 소리는 이 발화로 단정하지 않는다.
+            during_wav = (
+                tuple(t for t in after_restart
+                      if t <= restart_returned_at + wav_duration + 0.5)
+                if valid_restart_times else ()
+            )
+            first_delay = (
+                round(during_wav[0] - restart_requested_at, 6)
+                if during_wav else None
+            )
+            last_delay = (
+                round(during_wav[-1] - restart_requested_at, 6)
+                if during_wav else None
+            )
             result = RealVoiceObsResult(
                 sample_rate=utterance.sample_rate,
                 channels=utterance.channels,
@@ -182,6 +230,13 @@ def verify_gpt_sovits_to_obs(
                 wav_duration_seconds=round(wav_duration, 3),
                 meter_observation_seconds=round(meter_duration, 3),
                 observation_covers_wav_duration=covers_duration,
+                restart_requested_monotonic=restart_requested_at,
+                restart_returned_monotonic=restart_returned_at,
+                first_obs_signal_after_restart_seconds=first_delay,
+                last_obs_signal_after_restart_seconds=last_delay,
+                obs_positive_samples_after_restart=len(during_wav),
+                obs_signal_during_wav_candidate=bool(
+                    meters.usable_output_candidate and during_wav),
             )
             if not result.actual_signal:
                 raise RuntimeError("OBS가 GPT-SoVITS 실제 WAV 입력 신호를 확인하지 못했습니다.")

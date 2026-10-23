@@ -1403,7 +1403,15 @@ class LocalChatTab(ttk.Frame):
                                 + ("· 전체 WAV 시간 관찰 범위 포함 "
                                    if payload.observation_covers_wav_duration
                                    else "· WAV 후반 미관찰(8초 상한) ")
-                                + "· Live2D·시청자 송출은 별도 검사")
+                                + ("· 재생 명령 이후 WAV 예상 구간 내 OBS 양성 표본 "
+                                   if payload.obs_signal_during_wav_candidate
+                                   else "· 재생 명령과 일치하는 OBS 양성 표본 미확인 ")
+                                + str(payload.obs_positive_samples_after_restart) + "건"
+                                + (" · 첫 양성 표본 " +
+                                   f"{payload.first_obs_signal_after_restart_seconds:.3f}초"
+                                   if payload.first_obs_signal_after_restart_seconds is not None
+                                   else " · 첫 양성 표본 미측정")
+                                + " · Live2D·시청자 송출은 별도 검사")
                         else:
                             self._tts_probe_status.set(
                                 "음성/OBS 실증 미충족 · 유효한 미터 신호 없음")
