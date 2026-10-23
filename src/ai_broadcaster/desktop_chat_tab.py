@@ -1514,6 +1514,9 @@ class LocalChatTab(ttk.Frame):
                             " / " + ("공식 동일 WS WAV·OBS 실제 음량 윤곽 유사 후보" if getattr(
                                 evidence, "same_session_official_wav_obs_level_candidate", False)
                                 else "공식 동일 WS WAV·OBS 음량 패턴 미확인") +
+                            " / " + ("공식 WAV·Live2D 렌더러 RMS 음량 변화 유사 후보" if getattr(
+                                evidence, "same_session_official_wav_renderer_rms_candidate", False)
+                                else "공식 WAV·실제 Live2D RMS 패턴 미확인") +
                             " · " + getattr(evidence, "latency_summary_ko", "지연 미측정") +
                             " · 실제 방송/시청자 출력은 별도 실증 필요")
                         if evidence.verified_observation:

@@ -382,6 +382,8 @@ class OfficialLipSyncEvidence:
     # 같은 공식 WebSocket에서 실제 WAV PCM16 음량만 채취(원본 보관 금지).
     official_pcm_first_wav_rms_envelope: tuple[float, ...] = ()
     official_pcm_first_wav_received_monotonic: float = 0.0
+    # 실제 공식 렌더러 WAV RMS 표본: 동일 WebSocket WAV 도착 뒤 상대시간·RMS.
+    official_pcm_live2d_rms_samples: tuple[tuple[float, float], ...] = ()
 
     @property
     def verified_signal(self) -> bool:
@@ -472,6 +474,17 @@ def _parse_official_lipsync_evidence(reply: dict) -> OfficialLipSyncEvidence:
         pcm_mouth_times = reply.get('official_pcm_mouth_sample_times', [])
         pcm_envelope = reply.get('official_pcm_first_wav_rms_envelope', [])
         pcm_received_at = reply.get('official_pcm_first_wav_received_monotonic', 0.0)
+        pcm_live_rms = reply.get('official_pcm_live2d_rms_samples', [])
+        if (not isinstance(pcm_live_rms, list) or len(pcm_live_rms) > 100
+                or any(not isinstance(p, list) or len(p) != 2
+                       or type(p[0]) not in (int, float)
+                       or type(p[1]) not in (int, float)
+                       or not math.isfinite(p[0]) or not math.isfinite(p[1])
+                       or not 0 <= p[0] <= 12 or not 0 <= p[1] <= 10
+                       for p in pcm_live_rms)
+                or any(a[0] >= b[0] for a, b in zip(pcm_live_rms, pcm_live_rms[1:]))
+                or (pcm_live_rms and (not pcm_envelope or not pcm_received_at))):
+            raise ValueError('공식 PCM WAV·Live2D RMS 실제 시간 표본 형식 오류')
         if (not isinstance(pcm_envelope, list) or len(pcm_envelope) > 160
                 or any(type(x) not in (int, float) or not math.isfinite(x)
                        or x < 0 or x > 1 for x in pcm_envelope)
@@ -529,7 +542,8 @@ def _parse_official_lipsync_evidence(reply: dict) -> OfficialLipSyncEvidence:
             pcm_rate, pcm_channels, pcm_mouth,
             float(pcm_mouth_first), float(pcm_mouth_last),
             tuple(float(t) for t in pcm_mouth_times),
-            tuple(float(v) for v in pcm_envelope), float(pcm_received_at)
+            tuple(float(v) for v in pcm_envelope), float(pcm_received_at),
+            tuple((float(t), float(v)) for t, v in pcm_live_rms)
         )
     except (KeyError, ValueError, TypeError) as exc:
         raise FrontendUnavailable('공식 Live2D 검사 결과에 유효하지 않은 데이터가 있습니다.') from exc
@@ -608,6 +622,7 @@ def _observe_actual_live2d_model(window, seconds: float) -> dict:
     pcm_mouth_times: list[float] = []
     pcm_first_rms_envelope: tuple[float, ...] = ()
     pcm_first_received_monotonic = 0.0
+    pcm_live2d_rms_samples: list[list[float]] = []
     low = high = previous = None
     deadline = time.monotonic() + seconds
     script = _official_live2d_probe_script()
@@ -683,6 +698,14 @@ def _observe_actual_live2d_model(window, seconds: float) -> dict:
                 rms = item.get('rms')
                 if type(rms) in (int, float) and 0 <= rms <= 10:
                     peak_rms = max(peak_rms, float(rms))
+                    if (pcm_first_rms_envelope and pcm_first_received_monotonic > 0
+                            and len(pcm_live2d_rms_samples) < 100
+                            and item.get('lipsync') is True
+                            and item.get('model') is True):
+                        elapsed_pcm = time.monotonic() - pcm_first_received_monotonic
+                        if 0 <= elapsed_pcm <= 12:
+                            pcm_live2d_rms_samples.append([
+                                round(elapsed_pcm, 3), round(float(rms), 4)])
                     if rms > 0.01:
                         active += 1
                 mouth = item.get('mouth')
@@ -745,6 +768,7 @@ def _observe_actual_live2d_model(window, seconds: float) -> dict:
         'official_pcm_mouth_sample_times': pcm_mouth_times,
         'official_pcm_first_wav_rms_envelope': list(pcm_first_rms_envelope),
         'official_pcm_first_wav_received_monotonic': pcm_first_received_monotonic,
+        'official_pcm_live2d_rms_samples': pcm_live2d_rms_samples,
     }
 
 
@@ -854,7 +878,7 @@ def _official_frontend_input_script(value: str, nonce: str) -> tuple[str, str, s
         "for(let n=frame;n<stop;n++)for(let ch=0;ch<fmt.channels;ch++){"
         "const v=view.getInt16(dataOff+n*fmt.align+ch*2,true)/32768;"
         "sum+=v*v;used++;}"
-        "energy.push(Math.sqrt(sum/Math.max(1,used)));frame=stop;}"
+        "energy.push(Math.round(Math.sqrt(sum/Math.max(1,used))*10000)/10000);frame=stop;}"
         "if(energy.length>=8){audit.firstEnvelope=energy;"
         "audit.firstEnvelopeAtMs=receivedAt;}"
         "}catch(_pcmError){}"

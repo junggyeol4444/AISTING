@@ -41,6 +41,9 @@ class OfficialChatObsEvidence:
     official_wav_obs_score: float | None = None
     official_wav_obs_sample_count: int = 0
     official_wav_obs_lag_seconds: float | None = None
+    official_wav_live2d_rms_score: float | None = None
+    official_wav_live2d_rms_samples: int = 0
+    official_wav_live2d_rms_lag_seconds: float | None = None
 
     @property
     def latency_summary_ko(self) -> str:
@@ -88,7 +91,24 @@ class OfficialChatObsEvidence:
             + "건 / WS WAV 수신 후 후보 지연 "
             + (f"{self.official_wav_obs_lag_seconds:.3f}초"
                if self.official_wav_obs_lag_seconds is not None else "미측정")
-            + " / 시청자 E2E 별도 미검증"
+            + " / 공식 WAV·Live2D 렌더러 RMS 상관 "
+            + (f"{self.official_wav_live2d_rms_score:.3f}"
+               if self.official_wav_live2d_rms_score is not None else "미측정")
+            + " / 렌더러 RMS 비교 표본 " + str(self.official_wav_live2d_rms_samples)
+            + "건 / 시청자 E2E 별도 미검증"
+        )
+
+    @property
+    def same_session_official_wav_renderer_rms_candidate(self) -> bool:
+        """서버 WAV 음량 윤곽과 동일 공식 Cubism 렌더러 RMS 유사 후보.
+
+        실제 입 모델 인과성 또는 OBS 송출/시청자 수신 증거가 아니다.
+        """
+        return bool(
+            self.lip.verified_signal
+            and self.official_wav_live2d_rms_score is not None
+            and self.official_wav_live2d_rms_score >= 0.85
+            and self.official_wav_live2d_rms_samples >= 12
         )
 
     @property
@@ -496,6 +516,19 @@ def verify_official_chat_live2d_obs(
     )
     ws_pcm_score, ws_pcm_used, ws_pcm_lag = compare_official_pcm_obs_levels(
         pcm_first_envelope, pcm_first_received_at, pcm_level_samples)
+    # 동일 공식 WebSocket WAV와 같은 공식 렌더러가 실제 반환한 RMS.
+    # 이 비교에서도 PCM WAV 본문이나 WebView2 PCM 원본을 저장하지 않는다.
+    rendered_rms = getattr(lip, "official_pcm_live2d_rms_samples", ())
+    renderer_levels = (
+        tuple((pcm_first_received_at + offset, level)
+              for offset, level in rendered_rms)
+        if type(pcm_first_received_at) in (int, float)
+        and math.isfinite(pcm_first_received_at)
+        and pcm_first_received_at > 0
+        else ()
+    )
+    render_score, render_used, render_lag = compare_official_pcm_obs_levels(
+        pcm_first_envelope, pcm_first_received_at, renderer_levels)
     # 연속 관찰 구간 중 실제 근접 표본이 가장 많은 후보를 선택한다.
     def candidate_quality(sample) -> tuple[int, int]:
         candidate = OfficialChatObsEvidence(
@@ -531,4 +564,7 @@ def verify_official_chat_live2d_obs(
         obs_audio_window_count=matched_window_count,
         official_wav_obs_score=ws_pcm_score,
         official_wav_obs_sample_count=ws_pcm_used,
-        official_wav_obs_lag_seconds=ws_pcm_lag)
+        official_wav_obs_lag_seconds=ws_pcm_lag,
+        official_wav_live2d_rms_score=render_score,
+        official_wav_live2d_rms_samples=render_used,
+        official_wav_live2d_rms_lag_seconds=render_lag)
