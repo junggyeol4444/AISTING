@@ -16,6 +16,9 @@ from .original_plan_frontend import send_to_native_live2d_session_with_observati
 from .original_plan_obs import OfficialObsWebsocket
 from .obs_consecutive_audio import collect_obs_audio_times, collect_obs_input_meter_levels
 from .official_ws_wav_obs_match import compare_official_pcm_obs_levels
+from .official_media_stage_timing import (
+    OfficialMediaStageTiming, measure_official_media_stages,
+)
 
 if TYPE_CHECKING:
     from .original_plan_frontend import OfficialLipSyncEvidence
@@ -44,6 +47,7 @@ class OfficialChatObsEvidence:
     official_wav_live2d_rms_score: float | None = None
     official_wav_live2d_rms_samples: int = 0
     official_wav_live2d_rms_lag_seconds: float | None = None
+    media_stage_timing: OfficialMediaStageTiming | None = None
 
     @property
     def latency_summary_ko(self) -> str:
@@ -95,7 +99,10 @@ class OfficialChatObsEvidence:
             + (f"{self.official_wav_live2d_rms_score:.3f}"
                if self.official_wav_live2d_rms_score is not None else "미측정")
             + " / 렌더러 RMS 비교 표본 " + str(self.official_wav_live2d_rms_samples)
-            + "건 / 시청자 E2E 별도 미검증"
+            + "건 / " + (self.media_stage_timing.describe_ko()
+                           if self.media_stage_timing is not None
+                           else "단계별 지연 미측정")
+            + " / 시청자 E2E 별도 미검증"
         )
 
     @property
@@ -555,6 +562,17 @@ def verify_official_chat_live2d_obs(
             and prompt_started_at <= matched_first_audio <= time.monotonic())
         else None
     )
+    # 기존 승인 단일 질문의 실제 monotonic 관측 시각만 사용한다.
+    # 관측이 겹치지 않거나 과거 발화의 WAV/입이면 수치를 만들지 않는다.
+    stage_timing = measure_official_media_stages(
+        prompt_started_at=prompt_started_at,
+        prompt_finished_at=prompt_finished_at,
+        wav_received_at=pcm_first_received_at,
+        mouth_first_at=mouth_first if valid_mouth_window else None,
+        obs_first_at=matched_first_audio,
+        obs_observation_ended_at=max(ended for _, ended, _ in observation),
+        same_utterance_overlap=bool(matching and combined_audio_times),
+    )
     return OfficialChatObsEvidence(
         lip=lip, obs=selected, temporal_overlap_candidate=bool(matching),
         local_roundtrip_seconds=round(prompt_finished_at - prompt_started_at, 6),
@@ -567,4 +585,5 @@ def verify_official_chat_live2d_obs(
         official_wav_obs_lag_seconds=ws_pcm_lag,
         official_wav_live2d_rms_score=render_score,
         official_wav_live2d_rms_samples=render_used,
-        official_wav_live2d_rms_lag_seconds=render_lag)
+        official_wav_live2d_rms_lag_seconds=render_lag,
+        media_stage_timing=stage_timing)
