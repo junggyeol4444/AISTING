@@ -26,6 +26,11 @@ class TwitchReadError(RuntimeError):
     pass
 
 
+class TwitchServerReconnect(TwitchReadError):
+    """트위치 서버가 명시적으로 요청한 재연결(일반 통신 장애와 구분)."""
+    pass
+
+
 @dataclass(frozen=True)
 class TwitchChatLine:
     channel: str
@@ -274,7 +279,7 @@ class TwitchReadOnlySession:
                                 )
                             received += 1
                 if server_requested_reconnect and not self._stop.is_set():
-                    raise TwitchReadError("트위치 서버 RECONNECT 요청 · 재연결 필요")
+                    raise TwitchServerReconnect("트위치 서버 RECONNECT 요청 · 재연결 필요")
                 if not self._stop.is_set() and len(buffer) > 65536:
                     raise TwitchReadError("트위치 미완성 채팅 줄 크기 한도 초과")
             if not ready and not self._stop.is_set():
