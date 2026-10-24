@@ -42,8 +42,8 @@ def _coherent_mouth_obs_window(began, ended, sample, mouth_first, mouth_last) ->
     )
 
 
-def _matched_obs_audio_candidates(observation, mouth_first, mouth_last):
-    """실제 채택된 OBS 오디오 창만 같은 발화의 영상·음성 후보로 연결.
+def _matched_obs_audio_evidence(observation, mouth_first, mouth_last):
+    """실제 채택된 OBS 표본의 창 순번을 WAV·미터 대조까지 보존한다.
 
     경로 단절·무관측 공백·손상 뒤의 창은 시각상 겹치더라도 제외한다.
     실제 시청자 송출과 음성·영상 동일성의 최종 증명은 아니다.
@@ -55,6 +55,13 @@ def _matched_obs_audio_candidates(observation, mouth_first, mouth_last):
         if _coherent_mouth_obs_window(
             *observation[index], mouth_first, mouth_last)
     ]
+    return times, count, matching, indices
+
+
+def _matched_obs_audio_candidates(observation, mouth_first, mouth_last):
+    """기존 3개 반환값 계약을 유지한다."""
+    times, count, matching, _ = _matched_obs_audio_evidence(
+        observation, mouth_first, mouth_last)
     return times, count, matching
 
 
@@ -625,9 +632,9 @@ def verify_official_chat_live2d_obs(
                           and mouth_last <= prompt_finished_at)
     # 실제 오디오 표본을 채택한 OBS 창만 동일 발화 후보로 선택.
     # 경로 단절·무관측 공백 뒤의 다른 창은 후보에 합치지 않는다.
-    combined_audio_times, matched_window_count, matching = (
-        _matched_obs_audio_candidates(observation, mouth_first, mouth_last)
-        if valid_mouth_window else ((), 0, []))
+    combined_audio_times, matched_window_count, matching, accepted_obs_windows = (
+        _matched_obs_audio_evidence(observation, mouth_first, mouth_last)
+        if valid_mouth_window else ((), 0, [], ()))
     # 동일 공식 WebSocket이 실제 전달한 PCM16 WAV 첫 음량 정보와
     # OBS의 같은 승인 검사 중 실제 선택 입력 미터 콜백을 결합한다.
     pcm_first_received_at = getattr(
@@ -637,7 +644,8 @@ def verify_official_chat_live2d_obs(
     pcm_level_samples = (
         collect_obs_input_meter_levels(
             observation, since=pcm_first_received_at,
-            until=pcm_first_received_at + 12)
+            until=pcm_first_received_at + 12,
+            accepted_window_indices=accepted_obs_windows)
         if type(pcm_first_received_at) in (int, float)
         and math.isfinite(pcm_first_received_at) and pcm_first_received_at > 0
         else ()

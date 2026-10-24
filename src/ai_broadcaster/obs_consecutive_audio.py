@@ -154,20 +154,36 @@ def collect_obs_input_meter_levels(
     *,
     since: float,
     until: float,
+    accepted_window_indices: tuple[int, ...] | None = None,
 ) -> tuple[tuple[float, float], ...]:
     """같은 OBS 입력/프로그램 장면이 확인된 실제 레벨 콜백만 수집.
 
     무음 샘플을 만들거나 보간하지 않는다. 연속 관찰창 경계의
-    시간 중복·역행도 후보에서 제외한다.
+    시간 중복·역행도 후보에서 제외한다. accepted_window_indices를
+    주면 동일 발화의 실제 채택 오디오 관찰창에서만 레벨을 반환한다.
     """
     if not (_valid_time(since) and _valid_time(until) and since < until):
         return ()
+    # 실제 선택 오디오 표본이 채택된 관찰창만 WAV 비교에 사용한다.
+    # 다른 장면/입력의 미터 표본이 같은 발화의 상관값에 섞이지 않도록
+    # 원래 관찰창 순번을 그대로 유지한다. 지정하지 않으면 기존 동작이다.
+    if accepted_window_indices is not None:
+        if (not isinstance(accepted_window_indices, tuple)
+                or not accepted_window_indices
+                or any(type(index) is not int or index < 0
+                       for index in accepted_window_indices)
+                or any(a >= b for a, b in zip(
+                    accepted_window_indices, accepted_window_indices[1:]))):
+            return ()
+        accepted_set = set(accepted_window_indices)
+    else:
+        accepted_set = None
     merged: list[tuple[float, float]] = []
     경로확정 = False
     선택경로 = None
     마지막_관찰창_시작 = None
     마지막_관찰창_종료 = None
-    for began, ended, sample in observations:
+    for window_index, (began, ended, sample) in enumerate(observations):
         if not (_valid_time(began) and _valid_time(ended) and began < ended):
             if 경로확정:
                 break
@@ -215,7 +231,8 @@ def collect_obs_input_meter_levels(
                 break
             continue
         for when, level in levels:
-            if began <= when <= ended and since <= when <= until:
+            if (accepted_set is None or window_index in accepted_set) and (
+                    began <= when <= ended and since <= when <= until):
                 if not merged or when > merged[-1][0]:
                     merged.append((when, level))
                     if not 경로확정:
