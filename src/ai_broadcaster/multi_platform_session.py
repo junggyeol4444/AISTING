@@ -39,6 +39,9 @@ class MultiPlatformReadOnlySession:
         self._emit_lock = threading.RLock()
         self._started_once = False
         self._running = False
+        # 유한 읽기 검사와 무기한 실제 수신을 구별해
+        # 정상 검사 종료를 재연결 장애로 기록하지 않는다.
+        self._run_max_seconds = None
         self._emit = emit
         self._readers = {}
         self._finished_readers = set()
@@ -91,6 +94,9 @@ class MultiPlatformReadOnlySession:
         self._last_transport_activity_at: dict[str, float] = {}
         # 반열림 소켓 감지에 의한 복구와 네트워크 예외를 혼동하지 않는다.
         self._transport_stalled_count = {code: 0 for code in channels}
+        # 무기한 수신 중 실제 리더 종료 통지가 예외 처리보다 먼저
+        # 도착한 경우 최초 공백 시작과 종료 건수를 관측한다.
+        self._unexpected_reader_stop_count = {code: 0 for code in channels}
         # 실제 ready 신호가 확인된 기간만 누적한다. 실제 네트워크
         # 무누락 또는 24시간 송출 성공과는 다른 읽기 전용 지표다.
         self._ready_interval_started: dict[str, float] = {}
@@ -201,13 +207,25 @@ class MultiPlatformReadOnlySession:
                             # 실제 관측 공백의 최초 시작시각을 보존한다.
                             self._disconnect_started.setdefault(code, stalled_at)
                     elif kind == "stopped":
-                        # 치지직·SOOP·트위치·YouTube의 실제 수신기
-                        # 종료 통지는 상위 read_one 종료보다 먼저 도착한다.
-                        # 정상 종료/유한 검사에는 재연결 공백을 임의로
-                        # 생성하지 않고 ready 관측만 즉시 종료한다.
+                        # 실제 소켓의 finally에서 오는 종료 통지는 상위
+                        # read_one의 예외 처리·재연결 준비보다 먼저 도착한다.
+                        # 무기한 수신에서 예기치 않은 종료면 이 시각부터
+                        # 공백을 기록하고, 늦은 예외 처리로 시각을 덮지 않는다.
+                        # 유한 검사·운영자 Stop·YouTube 정상 방송 종료는
+                        # 재연결 장애로 오인하지 않는다.
                         with self._emit_lock:
-                            self._end_ready_interval_locked(
-                                code, time.monotonic())
+                            stopped_at = time.monotonic()
+                            unexpected = (
+                                self._running
+                                and self._run_max_seconds is None
+                                and not self._stop.is_set()
+                                and not getattr(
+                                    self._readers.get(code),
+                                    "_terminal_chat_end", False))
+                            if unexpected and code not in self._disconnect_started:
+                                self._disconnect_started[code] = stopped_at
+                                self._unexpected_reader_stop_count[code] += 1
+                            self._end_ready_interval_locked(code, stopped_at)
                     elif kind == "transport_activity":
                         with self._emit_lock:
                             self._transport_activity_count[code] += 1
@@ -416,6 +434,7 @@ class MultiPlatformReadOnlySession:
                     if code in self._last_chat_at else None,
                     "수신응답계수": self._transport_activity_count[code],
                     "통신무응답재연결": self._transport_stalled_count[code],
+                    "예기치않은수신기종료": self._unexpected_reader_stop_count[code],
                     "마지막통신응답경과초": round(
                         now - self._last_transport_activity_at[code], 3)
                     if code in self._last_transport_activity_at else None,
@@ -516,6 +535,7 @@ class MultiPlatformReadOnlySession:
                 return
             self._running = True
             self._started_once = True
+            self._run_max_seconds = max_seconds
         started_at = time.monotonic()
         with self._emit_lock:
             self._session_started_at = started_at
