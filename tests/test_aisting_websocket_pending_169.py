@@ -32,7 +32,8 @@ class 수신프레임보류검사(unittest.TestCase):
     def setUp(self):
         self.events = []
         self.reader = ReadOnlySession(
-            "가상채널", lambda kind, item: self.events.append(item) or True)
+            "가상채널", lambda kind, item: (
+                self.events.append(item) if kind == "chat" else None) or True)
         self.items = [
             PlatformChat("가상채널", "시청자", f"채팅 {i}", "chzzk", f"id{i}")
             for i in range(3)
