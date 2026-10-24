@@ -368,6 +368,17 @@ class LoadRunnerContracts(unittest.TestCase):
         self.assertEqual(result["not_accepted"], 0)
         self.assertTrue(result["passed_no_drops"])
         self.assertEqual(result["local_p95_sample_count"], 36)
+        self.assertEqual(result["queue_accept_wait_sample_count"], 36)
+        self.assertGreaterEqual(result["queue_accept_wait_p95_seconds"], 0)
+        self.assertEqual(
+            sum(result["platform_queue_accept_blocked_counts"].values()),
+            result["queue_accept_blocked_events"])
+        self.assertEqual(
+            result["queue_accept_blocked_sample_count"],
+            min(1024, result["queue_accept_blocked_events"]))
+        self.assertEqual(
+            set(result["platform_queue_accept_blocked_p95_seconds"]),
+            {"twitch", "chzzk", "soop", "youtube"})
 
     def test_paced_24h_style_run_drains_results_while_messages_are_arriving(self):
         # 간격 입력 중 중간 완료 결과 집계. 로컬 모델은 여기서 모의한다.
@@ -418,10 +429,13 @@ class LoadRunnerContracts(unittest.TestCase):
         # 검증용 큐도 접수까지 기다린 시간을 숨기면 안 된다.
         inbox = SOAK._TimestampedInputQueue(maxsize=1)
         arrivals = queue.SimpleQueue()
-        inbox.put_chat("첫째", arrivals, timeout=1)
+        immediate_wait, immediate_blocked = inbox.put_chat("첫째", arrivals, timeout=1)
+        self.assertFalse(immediate_blocked)
+        self.assertGreaterEqual(immediate_wait, 0)
         waiting = threading.Event()
         finished = threading.Event()
         failures = []
+        blocked_results = []
         original_wait = inbox.not_full.wait
 
         def observed_wait(timeout=None):
@@ -430,7 +444,7 @@ class LoadRunnerContracts(unittest.TestCase):
 
         def enqueue_second():
             try:
-                inbox.put_chat("둘째", arrivals, timeout=2)
+                blocked_results.append(inbox.put_chat("둘째", arrivals, timeout=2))
             except Exception as exc:
                 failures.append(type(exc).__name__)
             finally:
@@ -449,6 +463,9 @@ class LoadRunnerContracts(unittest.TestCase):
 
         self.assertFalse(thread.is_alive())
         self.assertEqual(failures, [])
+        self.assertEqual(len(blocked_results), 1)
+        self.assertTrue(blocked_results[0][1])
+        self.assertGreater(blocked_results[0][0], 0)
         self.assertEqual(inbox.get_nowait(), "둘째")
         first_at = arrivals.get_nowait()
         second_at = arrivals.get_nowait()
