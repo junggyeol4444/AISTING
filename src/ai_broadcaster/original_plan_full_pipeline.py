@@ -113,6 +113,31 @@ def _validated_current_prompt_wav_received_at(
     return float(received)
 
 
+def _current_prompt_pcm_meter_bounds(
+    wav_received_at, mouth_first, mouth_last,
+    prompt_started_at, prompt_finished_at,
+) -> tuple[float, float] | None:
+    """공식 WAV·입 움직임·OBS 미터가 이번 질문에서 겹치는 시간만 반환.
+
+    이미 채택한 OBS 창에서도 입 움직임과 무관한 앞뒤 입력 소리가
+    WAV 상관 계산에 섞이지 않도록 기존 0.2초 근접 허용값만 적용한다.
+    실제 시청자 송출이나 파형 동일성의 확정 증거는 아니다.
+    """
+    values = (wav_received_at, mouth_first, mouth_last,
+              prompt_started_at, prompt_finished_at)
+    if (not all(type(value) in (int, float) and math.isfinite(value)
+                for value in values)
+            or not (0 < prompt_started_at <= wav_received_at <= prompt_finished_at)
+            or not (prompt_started_at <= mouth_first < mouth_last
+                    <= prompt_finished_at)):
+        return None
+    since = max(float(wav_received_at), float(prompt_started_at),
+                float(mouth_first) - 0.2)
+    until = min(float(wav_received_at) + 12.0, float(prompt_finished_at),
+                float(mouth_last) + 0.2)
+    return (since, until) if since < until else None
+
+
 def _observed_mouth_obs_overlap(observation, lip, prompt_started_at, prompt_finished_at) -> bool:
     """한 질문의 공식 입 움직임과 실제 OBS 미터가 겹쳤을 때만 참.
 
@@ -692,13 +717,20 @@ def verify_official_chat_live2d_obs(
         lip, prompt_started_at, prompt_finished_at)
     pcm_first_envelope = getattr(
         lip, "official_pcm_first_wav_rms_envelope", ())
+    # 기존 실제 채택 OBS 창의 미터라도 공식 입 움직임과 멀리 떨어진
+    # 소리를 WAV 상관에 섞지 않는다. 질문·WAV·입 구간의 교집합만 사용.
+    pcm_meter_bounds = (
+        _current_prompt_pcm_meter_bounds(
+            pcm_first_received_at, mouth_first, mouth_last,
+            prompt_started_at, prompt_finished_at)
+        if valid_mouth_window else None
+    )
     pcm_level_samples = (
         collect_obs_input_meter_levels(
-            observation, since=pcm_first_received_at,
-            until=pcm_first_received_at + 12,
+            observation, since=pcm_meter_bounds[0],
+            until=pcm_meter_bounds[1],
             accepted_window_indices=accepted_obs_windows)
-        if pcm_first_received_at is not None
-        else ()
+        if pcm_meter_bounds is not None else ()
     )
     ws_pcm_score, ws_pcm_used, ws_pcm_lag = compare_official_pcm_obs_levels(
         pcm_first_envelope, pcm_first_received_at, pcm_level_samples)
