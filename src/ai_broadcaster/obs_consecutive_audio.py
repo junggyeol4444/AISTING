@@ -78,16 +78,32 @@ def collect_obs_audio_times(
         if 경로확정:
             마지막_관찰창_시작 = began
         audio = getattr(sample, "audio", None)
+        if audio is None:
+            # 이미 채택한 실제 표본 뒤의 오디오 관측 객체 누락은
+            # 무음이 아니라 관찰 실패다. 이후 표본을 이어 붙이지 않는다.
+            if 경로확정:
+                break
+            continue
         first = getattr(audio, "first_selected_signal_monotonic", None)
         last = getattr(audio, "last_selected_signal_monotonic", None)
-        times = getattr(audio, "selected_signal_sample_times", ())
+        times = getattr(audio, "selected_signal_sample_times", None)
+        # 실제로 선택 입력 신호가 없었던 정상 무음 관찰창만 통과시킨다.
+        if first is None and last is None and times == ():
+            continue
+        # 일부 메타데이터만 있거나 시각·순서가 깨진 관찰창은
+        # 같은 발화의 연속 증거를 보장할 수 없다.
         if not (_valid_time(first) and _valid_time(last)
                 and began <= first < last <= ended
-                and first < mouth_last and last > mouth_first
                 and isinstance(times, tuple) and times
                 and all(_valid_time(v) for v in times)
                 and all(x < y for x, y in zip(times, times[1:]))
                 and first <= times[0] <= times[-1] <= last):
+            if 경로확정:
+                break
+            continue
+        # 메타데이터는 정상이지만 이번 입 움직임 밖의 실제 소리는
+        # 손상으로 취급하지 않고 증거 후보에서만 제외한다.
+        if not (first < mouth_last and last > mouth_first):
             continue
         near = [t for t in times if mouth_first - near_seconds <= t <= mouth_last + near_seconds]
         if not near:
@@ -144,16 +160,22 @@ def collect_obs_input_meter_levels(
         if 경로확정:
             마지막_관찰창_시작 = began
         audio = getattr(sample, "audio", None)
-        levels = getattr(audio, "selected_all_meter_level_samples", ())
-        if not isinstance(levels, tuple):
+        if audio is None:
+            if 경로확정:
+                break
             continue
-        if any(not isinstance(p, tuple) or len(p) != 2
-               or not _valid_time(p[0])
-               or type(p[1]) not in (int, float)
-               or not math.isfinite(p[1]) or not 0 <= p[1] <= 20
-               for p in levels):
-            continue
-        if any(x[0] >= y[0] for x, y in zip(levels, levels[1:])):
+        levels = getattr(audio, "selected_all_meter_level_samples", None)
+        # 빈 튜플은 정상 무음이지만, 속성 누락·형식 오류·시간 역행은
+        # 관찰 연속성 불확정이다. 기존 실측 표본 뒤라면 즉시 중단한다.
+        if (not isinstance(levels, tuple)
+                or any(not isinstance(p, tuple) or len(p) != 2
+                       or not _valid_time(p[0])
+                       or type(p[1]) not in (int, float)
+                       or not math.isfinite(p[1]) or not 0 <= p[1] <= 20
+                       for p in levels)
+                or any(x[0] >= y[0] for x, y in zip(levels, levels[1:]))):
+            if 경로확정:
+                break
             continue
         for when, level in levels:
             if began <= when <= ended and since <= when <= until:
