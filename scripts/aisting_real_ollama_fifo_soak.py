@@ -29,7 +29,7 @@ _checkpoint_write_lock = threading.Lock()
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from ai_broadcaster.desktop_chat import run_local_chat as real_ollama_chat
+from ai_broadcaster.desktop_chat import LocalChatRunner
 from ai_broadcaster.desktop_chat_tab import LocalChatTab
 from ai_broadcaster.live_runtime_metrics import LiveLatencyMetrics
 from ai_broadcaster.multiplatform_readonly import PlatformChat
@@ -81,6 +81,31 @@ def validate_parameters(messages: int, duration_seconds: float,
         raise ValueError("검증용 큐 한도는 1~100000이어야 합니다.")
     if type(local_port) is not int or not 1 <= local_port <= 65535:
         raise ValueError("로컬 Ollama 포트 번호 오류")
+
+
+def _make_isolated_production_reply(model: str, *, port: int, isolated: Path):
+    """실제 GUI 수신기와 같은 세션별 로컬 모델 실행기를 단 한 번 만든다.
+
+    기존 부하검사는 매 채팅마다 설정·기억·모델 실행기를 재생성하여
+    실사용 GUI의 LocalChatRunner 재사용 경로와 측정 조건이 달랐다.
+    이 함수는 테스트 전용 임시 SQLite/설정만 사용하고, 원본 단일
+    FIFO·메시지별 개별 생성·기존 모델 옵션을 그대로 유지한다.
+    """
+    runner = LocalChatRunner(
+        model, port=port,
+        settings_path=isolated / "model_settings.json",
+        memory_path=isolated / "live_test.sqlite",
+        use_committed_gui_character=False,
+    )
+
+    def reply(model_name, text, *, sender, use_committed_gui_character):
+        if model_name != model:
+            raise ValueError("부하검사 중 로컬 모델이 변경되었습니다.")
+        # 실제 GUI의 LocalChatRunner.reply와 동일한 재사용 경로.
+        # 채팅 내용이나 모델 출력은 보고서에 저장하지 않는다.
+        return runner.reply(text, sender=sender)
+
+    return reply
 
 
 def run_real_load(*, model: str, messages: int, duration_seconds: float,
@@ -205,13 +230,10 @@ def run_real_load(*, model: str, messages: int, duration_seconds: float,
     # ChatPipeline against 127.0.0.1, not a canned or mocked response.
     with tempfile.TemporaryDirectory(prefix="AISTING_real_soak_") as sandbox:
         isolated = Path(sandbox)
-        def real_isolated_chat(model_name, text, *, sender,
-                               use_committed_gui_character):
-            return real_ollama_chat(
-                model_name, text, port=port, sender=sender,
-                use_committed_gui_character=False,
-                settings_path=isolated / "model_settings.json",
-                memory_path=isolated / "live_test.sqlite")
+        # 실제 수신 GUI와 동일하게 한 세션의 로컬 실행기를 재사용한다.
+        # 테스트용 임시 설정·SQLite만 연결하며, 실사용자 파일은 열지 않는다.
+        real_isolated_chat = _make_isolated_production_reply(
+            model, port=port, isolated=isolated)
 
         ui = SimpleNamespace(
             _results=observed, _ai_arrival_times=arrivals,

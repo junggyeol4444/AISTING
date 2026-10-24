@@ -8,7 +8,7 @@ import queue
 from pathlib import Path
 import unittest
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 
 PATH = Path(__file__).resolve().parents[1] / "scripts" / "aisting_real_ollama_fifo_soak.py"
@@ -17,7 +17,43 @@ SOAK = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(SOAK)
 
 
+
+def patch_test_runner(return_value):
+    """실제 모델 호출 없이 단일 실행기 재사용을 검사하는 계약검사용 모의 객체."""
+    return patch.object(
+        SOAK, "LocalChatRunner",
+        return_value=SimpleNamespace(reply=Mock(return_value=return_value)))
+
+
 class LoadRunnerContracts(unittest.TestCase):
+    def test_실제_수신기_실행기_한번_생성하고_반복_재사용(self):
+        with tempfile.TemporaryDirectory() as folder:
+            with patch.object(SOAK, "LocalChatRunner") as constructor:
+                expected = SimpleNamespace(reply="한국어", remembered_count=1)
+                constructor.return_value.reply.return_value = expected
+                reply = SOAK._make_isolated_production_reply(
+                    "설치된-로컬-모델", port=11434, isolated=Path(folder))
+                self.assertIs(reply("설치된-로컬-모델", "첫째", sender="치지직",
+                                    use_committed_gui_character=True), expected)
+                self.assertIs(reply("설치된-로컬-모델", "둘째", sender="트위치",
+                                    use_committed_gui_character=True), expected)
+                self.assertEqual(constructor.call_count, 1)
+                self.assertEqual(constructor.return_value.reply.call_count, 2)
+                self.assertEqual(
+                    constructor.call_args.kwargs["memory_path"],
+                    Path(folder) / "live_test.sqlite")
+                self.assertFalse(
+                    constructor.call_args.kwargs["use_committed_gui_character"])
+                self.assertEqual(
+                    [call.args[0] for call in
+                     constructor.return_value.reply.call_args_list],
+                    ["첫째", "둘째"])
+                with self.assertRaises(ValueError):
+                    reply("다른-모델", "셋째", sender="유튜브",
+                          use_committed_gui_character=True)
+                self.assertEqual(constructor.return_value.reply.call_count, 2)
+
+
     def test_500_unique_clients_over_four_platforms(self):
         names = [SOAK.make_message(i) for i in range(500)]
         self.assertEqual(len(names), 500)
@@ -54,7 +90,7 @@ class LoadRunnerContracts(unittest.TestCase):
     def test_500_production_fifo_events_no_loss_using_only_test_reply(self):
         # This test deliberately mocks the model for a fast CONTRACT check.
         # Independent Windows Actions perform ALL 500 with real Ollama.
-        with patch.object(SOAK, "real_ollama_chat",
+        with patch_test_runner(
                           return_value=SimpleNamespace(reply="한국어", remembered_count=1)) as llm:
             data = SOAK.run_real_load(
                 model="installed-test-model", messages=500,
@@ -65,7 +101,8 @@ class LoadRunnerContracts(unittest.TestCase):
         self.assertEqual(data["unfinished"], 0)
         self.assertTrue(data["passed_no_drops"])
         self.assertTrue(data["worker_ended"])
-        self.assertEqual(llm.call_count, 500)
+        self.assertEqual(llm.call_count, 1)
+        self.assertEqual(llm.return_value.reply.call_count, 500)
         self.assertEqual(data["platform_event_counts"], {
             "twitch":125, "chzzk":125, "soop":125, "youtube":125})
         self.assertFalse(data["real_viewers"])
@@ -83,7 +120,7 @@ class LoadRunnerContracts(unittest.TestCase):
                             for value in data["platform_p95_total_seconds"].values()))
 
     def test_hold_full_duration_still_uses_real_worker_path_not_viewer_claim(self):
-        with patch.object(SOAK, "real_ollama_chat",
+        with patch_test_runner(
                           return_value=SimpleNamespace(reply="응답", remembered_count=1)):
             data = SOAK.run_real_load(
                 model="installed-test-model", messages=4,
@@ -95,7 +132,7 @@ class LoadRunnerContracts(unittest.TestCase):
 
     def test_platform_fifo_duplicate_message_latency_breakdown(self):
         # 합성된 동일 채팅 40건도 플랫폼별 측정 10건씩 보존한다.
-        with patch.object(SOAK, "real_ollama_chat",
+        with patch_test_runner(
                           return_value=SimpleNamespace(reply="응답", remembered_count=1)):
             result = SOAK.run_real_load(
                 model="installed-test-model", messages=40,
@@ -109,7 +146,7 @@ class LoadRunnerContracts(unittest.TestCase):
 
     def test_timing_measurement_error_blocks_false_success(self):
         # AI 응답 성공만으로 시간·플랫폼 회계 오류를 덮어쓰면 안 된다.
-        with patch.object(SOAK, "real_ollama_chat",
+        with patch_test_runner(
                           return_value=SimpleNamespace(reply="응답", remembered_count=1)), patch.object(
                           SOAK.LiveLatencyMetrics, "terminal", return_value=False):
             result = SOAK.run_real_load(
@@ -132,7 +169,7 @@ class LoadRunnerContracts(unittest.TestCase):
                 "prompt_eval_duration": 0.4,
                 "eval_duration": 2.1,
                 "total_duration": 2.7})
-        with patch.object(SOAK, "real_ollama_chat", return_value=sampled):
+        with patch_test_runner( return_value=sampled):
             report = SOAK.run_real_load(
                 model="installed-test-model", messages=8,
                 duration_seconds=3, queue_size=16)
@@ -148,7 +185,7 @@ class LoadRunnerContracts(unittest.TestCase):
         self.assertFalse(report["viewer_end_to_end_verified"])
 
     def test_missing_ollama_stage_time_remains_null(self):
-        with patch.object(SOAK, "real_ollama_chat",
+        with patch_test_runner(
                           return_value=SimpleNamespace(reply="정상", remembered_count=1)):
             result = SOAK.run_real_load(
                 model="installed-test-model", messages=4,
@@ -159,7 +196,7 @@ class LoadRunnerContracts(unittest.TestCase):
 
     def test_actual_worker_reports_bounded_live_checkpoints_without_chat_text(self):
         summaries = []
-        with patch.object(SOAK, "real_ollama_chat",
+        with patch_test_runner(
                           return_value=SimpleNamespace(reply="한국어", remembered_count=1)):
             result = SOAK.run_real_load(
                 model="installed-local-test", messages=52,
@@ -267,13 +304,14 @@ class LoadRunnerContracts(unittest.TestCase):
         def failed_progress(snapshot):
             attempts.append(snapshot["completed"])
             raise OSError("report destination unavailable")
-        with patch.object(SOAK, "real_ollama_chat",
+        with patch_test_runner(
                           return_value=SimpleNamespace(reply="정상", remembered_count=1)) as llm:
             result = SOAK.run_real_load(
                 model="installed-local-test", messages=36,
                 duration_seconds=5, queue_size=64,
                 progress_callback=failed_progress)
-        self.assertEqual(llm.call_count, 36)
+        self.assertEqual(llm.call_count, 1)
+        self.assertEqual(llm.return_value.reply.call_count, 36)
         self.assertEqual(result["accepted"], 36)
         self.assertEqual(result["completed"], 36)
         self.assertEqual(result["model_success"], 36)
@@ -302,7 +340,7 @@ class LoadRunnerContracts(unittest.TestCase):
         # A finite-duration paced test must NOT certify 500/500 after
         # accepting only its first message. Real AI is mocked here only
         # to test the result's accounting, not model performance.
-        with patch.object(SOAK, "real_ollama_chat",
+        with patch_test_runner(
                           return_value=SimpleNamespace(reply="정상", remembered_count=1)):
             result = SOAK.run_real_load(
                 model="installed-local-test", messages=500,
@@ -321,7 +359,7 @@ class LoadRunnerContracts(unittest.TestCase):
         self.assertFalse(result["viewer_end_to_end_verified"])
 
     def test_success_requires_full_target_and_reports_p95_sample_size(self):
-        with patch.object(SOAK, "real_ollama_chat",
+        with patch_test_runner(
                           return_value=SimpleNamespace(reply="정상", remembered_count=1)):
             result = SOAK.run_real_load(
                 model="installed-local-test", messages=36,
@@ -334,7 +372,7 @@ class LoadRunnerContracts(unittest.TestCase):
     def test_paced_24h_style_run_drains_results_while_messages_are_arriving(self):
         # 간격 입력 중 중간 완료 결과 집계. 로컬 모델은 여기서 모의한다.
         snapshots = []
-        with patch.object(SOAK, "real_ollama_chat",
+        with patch_test_runner(
                           return_value=SimpleNamespace(reply="정상", remembered_count=1)):
             result = SOAK.run_real_load(
                 model="installed-local-test", messages=36,
@@ -350,7 +388,7 @@ class LoadRunnerContracts(unittest.TestCase):
 
     def test_observed_output_is_not_reported_as_live_viewer_delivery(self):
         # 로컬 추론 성공과 시청자에게 전달됐다는 증거는 다르다.
-        with patch.object(SOAK, "real_ollama_chat",
+        with patch_test_runner(
                           return_value=SimpleNamespace(reply="정상", remembered_count=1)):
             result = SOAK.run_real_load(
                 model="installed-local-test", messages=16,
