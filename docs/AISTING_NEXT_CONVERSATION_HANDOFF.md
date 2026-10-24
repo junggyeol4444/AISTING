@@ -3500,3 +3500,10 @@ F) 원본 100단계 roadmap.json status는 completed=9, pending=91이며 **코�
 - **미완료:** 기존 36 실패·31 오류 수정·전체 재검증, 실제 Windows EXE/GUI·OBS·로컬 모델 통합검사, 권리 있는 WAV/입/OBS 동일 발화, 4플랫폼 무누락, 24시간 재연결·안전성, 로컬 FIFO 대기 및 시청자 E2E 병목.
 - **진행 중 멈춘 것:** 새 실행기 재사용 경로의 CI 검증, 실제 Ollama 500건의 재측정과 기존 결과 비교, 운영자 권리/실제 환경이 필요한 통합 실증.
 - **다음 회차:** 반드시 현재 `main` HEAD와 160절의 `hourly-development.yml`, `build-windows.yml`, `real-500-fifo-windows.yml` CI 최종 상태/실패 로그를 재조회한다. 1~160절 원문과 모든 과거 부록 및 기획·로드맵·실제 소스 기준으로 개발 우선 → 전체 회귀/Windows 네이티브 검사 → 오류 수정 후 전체 재검증 순서를 유지한다. 기존 매시간 예약 유지·중복 생성 금지. 다른 프로젝트/Drive/브랜치/예약 변경 없음.
+
+### 160절 후속 — 실제 코드 반영 HEAD·신규 CI 추적 (2026-10-24)
+- 코드·계약검사·전체 인수인계 반영 커밋: `e2c30e6c7df87378c51ef068b065393b97e432fd`. 시작 HEAD `ea1ae040075f40c95b3f48643896bf3802865c1c` 대비 **ahead 1, behind 0**으로 fast-forward 확인. 코드·기존 테스트·인수인계 원문 외 사용자 설정/SQLite/캐릭터를 변경하지 않았다.
+- 전체 회귀 [40086142026](https://github.com/junggyeol4444/AISTING/actions/runs/40086142026): 최초 확인 시 `queued`. 신규 계약검사 통과·전체 회귀 성공 미확인.
+- Windows EXE [40086142033](https://github.com/junggyeol4444/AISTING/actions/runs/40086142033): 최초 확인 시 `queued`. Windows 10/11 GUI·OBS·권리 있는 실제 한국어 GPT-SoVITS·공식 Cubism 통합 성공 미확인.
+- 실제 로컬 Ollama 500건 [40086142064](https://github.com/junggyeol4444/AISTING/actions/runs/40086142064): 최초 확인 시 `queued`. 기존 159절 499건 3초 초과를 해소했다고 주장하지 않는다.
+- 후속 문서 커밋이 새 `main` HEAD와 CI를 다시 만들 수 있다. 다음 회차는 이전 SHA를 최신으로 가정하지 말고 **실제 main HEAD와 해당 HEAD의 모든 CI 및 실패 로그**부터 재조회한다. 기존 매시간 예약 유지·중복 생성 금지.
