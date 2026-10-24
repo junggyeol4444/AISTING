@@ -3343,3 +3343,29 @@ F) 원본 100단계 roadmap.json status는 completed=9, pending=91이며 **코�
 - 해당 HEAD [Windows EXE 40067021073](https://github.com/junggyeol4444/AISTING/actions/runs/40067021073): 최초 조회 `queued`. Windows EXE·GUI·실 OBS 성공 **미확정**.
 - 해당 HEAD [실제 Ollama 500건 40067021030](https://github.com/junggyeol4444/AISTING/actions/runs/40067021030): 최초 조회 `queued`. 1~3초 성능 달성 **미확정**.
 - 다음 실행은 인수인계 보강 커밋 이후의 **실제 main HEAD**를 반드시 다시 조회하고 위 CI 세 개의 최종 상태/실패 로그부터 확인한다. 인수인계 커밋 SHA를 문서 내용에 자기 참조로 고정할 수 없으므로 현재 브랜치 HEAD 조회를 기준으로 한다.
+
+## 156. 2026-10-24 — OBS 조기 종료 시 실제 Cubism 입·OBS 선택 오디오 동시 표본 검증 누적 개발
+
+### 시작 HEAD·원문 보존
+- 시작 main HEAD: `c8827848b0e4089c08e3507fe9157cf8647171ed`. 원문 1~155절, 두 인수인계 문서, 기존 모든 부록·기획·로드맵·캐릭터·SQLite·설정 및 실제 소스를 삭제·롤백·재개발하지 않았다.
+- 96절 Windows CI [39722213656](https://github.com/junggyeol4444/AISTING/actions/runs/39722213656): 완료/취소. 개별 OBS 읽기·Twitch 읽기·Windows EXE·Ollama 작업 성공과 별개로 한국 공개 채팅 읽기 작업 취소, 전체 성공 아님. 취소 작업의 상세 로그는 확보하지 못함.
+- 96절 실제 Ollama 500건 CI [39720448468](https://github.com/junggyeol4444/AISTING/actions/runs/39720448468): 500건 처리 성공이지만 500건 모두 3초 초과, 전체 p95 2,979.984초·FIFO p95 2,973.875초. 실제 시청자 500명 증명 아님.
+
+### 이번 회차 실제 누적 개발
+- 기존 `src/ai_broadcaster/original_plan_full_pipeline.py`의 `_confirmed_mouth_obs_audio_provenance`에서 근접 허용 범위(입 움직임 앞뒤 0.2초)의 오디오 표본 2개만으로 OBS 관찰을 조기 종료할 수 있는 조건을 보완했다.
+- 관찰·보고용 근접 표본은 기존 그대로 보존하되, 조기 종료는 **실제 Cubism 입 움직임 구간 안에 관측된 OBS 선택 오디오 시각이 2개 이상**일 때만 허용한다. 앞/뒤 근접 표본만 2개 이상 있어도 실제 입 움직임과 동시에 2개가 없으면 기존 운영자 지정 관찰시간 내에서 관찰을 이어간다.
+- 새 `tests/test_aisting_obs_simultaneous_samples_156.py`에 가상 계약검사 6건 작성: 입 이전 2개/입중 1개 거절, 입 이후 2개/입중 1개 거절, 양쪽 근접 표본만 거절, 입중 2개 허용, 입중 1개만 거절, 연속 겹침 관찰창의 입중 표본 허용.
+- 기존 함수 호출·반환 계약, OBS 읽기 전용, 질문 중복 전송 금지, 송출/녹화/채팅 발신 금지, 사용자 음성 권리·운영자 승인 검사, 관찰시간·모델 토큰·keep_alive 설정은 변경하지 않았다.
+- 실제 코드 커밋 `3ecfc0a6fac53a17441e6f0e4b792fce2ad1923a`, 검사 작성 커밋 `60106835af0c1de79402fb2bc7212ea674caff30`. 신규 검사는 **작성만 했고 직접 실행하지 않았다**. 가상 검사 성공을 실제 WAV·Cubism·OBS 실증으로 보고하지 않는다.
+
+### 기존 CI 최종 확인과 실패 보존
+- 155절 최종 HEAD 전체 회귀 [40067057711](https://github.com/junggyeol4444/AISTING/actions/runs/40067057711): 완료/실패, **총 2,676건·36 실패·31 오류·2 건너뜀**. Twitch AI 연동의 FIFO·중지·응답 순서 검사에서 실제 실패가 반복됨. 기존 실패를 삭제하거나 신규 계약검사 통과로 대체하지 않는다.
+- 155절 Windows [40067057726](https://github.com/junggyeol4444/AISTING/actions/runs/40067057726): OBS 읽기·Ollama 로컬·Twitch 읽기·한국 공개 채팅 읽기 개별 성공, **windows-exe 작업 취소**, Windows 네이티브 EXE/GUI·OBS 통합 성공 아님.
+- 155절 실제 Ollama 500건 [40067021030](https://github.com/junggyeol4444/AISTING/actions/runs/40067021030): 완료/성공, **500/500 처리·실패 0·3초 초과 500건**, 전체 p95 **2,504.484초**, FIFO 대기 p95 **2,499.234초**, AI 처리 p95 **5.671초**. 합성 채팅 + 실제 로컬 모델이며 실제 수백 시청자나 24시간 방송 아님. 1~3초 목표 미달.
+
+### 완료·미완료·진행 중 멈춘 것·다음 인계
+- **실제 완료:** 기존 코드의 입·OBS 조기 종료 동시성 조건 보강, 신규 가상 계약검사 6건 작성, 기존 원본 뒤 156절 인수인계 누적.
+- **하지 않은 것:** 신규 6건 검사 직접 실행·통과 확인, 전체 회귀 성공, Windows 10/11 EXE 실행→GUI 버튼→OBS·로컬 모델 실사용, 권리 확인된 실제 한국어 GPT-SoVITS WAV→공식 Cubism 실제 입 움직임→OBS 동일 발화 실증, 실제 4플랫폼 수백 명 무누락, 24시간 실방송/재연결, 시청자 1~3초 지연 실증.
+- **미완료:** 기존 전체 회귀 36실패·31오류, 취소된 Windows EXE 작업, 권리 보유 음성·공식 Cubism·OBS 실증, 4플랫폼 수백 건/실제 수백 명, 24시간 재연결/안전성, AI·음성·영상·FIFO 지연 병목, Windows 통합검증 및 오류 수정 후 전체 재검증.
+- **진행 중 멈춘 것:** 이번 156절 코드 반영 이후 생성될 CI 최종 상태 및 Windows 실기기·실제 권리 모델·계정이 필요한 실증. 미확인 CI를 성공이라고 보고하지 않는다.
+- **다음 시작:** 현재 `junggyeol4444/AISTING/main` HEAD를 새로 조회하고 156절 이후 신규 CI 전체 회귀·Windows·실제 모델 500건의 최종 상태/실패 로그부터 확인한다. 원본 1~156절과 모든 부록·기획·로드맵·설정·캐릭터·SQLite·소스를 보존하고 기존 전체 코드 개발 우선→전체 회귀/Windows 실검증→오류 수정·전체 재검증을 따른다. main만 fast-forward, 새 브랜치·force push·롤백·다른 프로젝트/Drive/예약 변경·무단 OAuth/송출/녹화/채팅/훈련·권리 없는 음성·토큰 96/keep_alive 10m 변경 금지.
