@@ -413,6 +413,50 @@ class LoadRunnerContracts(unittest.TestCase):
         self.assertEqual(inbox.get_nowait(), "다음")
         self.assertGreater(arrivals.get_nowait(), 0)
 
+    def test_포화된_검증큐_대기도_실제_수신시각부터_계측(self):
+        # 실제 Windows 수신기는 포화 이전의 최초 콜백 시각을 유지한다.
+        # 검증용 큐도 접수까지 기다린 시간을 숨기면 안 된다.
+        inbox = SOAK._TimestampedInputQueue(maxsize=1)
+        arrivals = queue.SimpleQueue()
+        inbox.put_chat("첫째", arrivals, timeout=1)
+        waiting = threading.Event()
+        finished = threading.Event()
+        failures = []
+        original_wait = inbox.not_full.wait
+
+        def observed_wait(timeout=None):
+            waiting.set()
+            return original_wait(timeout)
+
+        def enqueue_second():
+            try:
+                inbox.put_chat("둘째", arrivals, timeout=2)
+            except Exception as exc:
+                failures.append(type(exc).__name__)
+            finally:
+                finished.set()
+
+        with patch.object(inbox.not_full, "wait", side_effect=observed_wait):
+            thread = threading.Thread(target=enqueue_second)
+            thread.start()
+            try:
+                self.assertTrue(waiting.wait(timeout=2))
+                released_at = SOAK.time.monotonic()
+                self.assertEqual(inbox.get_nowait(), "첫째")
+                self.assertTrue(finished.wait(timeout=2))
+            finally:
+                thread.join(timeout=3)
+
+        self.assertFalse(thread.is_alive())
+        self.assertEqual(failures, [])
+        self.assertEqual(inbox.get_nowait(), "둘째")
+        first_at = arrivals.get_nowait()
+        second_at = arrivals.get_nowait()
+        self.assertLessEqual(first_at, second_at)
+        self.assertLessEqual(second_at, released_at)
+        with self.assertRaises(queue.Empty):
+            arrivals.get_nowait()
+
     def test_invalid_time_or_bounded_queue_rejected(self):
         for args in [(500, 0, 10000, 11434),
                      (500, 86401, 10000, 11434),
