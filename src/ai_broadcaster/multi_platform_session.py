@@ -97,6 +97,13 @@ class MultiPlatformReadOnlySession:
         self._ready_observed_seconds = {code: 0.0 for code in channels}
         self._max_ready_streak_seconds = {code: 0.0 for code in channels}
         self._ended_ready_streak_24h_count = {code: 0 for code in channels}
+        # 선택한 모든 플랫폼이 동시에 ready인 실제 관측 구간만 누적.
+        # 개별 24시간 ready가 서로 다른 시간대였어도 전체 동시
+        # 24시간이라고 오판하지 않는다. 패킷 무손실·송출 보증은 아님.
+        self._all_ready_started_at: float | None = None
+        self._all_ready_observed_seconds = 0.0
+        self._all_ready_max_streak_seconds = 0.0
+        self._all_ready_24h_completed_intervals = 0
         # 실제 재연결 완료 공백의 최근 512개 표본만 보존한다.
         # 채팅 본문, 닉네임, 토큰 및 소켓 내용은 저장하지 않는다.
         self._completed_gap_samples = {
@@ -197,6 +204,7 @@ class MultiPlatformReadOnlySession:
                                 self._room_ready[code] = True
                                 self._last_ready_at[code] = ready_at
                                 self._ready_interval_started.setdefault(code, ready_at)
+                                self._refresh_all_ready_streak_locked(ready_at)
                                 disconnected_at = self._disconnect_started.pop(code, None)
                             else:
                                 disconnected_at = None
@@ -274,6 +282,14 @@ class MultiPlatformReadOnlySession:
             # Stop 이후 경과를 운영 중 관측시간으로 잘못 누적하지 않는다.
             if self._stop_started_at is not None:
                 now = min(now, self._stop_started_at)
+            simultaneous_current = (
+                max(0.0, now - self._all_ready_started_at)
+                if self._all_ready_started_at is not None else 0.0)
+            simultaneous_max = max(
+                self._all_ready_max_streak_seconds, simultaneous_current)
+            simultaneous_24h = (
+                self._all_ready_24h_completed_intervals
+                + int(simultaneous_current >= 86400))
             return {
                 code: {
                     "재연결완료": self._reconnect_count[code],
@@ -363,6 +379,13 @@ class MultiPlatformReadOnlySession:
                         + int(code in self._ready_interval_started and
                               max(0.0, now - self._ready_interval_started[code]) >= 86400)
                     ),
+                    # 선택된 모든 플랫폼의 실제 ready 시간 교집합.
+                    # 각 플랫폼이 따로 24시간 ready였다는 사실과 구별한다.
+                    "선택플랫폼동시입장현재": self._all_ready_started_at is not None,
+                    "선택플랫폼동시입장누적초": round(
+                        self._all_ready_observed_seconds + simultaneous_current, 3),
+                    "선택플랫폼동시입장최장초": round(simultaneous_max, 3),
+                    "선택플랫폼동시입장24시간관측구간": simultaneous_24h,
                     "입장관측누적초": round(
                         self._ready_observed_seconds[code]
                         + (max(0.0, min(now, self._stop_started_at
@@ -393,6 +416,28 @@ class MultiPlatformReadOnlySession:
         finally:
             self._emit_lock.release()
 
+    def _refresh_all_ready_streak_locked(self, at: float) -> None:
+        """선택한 모든 채팅 수신기의 동시 ready 관측 구간을 갱신.
+
+        _emit_lock을 보유한 ready/연결 종료/Stop 경로에서만 호출한다.
+        단순 연결 신호가 아닌 실제 ready 상태만 교집합에 포함한다.
+        """
+        all_ready = (
+            not self._stop.is_set()
+            and bool(self._room_ready)
+            and all(self._room_ready.values()))
+        if all_ready:
+            if self._all_ready_started_at is None:
+                self._all_ready_started_at = at
+        elif self._all_ready_started_at is not None:
+            duration = max(0.0, at - self._all_ready_started_at)
+            self._all_ready_observed_seconds += duration
+            self._all_ready_max_streak_seconds = max(
+                self._all_ready_max_streak_seconds, duration)
+            if duration >= 86400:
+                self._all_ready_24h_completed_intervals += 1
+            self._all_ready_started_at = None
+
     def _end_ready_interval_locked(self, code: str, ended_at: float) -> None:
         """_emit_lock 보유 중에 입장 관측 구간을 중복 없이 종료."""
         started = self._ready_interval_started.pop(code, None)
@@ -406,6 +451,7 @@ class MultiPlatformReadOnlySession:
             if duration >= 86400:
                 self._ended_ready_streak_24h_count[code] += 1
         self._room_ready[code] = False
+        self._refresh_all_ready_streak_locked(ended_at)
 
     def stop(self) -> None:
         """Close every transport without blocking Tk on a broken reader."""
