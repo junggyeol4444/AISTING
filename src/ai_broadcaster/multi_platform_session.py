@@ -189,8 +189,25 @@ class MultiPlatformReadOnlySession:
                         with self._emit_lock:
                             self._replayed_event_id_count[code] += 1
                     elif kind == "transport_stalled":
+                        # 실제 읽기 소켓의 장시간 무응답 통지를 받는 순간
+                        # ready 관측을 끝낸다. 상위 읽기 루프의 예외 처리나
+                        # 소켓 정리를 기다리는 동안 24시간 연속 입장으로
+                        # 잘못 누적하지 않는다. 채팅 유실 건수는 추정 금지.
                         with self._emit_lock:
+                            stalled_at = time.monotonic()
                             self._transport_stalled_count[code] += 1
+                            self._end_ready_interval_locked(code, stalled_at)
+                            # 같은 소켓이 stopped/예외를 다시 통지해도
+                            # 실제 관측 공백의 최초 시작시각을 보존한다.
+                            self._disconnect_started.setdefault(code, stalled_at)
+                    elif kind == "stopped":
+                        # 치지직·SOOP·트위치·YouTube의 실제 수신기
+                        # 종료 통지는 상위 read_one 종료보다 먼저 도착한다.
+                        # 정상 종료/유한 검사에는 재연결 공백을 임의로
+                        # 생성하지 않고 ready 관측만 즉시 종료한다.
+                        with self._emit_lock:
+                            self._end_ready_interval_locked(
+                                code, time.monotonic())
                     elif kind == "transport_activity":
                         with self._emit_lock:
                             self._transport_activity_count[code] += 1
