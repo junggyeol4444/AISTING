@@ -80,12 +80,12 @@ class MultiPlatformReadOnlySession:
         self._missing_event_id_count = {code: 0 for code in channels}
         self._recent_event_ids = {code: deque() for code in channels}
         self._seen_event_ids = {code: set() for code in channels}
-        # 치지직·SOOP의 WebSocket 한 프레임에서 일부 채팅만
-        # AI FIFO에 수용되고 연결이 끊겨도, 뒤쪽 미수용 사건은
-        # 새 수신기에 같은 메모리 deque를 연결해 순서대로 재시도.
-        # 실제 서버가 재전송하지 않은 채팅까지 복구하는 기능은 아니다.
+        # 트위치·치지직·SOOP에서 이미 파싱한 소켓 프레임의
+        # 미수용 채팅은 재연결된 수신기에 동일 메모리 deque를 전달.
+        # 실제 서버가 보내지 않은 사건·프로세스 종료 시 메모리 내용은
+        # 복구하지 못하며, 수용 완료만 전달 성공으로 기록한다.
         self._pending_websocket_chats = {
-            code: deque() for code in channels if code in ("chzzk", "soop")
+            code: deque() for code in channels if code in ("twitch", "chzzk", "soop")
         }
         # 읽기 루프가 실제 시도/예외를 관측한 횟수만 기록한다.
         # 채팅이 조용하다는 이유로 끊김이나 무누락을 추정하지 않는다.
@@ -395,8 +395,8 @@ class MultiPlatformReadOnlySession:
                     "상태알림전달실패": self._status_emit_failure_count[code],
                     "서버이벤트ID재수신차단": self._replayed_event_id_count[code],
                     "서버이벤트ID없음": self._missing_event_id_count[code],
-                    # 로컬 WebSocket 프레임을 이미 받았으나 아직
-                    # GUI/AI FIFO가 수용하지 않은 메모리 사건 수.
+                    # 트위치·치지직·SOOP 로컬 소켓 프레임을 이미
+                    # 받았으나 GUI/AI FIFO가 수용하지 않은 메모리 사건 수.
                     # 재연결 전 대기 사건은 전달 완료로 세지 않는다.
                     "수신프레임미수용보류": len(
                         self._pending_websocket_chats[code])
