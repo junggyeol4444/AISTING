@@ -278,6 +278,8 @@ class OfficialChatObsEvidence:
             + str(getattr(self.lip, "official_wav_riff_length_mismatched", 0))
             + "건 / 첫 공식 WS WAV 후보 "
             + measured(getattr(self.lip, "first_official_wav_seconds", None))
+            + " / 현재 질문 범위 실제 WAV 수신시각 "
+            + ("확인" if self.current_prompt_wav_received else "미확인")
             + " / PCM·float 헤더 구조 후보 "
             + str(getattr(self.lip, "official_pcm_header_candidates", 0))
             + "건 / 헤더 구조 미확인 "
