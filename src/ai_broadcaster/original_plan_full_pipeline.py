@@ -95,6 +95,38 @@ def _confirmed_mouth_obs_audio_provenance(
     return bool(count > 0 and len(simultaneous_times) >= 2 and matching)
 
 
+def _confirmed_current_prompt_wav_obs_provenance(
+    observation, lip, prompt_started_at, prompt_finished_at,
+) -> bool:
+    """현재 질문의 실제 WAV 수신 이후 입·OBS 동시 표본이 확인돼야 조기 종료.
+
+    공식 WAV가 보이지 않았거나 과거 WAV 시각만 남은 경우에는
+    기존 운영자 관찰 시간을 모두 사용한다. 특정 발화의 인코더 출력
+    또는 시청자 수신, 사용 권리까지 증명한다는 뜻은 아니다.
+    """
+    if not _confirmed_mouth_obs_audio_provenance(
+            observation, lip, prompt_started_at, prompt_finished_at):
+        return False
+    received = _validated_current_prompt_wav_received_at(
+        lip, prompt_started_at, prompt_finished_at)
+    if (received is None
+            or getattr(lip, "official_wav_riff_length_matched", 0) < 1
+            or getattr(lip, "official_ws_audio_events", 0) < 1):
+        return False
+    mouth_first = getattr(lip, "first_audio_mouth_monotonic", None)
+    mouth_last = getattr(lip, "last_audio_mouth_monotonic", None)
+    if not (received <= mouth_first < mouth_last):
+        # 입 시각보다 늦게 도착한 WAV를 앞선 입 움직임의 원인으로
+        # 표시하지 않는다. 실제 입 변화의 인과 관계는 여전히 미확정.
+        return False
+    times, count, matching, _ = _matched_obs_audio_evidence(
+        observation, mouth_first, mouth_last)
+    return bool(
+        count > 0 and matching
+        and sum(received <= moment <= mouth_last and
+                mouth_first <= moment for moment in times) >= 2)
+
+
 def _validated_current_prompt_wav_received_at(
     lip, prompt_started_at, prompt_finished_at,
 ) -> float | None:
@@ -214,6 +246,9 @@ class OfficialChatObsEvidence:
     viewer_end_to_end_verified: bool = False
     obs_audio_sample_times: tuple[float, ...] | None = None
     obs_audio_window_count: int = 0
+    # 이번 질문 범위에서 검증된 실제 WAV 첫 수신시각을 관찰했는가.
+    # 과거 질문의 WAV 헤더만 남은 경우 동일 발화 후보로 세지 않는다.
+    current_prompt_wav_received: bool = False
     # 공식 동일 WS에서 받은 WAV PCM16 윤곽과 OBS 실제 미터 레벨 비교.
     official_wav_obs_score: float | None = None
     official_wav_obs_sample_count: int = 0
@@ -315,6 +350,7 @@ class OfficialChatObsEvidence:
         """
         return bool(
             self.verified_observation
+            and self.current_prompt_wav_received
             and getattr(self.lip, "official_wav_riff_length_matched", 0) > 0
             and getattr(self.lip, "official_ws_audio_events", 0) > 0
         )
@@ -550,7 +586,7 @@ def verify_official_chat_live2d_obs(
         # OBS 미터가 양성이기만 해서는 다른 발화·입력의 소리를
         # 같은 발화로 오인하고 관찰을 너무 일찍 종료할 수 있다.
         # 실제 채택된 OBS 선택 오디오 표본과 경로가 확인될 때만 종료.
-        if _confirmed_mouth_obs_audio_provenance(
+        if _confirmed_current_prompt_wav_obs_provenance(
                 observation, lip, prompt_started_at, prompt_finished_at):
             return True
         # 운영자가 기존에 지정한 관찰 시간만 사용하며 새 지연 옵션은 없다.
@@ -827,6 +863,7 @@ def verify_official_chat_live2d_obs(
         first_obs_audio_seconds=first_obs_latency,
         obs_audio_sample_times=combined_audio_times,
         obs_audio_window_count=matched_window_count,
+        current_prompt_wav_received=pcm_first_received_at is not None,
         official_wav_obs_score=ws_pcm_score,
         official_wav_obs_sample_count=ws_pcm_used,
         official_wav_obs_lag_seconds=ws_pcm_lag,
