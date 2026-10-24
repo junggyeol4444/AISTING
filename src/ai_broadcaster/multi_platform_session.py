@@ -63,6 +63,11 @@ class MultiPlatformReadOnlySession:
         self._callback_emit_samples = {code: deque(maxlen=512) for code in channels}
         self._callback_emit_over_three_seconds = {code: 0 for code in channels}
         self._callback_aborted_count = {code: 0 for code in channels}
+        # 실제 콜백에서 이미 수용한 서버 ID를 다시 받은 경우와
+        # YouTube 수신기 내부 페이지 재수신 통계는 별도로 정산한다.
+        self._callback_duplicate_chat_count = {code: 0 for code in channels}
+        # 운영자가 Stop한 뒤 들어온 늦은 채팅은 수용 성공으로 세지 않는다.
+        self._post_stop_rejected_chat_count = {code: 0 for code in channels}
         # 상태 알림 실패는 수신기 재연결 실패와 별도로 관측한다.
         self._status_emit_failure_count = {code: 0 for code in channels}
         # 실제 서버 이벤트 ID가 재연결 뒤 다시 온 경우만 중복 전송 차단.
@@ -107,6 +112,9 @@ class MultiPlatformReadOnlySession:
                 # GUI 전달 대기까지 공유 상태 잠금으로 묶지 않는다.
                 with self._callback_locks[code]:
                     if self._stop.is_set():
+                        if kind == "chat":
+                            with self._emit_lock:
+                                self._post_stop_rejected_chat_count[code] += 1
                         return False
                     if kind == "chat":
                         if code == "twitch" and isinstance(item, TwitchChatLine):
@@ -116,19 +124,24 @@ class MultiPlatformReadOnlySession:
                         if not isinstance(item, PlatformChat) or item.platform != code:
                             raise ValueError("채팅 플랫폼 식별자가 올바르지 않습니다.")
                         event_id = item.event_id
-                        with self._emit_lock:
-                            self._callback_chat_count[code] += 1
-                            self._last_chat_at[code] = time.monotonic()
-                            if event_id is None:
-                                self._missing_event_id_count[code] += 1
                         if event_id is not None and event_id in self._seen_event_ids[code]:
-                            # 같은 플랫폼·같은 세션에서 이미 AI FIFO에 넣은
-                            # 서버 사건의 재전달만 막는다. 별개 채팅은 보존.
+                            # 이미 수용한 같은 서버 사건만 재전달을 차단한다.
+                            # 채팅 콜백 총수와 중복 ID 수를 한 잠금에서 함께
+                            # 기록하여 GUI가 정산 중간 상태를 오인하지 않게 한다.
                             with self._emit_lock:
+                                self._callback_chat_count[code] += 1
+                                self._last_chat_at[code] = time.monotonic()
                                 self._replayed_event_id_count[code] += 1
+                                self._callback_duplicate_chat_count[code] += 1
                             return True
                         started = time.monotonic()
                         with self._emit_lock:
+                            # 새 채팅의 접수와 처리 중 표시도 원자적으로 기록.
+                            # 완료 전에는 정산을 성공/실패로 확정하지 않는다.
+                            self._callback_chat_count[code] += 1
+                            self._last_chat_at[code] = started
+                            if event_id is None:
+                                self._missing_event_id_count[code] += 1
                             self._callback_inflight_started_at[code] = started
                         try:
                             accepted = self._emit("chat", item)
@@ -301,6 +314,22 @@ class MultiPlatformReadOnlySession:
                     "콜백전달완료": self._forwarded_chat_count[code],
                     "콜백전달오류": self._callback_error_count[code],
                     "콜백전달중단": self._callback_aborted_count[code],
+                    "중지후채팅거절": self._post_stop_rejected_chat_count[code],
+                    "콜백내부중복ID": self._callback_duplicate_chat_count[code],
+                    # 수신기 콜백→로컬 GUI/AI FIFO 전달의 정산만 확인한다.
+                    # 서버가 전송하지 않은 사건/실제 시청자 무누락은 검증 불가.
+                    # 진행 중인 콜백이 있으면 미확정(None)으로 남긴다.
+                    # YouTube 수신기 내부 server_replay는 채팅 콜백이
+                    # 아니므로 이 차이에서 빼지 않는다.
+                    "콜백정산차이": (
+                        self._callback_chat_count[code]
+                        - self._forwarded_chat_count[code]
+                        - self._callback_aborted_count[code]
+                        - self._callback_error_count[code]
+                        - self._callback_duplicate_chat_count[code]
+                        if self._callback_inflight_started_at[code] is None
+                        else None
+                    ),
                     "상태알림전달실패": self._status_emit_failure_count[code],
                     "서버이벤트ID재수신차단": self._replayed_event_id_count[code],
                     "서버이벤트ID없음": self._missing_event_id_count[code],
