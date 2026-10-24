@@ -86,7 +86,13 @@ def _confirmed_mouth_obs_audio_provenance(
         return False
     times, count, matching, _ = _matched_obs_audio_evidence(
         observation, mouth_first, mouth_last)
-    return bool(count > 0 and len(times) >= 2 and matching)
+    # 일반 OBS 관찰은 입 움직임 전후 0.2초의 근접 표본도
+    # 보존하지만, 조기 종료는 실제 입 움직임과 동시에 채택된
+    # 오디오 시각 두 개 이상을 확인해야 한다. 근접 표본만으로
+    # 관찰을 끝내면 실제 동시 발화 증거를 놓칠 수 있다.
+    simultaneous_times = tuple(
+        t for t in times if mouth_first <= t <= mouth_last)
+    return bool(count > 0 and len(simultaneous_times) >= 2 and matching)
 
 
 def _observed_mouth_obs_overlap(observation, lip, prompt_started_at, prompt_finished_at) -> bool:
