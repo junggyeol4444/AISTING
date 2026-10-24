@@ -160,5 +160,54 @@ class 입장전보류검사(unittest.TestCase):
         self.assertEqual(len(state.pending), 0)
 
 
+    def test_SOOP_JOIN전_가상프레임_연결끊김후_같은방_승인_전달(self):
+        from ai_broadcaster.multiplatform_readonly import SoopReadOnlySession
+        import urllib.request
+
+        class 가상응답:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def read(self, size):
+                return json.dumps({"CHANNEL": {
+                    "CHDOMAIN": "example.test", "CHATNO": "55", "CHPT": "1234"
+                }}).encode("utf-8")
+
+        # 0005는 서버 채팅 프레임, 0001/0002는 가상 CONNECT/JOIN 승인.
+        first_sock = 가상소켓(["\\x1b\\t000500000000\\x0c먼저온말\\x0c가상\\x0c"])
+        second_sock = 가상소켓([
+            "\\x1b\\t000100000000\\x0c",
+            "\\x1b\\t000200000000\\x0c",
+        ])
+        sockets = [first_sock, second_sock]
+        received = []
+        def cb(kind, item):
+            if kind == "chat":
+                received.append(item.text)
+            return True
+        shared = PreJoinChatResumeState()
+        first = SoopReadOnlySession("testuser/123", cb)
+        first._prejoin_resume = shared
+        second = SoopReadOnlySession("testuser/123", cb)
+        second._prejoin_resume = shared
+        second._pending_chats = first._pending_chats
+        fake_websocket = SimpleNamespace(
+            create_connection=lambda *a, **kw: sockets.pop(0),
+            WebSocketTimeoutException=TimeoutError)
+        with patch.dict("sys.modules", {"websocket": fake_websocket}), patch(
+                "urllib.request.urlopen", return_value=가상응답()):
+            with self.assertRaises(OSError):
+                first.run()
+            self.assertEqual(len(shared.pending), 1)
+            self.assertEqual(received, [])
+            with self.assertRaises(OSError):
+                second.run()
+        self.assertEqual(received, ["먼저온말"])
+        self.assertEqual(len(shared.pending), 0)
+
+
 if __name__ == "__main__":
     unittest.main()
