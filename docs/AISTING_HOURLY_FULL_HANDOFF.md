@@ -3497,3 +3497,31 @@ F) 원본 100단계 roadmap.json status는 completed=9, pending=91이며 **코�
 - 최초 문서 HEAD 전체 회귀 [40090134919](https://github.com/junggyeol4444/AISTING/actions/runs/40090134919): 최초 조회 `queued`; Windows EXE [40090134918](https://github.com/junggyeol4444/AISTING/actions/runs/40090134918): `queued`. 코드/검사 HEAD 전체 회귀 [40090053681](https://github.com/junggyeol4444/AISTING/actions/runs/40090053681): `in_progress`; Windows [40090053684](https://github.com/junggyeol4444/AISTING/actions/runs/40090053684): `cancelled`. 실제 모델 500건 [40090038323](https://github.com/junggyeol4444/AISTING/actions/runs/40090038323): `queued`. 실제 160절 모델 500건 [40086142064](https://github.com/junggyeol4444/AISTING/actions/runs/40086142064): `in_progress`.
 - 본 후속 기록 자체가 별도 fast-forward 문서 커밋을 만들므로 다음 회차는 이 SHA를 최종 HEAD로 가정하지 않고 **main 실제 HEAD와 최종 HEAD의 CI를 재조회**한다. 검사 성공·실모델 1~3초 달성·Windows GUI/OBS 실증은 미확인. 기존 매시간 예약 변경/중복 생성 없음.
 
+
+
+## 162. 2026-10-24 — 실제 AI FIFO SQLite 대화 기억 보존 쿼리 누적 개발
+
+### 기존 main·원문 기준
+- 시작 시 실제 main HEAD: `bf25f983e9b3f4ec4a8206a81f69af9b05466b1e`. 기존 전체 인수인계 1~161절, 다음 대화 인수인계 전체, 과거 부록, 원본 기획안·100단계 로드맵·설정 및 실제 소스를 읽고 이어받았다.
+- 사용자 지시대로 AISTING만 변경한다. 기존 캐릭터, 사용자 SQLite 데이터, 설정, 모델 길이/keep_alive, 방송 계정, 예약, 다른 프로젝트는 변경하지 않는다.
+
+### 162회차 실제 개발
+- `src/ai_broadcaster/conversation_memory.py`의 기존 `ConversationMemory.append`는 발화마다 최대 10만 개 보존 ID의 `NOT IN (SELECT ... LIMIT ?)` 집합을 계산했다. 4플랫폼 채팅이 단일 AI FIFO에 누적될 때 각 발화의 SQLite 저장 비용을 줄이도록, 기본키 역순의 보존 경계 한 행만 조회하여 그보다 오래된 행을 범위 삭제하도록 변경했다.
+- 삭제된 ID가 중간에 존재해도 **최신 실제 N개**를 보존하며, 기존 SQLite 테이블 형식·자동 증가 ID·응답 후 저장·트랜잭션·사용자 보존 상한·순서 및 별도 기억 파일 경로를 그대로 유지한다. 저장 실패를 성공으로 바꾸지 않는다.
+- `tests/test_conversation_memory.py`에 격리 임시 SQLite 기준 계약검사 3건을 추가했다: 중간 ID 삭제 시 최근 N건 유지, 기존 1,000건에서 최근 100건만 유지, 한 건 한도/한도 미달 동작.
+- 신규 계약검사는 작성했지만 **직접 실행하지 않았다**. 코드 변경을 실제 Ollama 처리량 개선이나 1~3초 달성으로 보고하지 않는다.
+
+### 확인한 기존 CI·실패 로그
+- 96절 Windows `39722213656`: 완료/취소. 개별 Windows EXE·OBS·Twitch·Ollama 작업 성공은 전체 성공이 아니다.
+- 96절 실제 Ollama 500건 `39720448468`: 작업 성공, 500/500 처리, 3초 초과 500건, 전체 p95 2979.984초, 대기 p95 2973.875초, AI p95 7.875초. 1~3초 목표 미달.
+- 160절 실제 Ollama 500건 `40086142064`: 작업 성공, 500/500 처리, 3초 초과 500건, 전체 p95 3683.906초, 대기 p95 3676.14초, AI p95 8.14초.
+- 161절 실제 Ollama 500건 `40090038323`: 작업 성공, 500/500 처리, 3초 초과 500건, 전체 p95 2440.047초, 대기 p95 2434.906초, AI p95 5.313초. 실제 시청자 500명이 아닌 합성 채팅과 실제 로컬 모델.
+- 161절 최종 HEAD `bf25f983e9b3f4ec4a8206a81f69af9b05466b1e` 전체 회귀 `40090204788`: **실패**, 36건 실패·31건 오류·2건 건너뜀. 원격 로그에서 GUI 모의 객체 `_update_platform_health` 누락, YouTube 리더 모의 생성자의 `resume_state` 인자 불일치, 채팅 워커 계약 실패 등을 실제 확인했다. 이 실패는 숨기거나 성공으로 바꾸지 않는다.
+- 161절 Windows `40090204786`: **실패**. Twitch 공개 IRC 실제 시청자 채팅이 수신되지 않아 읽기 전용 작업 실패, Windows EXE 작업 취소. 실제 Ollama·OBS 읽기·한국어 공개 채팅 일부 개별 작업 성공은 전체 Windows 실사용 통합 성공이 아니다.
+
+### 완료·미완료·중단·다음 회차
+- **실제로 완료:** 기존 대화 기억 보존 SQL 코드 수정, 기존 계약검사 파일에 격리 SQLite 검사 3건 작성. 기존 파일과 원문은 삭제하지 않음.
+- **안 한 것:** 신규 검사 실행, 전체 회귀 성공, Windows 10/11 EXE/GUI 실제 실행, 권리 확인 한국어 GPT-SoVITS WAV→공식 Cubism 입→OBS 동일 발화 실증, 실제 4플랫폼 수백 명 무누락, 실제 24시간 방송, 사용자 계정/OAuth 대행·방송/녹화/채팅 발신·모델 훈련.
+- **미완료:** AI FIFO 적체 및 1~3초 목표, 권리 있는 실제 음성/입/OBS 동기화, 실제 4플랫폼 수백 명, 24시간 재연결·안전성, 전체 회귀 실패·오류 수정 및 전체 재검증, Windows 네이티브 실기기 검증.
+- **진행 중 멈춘 것:** 이번 코드의 신규 CI 실행/최종 결과 확인, Windows 실사용 및 권리·계정이 필요한 실증.
+- **다음 회차:** 매번 최신 main HEAD를 다시 확인하고 162회차 신규 전체 회귀·Windows·실모델 CI와 위 기존 실패 로그를 재조회한다. 전체 개발 우선 → 전체 회귀/Windows 통합검사 → 오류 수정 후 전체 재검증. 1~162절 전체 원문과 모든 부록을 그대로 보존하고 다음 절을 추가한다. 예약을 중복 생성하지 않는다.

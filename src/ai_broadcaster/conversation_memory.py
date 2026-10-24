@@ -104,10 +104,14 @@ class ConversationMemory:
                 "INSERT INTO exchanges(sender, user_text, reply) VALUES (?, ?, ?)",
                 (message.sender[:100], message.text[:4000], reply[:6000]),
             )
+            # 최신 N개만 보존한다. 매 발화마다 최대 10만 개 ID를
+            # NOT IN 집합으로 구성하지 않고, 기본키 내림차순의 N번째
+            # 경계보다 오래된 행만 삭제한다. 중간에 삭제된 ID가 있어도
+            # 남은 대화의 실제 개수 기준으로 보존하며 기존 트랜잭션 유지.
             db.execute(
-                "DELETE FROM exchanges WHERE id NOT IN "
-                "(SELECT id FROM exchanges ORDER BY id DESC LIMIT ?)",
-                (self.max_exchanges,),
+                "DELETE FROM exchanges WHERE id < "
+                "(SELECT id FROM exchanges ORDER BY id DESC LIMIT 1 OFFSET ?)",
+                (self.max_exchanges - 1,),
             )
 
     def recent(self, limit: int = 8) -> list[Exchange]:

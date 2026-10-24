@@ -166,6 +166,43 @@ class TestConversationMemory(unittest.TestCase):
         self.assertEqual(len(row.reply), 6000)
 
 
+    def test_기억보존_중간_삭제된_ID가_있어도_최근_세건만_유지(self):
+        # 기존 기억을 수정하지 않는 격리 SQLite에서 보존 경계를 검증.
+        memory = ConversationMemory(self.path, max_exchanges=10)
+        for number in range(1, 6):
+            memory.append(ChatMessage(str(number), "시청자", f"질문{number}"), f"답변{number}")
+        with closing(sqlite3.connect(self.path)) as db, db:
+            db.execute("DELETE FROM exchanges WHERE id IN (2, 4)")
+        limited = ConversationMemory(self.path, max_exchanges=3)
+        limited.append(ChatMessage("6", "시청자", "질문6"), "답변6")
+        self.assertEqual(limited.count(), 3)
+        self.assertEqual(
+            [row.user_text for row in limited.recent(3)],
+            ["질문3", "질문5", "질문6"],
+        )
+
+    def test_기억보존_대량기존행_최근_백건과_순서유지(self):
+        # 오래된 SQLite 기록을 재작성하지 않고 새로운 발화 한 건만 추가.
+        with closing(sqlite3.connect(self.path)) as db, db:
+            db.executemany(
+                "INSERT INTO exchanges(sender, user_text, reply) VALUES (?, ?, ?)",
+                [("시청자", f"질문{n}", f"답변{n}") for n in range(1000)],
+            )
+        memory = ConversationMemory(self.path, max_exchanges=100)
+        memory.append(ChatMessage("1000", "시청자", "마지막질문"), "마지막답변")
+        self.assertEqual(memory.count(), 100)
+        self.assertEqual(memory.recent(100)[0].user_text, "질문901")
+        self.assertEqual(memory.recent(1)[0].user_text, "마지막질문")
+
+    def test_기억보존_최소한도_한건과_초기부족건수(self):
+        memory = ConversationMemory(self.path, max_exchanges=1)
+        memory.append(ChatMessage("a", "시청자", "첫질문"), "첫답변")
+        self.assertEqual(memory.count(), 1)
+        memory.append(ChatMessage("b", "시청자", "두번째질문"), "두번째답변")
+        self.assertEqual(memory.count(), 1)
+        self.assertEqual(memory.recent(1)[0].user_text, "두번째질문")
+
+
 class TestContextWithPipeline(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
