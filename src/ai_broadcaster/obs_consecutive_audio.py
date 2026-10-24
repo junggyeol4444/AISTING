@@ -27,7 +27,10 @@ def _관찰창_경로(sample: object) -> tuple[bool, object | None]:
         return False, None
     before = getattr(sample, "before_audio_route")
     after = getattr(sample, "after_audio_route")
-    if before is None or after is None or before != after:
+    if (before is None or after is None
+            or (isinstance(before, str) and not before.strip())
+            or (isinstance(after, str) and not after.strip())
+            or before != after):
         return False, None
     return True, before
 
@@ -173,6 +176,7 @@ def collect_obs_input_meter_levels(
                        or type(p[1]) not in (int, float)
                        or not math.isfinite(p[1]) or not 0 <= p[1] <= 20
                        for p in levels)
+                or any(not (began <= when <= ended) for when, _ in levels)
                 or any(x[0] >= y[0] for x, y in zip(levels, levels[1:]))):
             if 경로확정:
                 break
