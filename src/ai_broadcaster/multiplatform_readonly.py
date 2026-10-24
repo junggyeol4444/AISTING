@@ -140,6 +140,60 @@ def parse_youtube_page(page: dict, channel: str) -> list[PlatformChat]:
     return result
 
 
+class PreJoinChatResumeState:
+    """승인 전 수신된 치지직·SOOP 채팅을 재연결 중 메모리에서 보존한다.
+
+    서버 채팅방 식별자가 바뀌면 이전 방송의 미전달 사건을 새 방송에
+    섞지 않는다. 프로세스 재시작·서버 미전송 사건의 복구는 보장하지 않는다.
+    """
+
+    def __init__(self) -> None:
+        self.room_id: str | None = None
+        self.pending: deque[PlatformChat] = deque()
+        self._pending_ids: set[str] = set()
+        self.duplicate_server_ids = 0
+
+    def bind_room(self, room_id: str, *, accepted_pending: bool = False) -> None:
+        if not isinstance(room_id, str) or not room_id.strip():
+            raise ValueError("입장 전 채팅방 식별자 오류")
+        if self.room_id is not None and self.room_id != room_id:
+            if self.pending or accepted_pending:
+                raise RuntimeError(
+                    "채팅방이 변경되어 이전 방송의 미전달 채팅을 보존 중입니다. "
+                    "운영자 확인 없이 다른 방송에 전달하지 않습니다.")
+            self._pending_ids.clear()
+        self.room_id = room_id
+
+    def stage(self, chats: list[PlatformChat]) -> None:
+        """서버 ID가 같은 재전송만 중복 차단하고 본문/닉네임은 구별한다."""
+        if not isinstance(chats, list) or any(
+                not isinstance(item, PlatformChat) for item in chats):
+            raise ValueError("입장 전 채팅 임시 보관 형식 오류")
+        new_items: list[PlatformChat] = []
+        batch_ids: set[str] = set()
+        duplicates = 0
+        for item in chats:
+            event_id = item.event_id
+            if event_id is not None and (
+                    event_id in self._pending_ids or event_id in batch_ids):
+                duplicates += 1
+                continue
+            new_items.append(item)
+            if event_id is not None:
+                batch_ids.add(event_id)
+        if len(self.pending) + len(new_items) > 4096:
+            raise RuntimeError("JOIN 승인 전 채팅 임시 보관 한도 초과 · 누락 위험")
+        self.pending.extend(new_items)
+        self._pending_ids.update(batch_ids)
+        self.duplicate_server_ids += duplicates
+
+    def release_to(self, accepted_queue: deque[PlatformChat]) -> None:
+        """JOIN 승인 뒤 이전 미수용 FIFO 앞쪽에만 안전하게 이어붙인다."""
+        accepted_queue.extend(self.pending)
+        self.pending.clear()
+        self._pending_ids.clear()
+
+
 class ReadOnlySession:
     def __init__(self, channel: str, emit):
         if not isinstance(channel, str) or not channel.strip() or len(channel) > 130:
@@ -232,6 +286,7 @@ class ReadOnlySession:
 class ChzzkReadOnlySession(ReadOnlySession):
     def __init__(self, channel: str, emit):
         super().__init__(channel, emit)
+        self._prejoin_resume = PreJoinChatResumeState()
         if not re.fullmatch("[a-fA-F0-9]{32}", self.channel):
             raise ValueError("치지직 채널 ID는 32자리 16진수입니다.")
 
@@ -244,6 +299,8 @@ class ChzzkReadOnlySession(ReadOnlySession):
         live_id = (live.get("content") or {}).get("chatChannelId")
         if not isinstance(live_id, str) or not live_id:
             raise RuntimeError("치지직 방송이 진행 중이 아니거나 채팅방이 없습니다.")
+        self._prejoin_resume.bind_room(
+            live_id, accepted_pending=bool(self._pending_chats))
         token = _json_get("https://comm-api.game.naver.com/nng_main/v1/chats/"
                           "access-token?" + urlencode(
                             {"channelId": live_id, "chatType": "STREAMING"}))
@@ -264,7 +321,6 @@ class ChzzkReadOnlySession(ReadOnlySession):
             # Chat may arrive during the server authentication handshake.
             # Preserve every original frame in order, then release it only
             # after a valid room-entry acknowledgement has been received.
-            startup_chats = []
             deadline = time.monotonic() + 15
             while not self._stop.is_set() and time.monotonic() < deadline:
                 try:
@@ -283,12 +339,9 @@ class ChzzkReadOnlySession(ReadOnlySession):
                     raise ValueError("치지직 접속 응답 형식 오류")
                 self.emit("transport_activity", None)
                 handshake_chats = parse_chzzk_frame(raw, self.channel)
-                if len(startup_chats) + len(handshake_chats) > 4096:
-                    # 수천 건 수신 중 입장이 늦어지면 메모리를 무한
-                    # 축적하거나 오래된 메시지를 조용히 버리지 않는다.
-                    raise RuntimeError(
-                        "치지직 JOIN 승인 전 채팅 임시 보관 한도 초과 · 누락 위험")
-                startup_chats.extend(handshake_chats)
+                # JOIN 이전 연결에서 이미 수신한 사건도 동일 방송 ID인
+                # 경우에만 유지한다. 프레임 재전송의 서버 ID 중복만 차단.
+                self._prejoin_resume.stage(handshake_chats)
                 if data.get("cmd") == 10100 and isinstance(data.get("bdy"), dict) and data["bdy"].get("sid"):
                     accepted = True
                     break
@@ -302,7 +355,7 @@ class ChzzkReadOnlySession(ReadOnlySession):
             self.emit("ready", self.channel)
             # JOIN 전 받은 프레임도 현재 접속이 승인된 후에만
             # 이전 미수용 프레임 뒤에 넣고, 실패 시 함께 보존한다.
-            self._queue_received_chats(startup_chats)
+            self._prejoin_resume.release_to(self._pending_chats)
             self._flush_pending_chats()
             def parser(data, channel):
                 frame = json.loads(data)
@@ -320,6 +373,7 @@ class ChzzkReadOnlySession(ReadOnlySession):
 class SoopReadOnlySession(ReadOnlySession):
     def __init__(self, channel: str, emit):
         super().__init__(channel, emit)
+        self._prejoin_resume = PreJoinChatResumeState()
         if not re.fullmatch("[A-Za-z0-9_]{2,30}/[0-9]{1,18}", self.channel):
             raise ValueError("SOOP은 방송자ID/방송번호 형태로 입력하세요.")
 
@@ -344,6 +398,8 @@ class SoopReadOnlySession(ReadOnlySession):
             raise RuntimeError("SOOP 실제 채팅 서버 정보가 올바르지 않습니다.")
         if not str(chatno).isdigit() or not str(port).isdigit():
             raise RuntimeError("SOOP 실제 채팅방 또는 포트 정보가 없습니다.")
+        self._prejoin_resume.bind_room(
+            str(chatno), accepted_pending=bool(self._pending_chats))
         sock = websocket.create_connection(
             f"wss://{domain}:{int(port)+1}/Websocket/{bjid}",
             timeout=10, subprotocols=["chat"],
@@ -366,7 +422,6 @@ class SoopReadOnlySession(ReadOnlySession):
             next_ping = None
             # 실제 서버 JOIN 승인 전에 받은 0005 채팅은 임의 폐기하거나
             # 승인되지 않은 AI 호출로 전달하지 않고 동일 수신기 메모리에 보류.
-            startup_chats = []
             def parse_observed(raw, channel):
                 nonlocal frames_seen, join_sent, entered, next_ping
                 frames_seen += 1
@@ -388,20 +443,14 @@ class SoopReadOnlySession(ReadOnlySession):
                             raise RuntimeError("SOOP 채팅 서버에서 연결 종료 응답을 받았습니다.")
                 messages = parse_soop_frame(raw, channel)
                 if not entered:
-                    if len(startup_chats) + len(messages) > 4096:
-                        # 보유 가능한 수를 넘으면 연결 재시도 대상으로
-                        # 명시적 오류를 반환한다. 무음/채팅 내용 필터링 금지.
-                        raise RuntimeError(
-                            "SOOP JOIN 승인 전 채팅 임시 보관 한도 초과 · 누락 위험")
-                    startup_chats.extend(messages)
+                    # JOIN 승인 전에 연결이 끊겨도 다음 수신기가 같은
+                    # 채팅방 ID로 재접속하면 앞서 받은 사건을 먼저 전달.
+                    self._prejoin_resume.stage(messages)
                     return []
-                if startup_chats:
-                    # 같은 서버 프레임 안에서 JOIN 승인과 채팅이 함께 와도
-                    # 먼저 받은 원본 채팅부터 FIFO 순서대로 AI 큐에 전달.
-                    startup_chats.extend(messages)
-                    released = list(startup_chats)
-                    startup_chats.clear()
-                    return released
+                if self._prejoin_resume.pending:
+                    # 기존 프레임 보류 큐를 먼저 연결해 재연결 전후 순서 보존.
+                    # 서버 ID가 없는 SOOP의 동일 본문은 임의 중복 제거 금지.
+                    self._prejoin_resume.release_to(self._pending_chats)
                 return messages
             def keepalive():
                 nonlocal next_ping
