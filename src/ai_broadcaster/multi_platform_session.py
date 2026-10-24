@@ -401,6 +401,16 @@ class MultiPlatformReadOnlySession:
                     "수신프레임미수용보류": len(
                         self._pending_websocket_chats[code])
                         if code in self._pending_websocket_chats else 0,
+                    # YouTube는 HTTP 페이지 단위로 전부 파싱한 뒤
+                    # 로컬 AI FIFO 수용 전 메모리에 보관한다. 재연결된
+                    # 새 리더가 같은 resume 상태를 이어받는다.
+                    "수신페이지미수용보류": (
+                        len(self._youtube_resume.pending_page_chats)
+                        if code == "youtube" and self._youtube_resume is not None
+                        else 0),
+                    "수신페이지확정대기": bool(
+                        code == "youtube" and self._youtube_resume is not None
+                        and self._youtube_resume.pending_page_active),
                     "콜백전달누적초": round(self._callback_emit_total_seconds[code], 6),
                     "콜백전달최대초": round(self._callback_emit_max_seconds[code], 6),
                     "콜백소요최근표본": len(self._callback_emit_samples[code]),
