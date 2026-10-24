@@ -21,6 +21,11 @@ _JOIN_ACK = re.compile(_IRC_PREFIX + r"366\s+\S+\s+#([A-Za-z0-9_]+)(?=\s|$)", re
 _AUTH_NOTICE = re.compile(_IRC_PREFIX + r"NOTICE(?:\s|$)", re.I)
 _WELCOME = re.compile(_IRC_PREFIX + r"001(?:\s|$)", re.I)
 _SERVER_RECONNECT = re.compile(_IRC_PREFIX + r"RECONNECT(?:\s|$)", re.I)
+# 대상 채팅방의 실제 PRIVMSG 명령만 확인한다. 파서가 실패한
+# 손상 채팅을 정상 제어 명령처럼 조용히 버리지 않기 위한 구분이다.
+_TARGET_PRIVMSG = re.compile(
+    _IRC_PREFIX + r"PRIVMSG\s+#([A-Za-z0-9_]+)(?=\s|$)", re.I)
+
 
 
 class TwitchReadError(RuntimeError):
@@ -248,17 +253,40 @@ class TwitchReadOnlySession:
                 # 같은 프레임의 중간 콜백이 실패해도 뒤쪽 채팅이
                 # 소실되지 않도록, 전달 시도 전에 프레임 전체를 파싱한다.
                 # 중복 서버 ID는 상위 조정기에서 수용 완료 건만 차단한다.
+                # 손상된 PRIVMSG가 프레임 중간에 있더라도 뒤쪽의
+                # 정상 채팅까지 먼저 추출·보관한 뒤 오류로 재연결한다.
+                # 파서가 인식하지 못한 대상 채팅은 정상 제어 명령으로
+                # 오인해 무음 폐기하지 않는다. 서버가 미전송한 사건이나
+                # 손상 본문 자체는 복구할 수 없음을 별도 구분한다.
+                parsed_chats = []
+                malformed_target_chat = False
+                oversized_line = False
                 for line in complete_lines:
                     if self._stop.is_set():
                         break
                     if len(line) > 65536:
-                        raise TwitchReadError("트위치 채팅 한 줄 크기 한도 초과")
+                        oversized_line = True
+                        continue
                     parsed = parse_irc_chat_line(line, self.channel)
                     if parsed is not None:
-                        self._pending_chats.append(parsed)
-                        if not ready and len(self._pending_chats) > 4096:
-                            raise TwitchReadError(
-                                "트위치 JOIN 확인 전 임시 채팅 한도 초과 · 누락 위험")
+                        parsed_chats.append(parsed)
+                    else:
+                        command = _TARGET_PRIVMSG.match(line)
+                        if (command is not None
+                                and command.group(1).lower() == self.channel):
+                            malformed_target_chat = True
+                if self._stop.is_set():
+                    break
+                self._pending_chats.extend(parsed_chats)
+                if oversized_line:
+                    raise TwitchReadError(
+                        "트위치 채팅 한 줄 크기 한도 초과 · 정상 채팅은 보류")
+                if malformed_target_chat:
+                    raise TwitchReadError(
+                        "트위치 대상 채팅 PRIVMSG 형식 손상 · 정상 채팅은 보류")
+                if not ready and len(self._pending_chats) > 4096:
+                    raise TwitchReadError(
+                        "트위치 JOIN 확인 전 임시 채팅 한도 초과 · 누락 위험")
                 server_requested_reconnect = False
                 for line in complete_lines:
                     if self._stop.is_set():
