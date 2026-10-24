@@ -476,6 +476,44 @@ class YouTubeChatResumeState:
         self.seen_message_ids: set[str] = set()
         self.delivered = 0
         self.completed_pages = 0
+        # 현재 API 페이지의 파싱 완료 채팅을 콜백 수용 전 메모리에 보관한다.
+        # 페이지 중간 실패 뒤 새 수신기가 다시 API를 호출하기 전에
+        # 남은 사건을 이어서 전달한다. 본문/토큰은 파일에 저장하지 않는다.
+        self.pending_page_chats: deque[PlatformChat] = deque()
+        self.pending_page_active = False
+        self.pending_page_next_token: str | None = None
+        self.pending_page_poll_millis = 0
+        self.pending_page_ended = False
+
+    def stage_page(self, chats: list[PlatformChat], next_token: str | None,
+                   poll_millis: int, ended: bool) -> None:
+        """검증된 한 페이지를 먼저 보존하고 수용 완료 후에만 커서를 확정한다."""
+        if self.pending_page_active:
+            raise RuntimeError("이전 유튜브 채팅 페이지 전달이 완료되지 않았습니다.")
+        if not isinstance(chats, list) or any(
+                not isinstance(chat, PlatformChat) for chat in chats):
+            raise ValueError("유튜브 채팅 페이지 항목 형식 오류")
+        if next_token is not None and (
+                not isinstance(next_token, str) or len(next_token) > 2048):
+            raise ValueError("유튜브 채팅 페이지 토큰 오류")
+        if type(poll_millis) is not int or not 0 < poll_millis <= 120000:
+            raise ValueError("유튜브 채팅 폴링 간격 형식 오류")
+        if type(ended) is not bool:
+            raise ValueError("유튜브 방송 종료 상태 형식 오류")
+        self.pending_page_chats.extend(chats)
+        self.pending_page_next_token = next_token
+        self.pending_page_poll_millis = poll_millis
+        self.pending_page_ended = ended
+        self.pending_page_active = True
+
+    def clear_completed_page(self) -> None:
+        """완전히 수용·커서 확정한 페이지의 메모리만 해제한다."""
+        if not self.pending_page_active or self.pending_page_chats:
+            raise RuntimeError("유튜브 미수용 채팅이 남아 페이지를 해제할 수 없습니다.")
+        self.pending_page_next_token = None
+        self.pending_page_poll_millis = 0
+        self.pending_page_ended = False
+        self.pending_page_active = False
 
     def bind_chat(self, live_chat_id: str) -> str:
         if not isinstance(live_chat_id, str) or not live_chat_id.strip():
@@ -651,6 +689,40 @@ class YouTubeReadOnlySession(ReadOnlySession):
         while not self._stop.is_set():
             if max_seconds is not None and time.monotonic() - start >= max_seconds:
                 break
+            if resume.pending_page_active:
+                # 이전 API 응답을 이미 수신했다면 재연결 직후 불필요한
+                # 동일 페이지 HTTP 요청 없이 미수용 채팅부터 FIFO 전달.
+                # 서버 ID가 없는 서로 다른 채팅도 재요청 중복 없이 유지.
+                while resume.pending_page_chats and not self._stop.is_set():
+                    item = resume.pending_page_chats[0]
+                    if item.event_id is not None and item.event_id in seen_message_ids:
+                        self.emit("server_replay", None)
+                        resume.pending_page_chats.popleft()
+                        continue
+                    if self.emit("chat", item) is False:
+                        # 미수용 선두와 같은 페이지의 뒤쪽을 남긴다.
+                        # 수용 성공한 앞쪽은 이미 pop했으므로 ID가 없어도
+                        # 재연결 때 다시 AI 큐로 중복 제출하지 않는다.
+                        raise RuntimeError(
+                            "유튜브 채팅 수신 큐 전달이 완료되지 않아 페이지를 보존합니다."
+                        )
+                    resume.delivered_event(item.event_id)
+                    resume.pending_page_chats.popleft()
+                if self._stop.is_set():
+                    break
+                if first:
+                    self.emit("ready", self.channel)
+                first = False
+                resume.completed_page(resume.pending_page_next_token)
+                cursor = resume.next_page_token
+                ended = resume.pending_page_ended
+                millis = resume.pending_page_poll_millis
+                resume.clear_completed_page()
+                if ended:
+                    self._terminal_chat_end = True
+                    break
+                self._stop.wait(millis / 1000)
+                continue
             params = {"part":"id,snippet,authorDetails",
                       "liveChatId":live_chat_id}
             if not self._oauth_access_token:
@@ -704,48 +776,11 @@ class YouTubeReadOnlySession(ReadOnlySession):
             millis = payload.get("pollingIntervalMillis", 1000)
             if type(millis) is not int or not 0 < millis <= 120000:
                 raise ValueError("유튜브 채팅 폴링 간격 형식 오류")
-            # Resolve identities before forwarding any page items so a replay
-            # of the same API event does not cause a second AI request. Events
-            # with absent/invalid IDs are still delivered (no silent loss).
-            for raw_item in raw_items:
-                if self._stop.is_set():
-                    break
-                chats = parse_youtube_page({"items": [raw_item]}, self.channel)
-                if not chats:
-                    continue
-                raw_id = raw_item.get("id") if isinstance(raw_item, dict) else None
-                message_id = (raw_id if isinstance(raw_id, str)
-                              and 1 <= len(raw_id) <= 256 else None)
-                if message_id is not None and message_id in seen_message_ids:
-                    # 이전 연결에서 성공적으로 전달된 동일 서버 사건.
-                    # 채팅 본문으로 묶는 중복 제거가 아니며 수신 재생
-                    # 진단만 알리고 외부 채팅 발신은 수행하지 않는다.
-                    self.emit("server_replay", None)
-                    continue
-                for item in chats:
-                    if self._stop.is_set():
-                        break
-                    if self.emit("chat", item) is False:
-                        # 정상적으로 UI/AI 큐에 등록되지 않았으면 현 페이지
-                        # 다음 토큰과 메시지 ID를 확정하면 안 된다.
-                        raise RuntimeError(
-                            "유튜브 채팅 수신 큐 전달이 완료되지 않아 페이지를 보존합니다."
-                        )
-                if self._stop.is_set():
-                    break
-                # 실제 AI 큐 수용 확인 후에만 수신 메시지·페이지를 기록.
-                resume.delivered_event(message_id)
-            if self._stop.is_set():
-                break
-            if first:
-                self.emit("ready", self.channel)
-            first = False
-            resume.completed_page(next_cursor)
-            cursor = resume.next_page_token
-            if ended:
-                # 서버가 종료를 명시했으면 같은 종료된 방송을 반복 재연결하지 않는다.
-                self._terminal_chat_end = True
-                break
-            # Respect Google's server-designated strictly positive interval.
-            self._stop.wait(millis / 1000)
+            # 페이지 전체를 파싱해 먼저 보관한다. 한 페이지 중간에서
+            # AI FIFO가 거절하거나 예외가 나더라도 뒤쪽 채팅이 사라지지
+            # 않고, 재연결된 새 리더가 동일 메모리 보류 큐를 이어받는다.
+            parsed_chats = parse_youtube_page(payload, self.channel)
+            resume.stage_page(parsed_chats, next_cursor, millis, ended)
+            # 다음 루프가 보류 사건부터 처리하며 모든 채팅 수용 이후
+            # 커서를 확정한다. 추가 HTTP 요청은 하지 않는다.
         self.emit("stopped", self.channel)
