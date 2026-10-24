@@ -95,6 +95,24 @@ def _confirmed_mouth_obs_audio_provenance(
     return bool(count > 0 and len(simultaneous_times) >= 2 and matching)
 
 
+def _validated_current_prompt_wav_received_at(
+    lip, prompt_started_at, prompt_finished_at,
+) -> float | None:
+    """공식 WAV 수신 시각이 이번 승인 질문 안에 있을 때만 채택한다.
+
+    이전 발화의 WAV 수신 시각이 남아 있어도 새 질문의 OBS 입력 미터와
+    잘못 상관 계산하거나 단계 지연으로 표시하지 않는다.
+    WAV·입·OBS의 동일성은 이후 실제 표본 비교에서 별도로 판단한다.
+    """
+    received = getattr(lip, "official_pcm_first_wav_received_monotonic", None)
+    values = (prompt_started_at, prompt_finished_at, received)
+    if (not all(type(value) in (int, float) and math.isfinite(value)
+                for value in values)
+            or not (0 < prompt_started_at <= received <= prompt_finished_at)):
+        return None
+    return float(received)
+
+
 def _observed_mouth_obs_overlap(observation, lip, prompt_started_at, prompt_finished_at) -> bool:
     """한 질문의 공식 입 움직임과 실제 OBS 미터가 겹쳤을 때만 참.
 
@@ -670,8 +688,8 @@ def verify_official_chat_live2d_obs(
         if valid_mouth_window else ((), 0, [], ()))
     # 동일 공식 WebSocket이 실제 전달한 PCM16 WAV 첫 음량 정보와
     # OBS의 같은 승인 검사 중 실제 선택 입력 미터 콜백을 결합한다.
-    pcm_first_received_at = getattr(
-        lip, "official_pcm_first_wav_received_monotonic", 0.0)
+    pcm_first_received_at = _validated_current_prompt_wav_received_at(
+        lip, prompt_started_at, prompt_finished_at)
     pcm_first_envelope = getattr(
         lip, "official_pcm_first_wav_rms_envelope", ())
     pcm_level_samples = (
@@ -679,8 +697,7 @@ def verify_official_chat_live2d_obs(
             observation, since=pcm_first_received_at,
             until=pcm_first_received_at + 12,
             accepted_window_indices=accepted_obs_windows)
-        if type(pcm_first_received_at) in (int, float)
-        and math.isfinite(pcm_first_received_at) and pcm_first_received_at > 0
+        if pcm_first_received_at is not None
         else ()
     )
     ws_pcm_score, ws_pcm_used, ws_pcm_lag = compare_official_pcm_obs_levels(
@@ -691,9 +708,7 @@ def verify_official_chat_live2d_obs(
     renderer_levels = (
         tuple((pcm_first_received_at + offset, level)
               for offset, level in rendered_rms)
-        if type(pcm_first_received_at) in (int, float)
-        and math.isfinite(pcm_first_received_at)
-        and pcm_first_received_at > 0
+        if pcm_first_received_at is not None
         else ()
     )
     render_score, render_used, render_lag = compare_official_pcm_obs_levels(
