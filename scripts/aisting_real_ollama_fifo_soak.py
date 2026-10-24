@@ -46,14 +46,18 @@ class _TimestampedInputQueue(queue.Queue):
     def put_chat(self, item, arrivals, *, timeout: float) -> None:
         if type(timeout) not in (int, float) or not math.isfinite(timeout) or timeout < 0:
             raise ValueError("검증 큐 대기 시간이 올바르지 않습니다.")
+        # 실제 수신기의 reader_received_at과 동일하게 큐 진입을
+        # 시도한 시각부터 센다. 큐 포화로 기다린 시간도 로컬
+        # 응답 지연에 포함하고, 미접수 사건의 시각은 남기지 않는다.
+        entered_at = time.monotonic()
         with self.not_full:
-            deadline = time.monotonic() + timeout
+            deadline = entered_at + timeout
             while self._qsize() >= self.maxsize:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     raise queue.Full
                 self.not_full.wait(remaining)
-            arrivals.put(time.monotonic())
+            arrivals.put(entered_at)
             self._put(item)
             self.unfinished_tasks += 1
             self.not_empty.notify()
