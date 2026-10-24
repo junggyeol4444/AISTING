@@ -12,7 +12,7 @@ from collections import deque
 
 from .multiplatform_readonly import (
     PlatformChat, ChzzkReadOnlySession, SoopReadOnlySession,
-    YouTubeReadOnlySession, YouTubeChatResumeState,
+    YouTubeReadOnlySession, YouTubeChatResumeState, PreJoinChatResumeState,
 )
 from .twitch_readonly import TwitchChatLine, TwitchReadOnlySession, TwitchServerReconnect
 
@@ -86,6 +86,13 @@ class MultiPlatformReadOnlySession:
         # 복구하지 못하며, 수용 완료만 전달 성공으로 기록한다.
         self._pending_websocket_chats = {
             code: deque() for code in channels if code in ("twitch", "chzzk", "soop")
+        }
+        # 치지직·SOOP는 JOIN 승인 이전에 도착한 채팅도 있을 수 있다.
+        # 해당 서버 채팅방 ID와 함께 재연결 동안만 메모리에서 보존한다.
+        # 서버가 다른 채팅방을 반환하면 과거 사건을 섞지 않고 오류로 차단.
+        self._prejoin_resume_states = {
+            code: PreJoinChatResumeState()
+            for code in channels if code in ("chzzk", "soop")
         }
         # 읽기 루프가 실제 시도/예외를 관측한 횟수만 기록한다.
         # 채팅이 조용하다는 이유로 끊김이나 무누락을 추정하지 않는다.
@@ -301,6 +308,8 @@ class MultiPlatformReadOnlySession:
             if code in self._pending_websocket_chats and hasattr(
                     reader, "_pending_chats"):
                 reader._pending_chats = self._pending_websocket_chats[code]
+            if code in self._prejoin_resume_states:
+                reader._prejoin_resume = self._prejoin_resume_states[code]
             self._readers[code] = reader
 
     def _emit_status_safely(self, code: str, kind: str, detail: str) -> bool:
@@ -401,6 +410,14 @@ class MultiPlatformReadOnlySession:
                     "수신프레임미수용보류": len(
                         self._pending_websocket_chats[code])
                         if code in self._pending_websocket_chats else 0,
+                    # 실제 서버 JOIN 승인을 받기 전에 도착한 프레임도
+                    # 같은 채팅방 ID로 재연결될 때까지 메모리에 보존.
+                    "JOIN전미수용보류": (
+                        len(self._prejoin_resume_states[code].pending)
+                        if code in self._prejoin_resume_states else 0),
+                    "JOIN전중복서버ID차단": (
+                        self._prejoin_resume_states[code].duplicate_server_ids
+                        if code in self._prejoin_resume_states else 0),
                     # YouTube는 HTTP 페이지 단위로 전부 파싱한 뒤
                     # 로컬 AI FIFO 수용 전 메모리에 보관한다. 재연결된
                     # 새 리더가 같은 resume 상태를 이어받는다.
@@ -639,6 +656,9 @@ class MultiPlatformReadOnlySession:
                                             and hasattr(replacement, "_pending_chats")):
                                         replacement._pending_chats = (
                                             self._pending_websocket_chats[code])
+                                    if code in self._prejoin_resume_states:
+                                        replacement._prejoin_resume = (
+                                            self._prejoin_resume_states[code])
                                 except Exception as reconnect_error:
                                     if not self._stop.is_set():
                                         self._emit_status_safely(code, "error", code + " 재연결 준비 실패 (" +
