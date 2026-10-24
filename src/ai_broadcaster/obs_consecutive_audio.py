@@ -56,6 +56,7 @@ def collect_obs_audio_times(
     경로확정 = False
     선택경로 = None
     마지막_관찰창_시작 = None
+    마지막_관찰창_종료 = None
     for began, ended, sample in observations:
         if not (_valid_time(began) and _valid_time(ended) and began < ended):
             # 한 번 근거를 채택한 뒤의 불명확한 창을 건너뛰고
@@ -77,9 +78,16 @@ def collect_obs_audio_times(
         # 겹치는 창은 시작 시각이 역행하지 않는 한 허용한다.
         if 경로확정 and began < 마지막_관찰창_시작:
             break
+        # 이전 정상 관찰창이 끝난 뒤 관측되지 않은 시간이 있으면
+        # 그 공백 사이에 OBS 입력/장면/트랙이 바뀌지 않았음을 보장할 수 없다.
+        # 겹침과 경계가 맞닿은 창은 유지하지만 실제 관찰 공백을 건너뛰지 않는다.
+        if 경로확정 and began > 마지막_관찰창_종료:
+            break
         # 무음 창도 순서 검증에 포함하여 뒤의 창이 거슬러 올라가지 못하게 한다.
         if 경로확정:
             마지막_관찰창_시작 = began
+            # 겹친 창이 더 일찍 끝나더라도 이미 확인한 관찰 범위는 보존.
+            마지막_관찰창_종료 = max(마지막_관찰창_종료, ended)
         audio = getattr(sample, "audio", None)
         if audio is None:
             # 이미 채택한 실제 표본 뒤의 오디오 관측 객체 누락은
@@ -122,6 +130,7 @@ def collect_obs_audio_times(
         if not 경로확정:
             선택경로, 경로확정 = 현재경로, True
             마지막_관찰창_시작 = began
+            마지막_관찰창_종료 = ended
     return tuple(collected), window_count
 
 def collect_obs_input_meter_levels(
@@ -141,6 +150,7 @@ def collect_obs_input_meter_levels(
     경로확정 = False
     선택경로 = None
     마지막_관찰창_시작 = None
+    마지막_관찰창_종료 = None
     for began, ended, sample in observations:
         if not (_valid_time(began) and _valid_time(ended) and began < ended):
             if 경로확정:
@@ -159,9 +169,16 @@ def collect_obs_input_meter_levels(
         # 겹치는 창은 시작 시각이 역행하지 않는 한 허용한다.
         if 경로확정 and began < 마지막_관찰창_시작:
             break
+        # 이전 정상 관찰창이 끝난 뒤 관측되지 않은 시간이 있으면
+        # 그 공백 사이에 OBS 입력/장면/트랙이 바뀌지 않았음을 보장할 수 없다.
+        # 겹침과 경계가 맞닿은 창은 유지하지만 실제 관찰 공백을 건너뛰지 않는다.
+        if 경로확정 and began > 마지막_관찰창_종료:
+            break
         # 무음 창도 순서 검증에 포함하여 뒤의 창이 거슬러 올라가지 못하게 한다.
         if 경로확정:
             마지막_관찰창_시작 = began
+            # 겹친 창이 더 일찍 끝나더라도 이미 확인한 관찰 범위는 보존.
+            마지막_관찰창_종료 = max(마지막_관찰창_종료, ended)
         audio = getattr(sample, "audio", None)
         if audio is None:
             if 경로확정:
@@ -188,4 +205,5 @@ def collect_obs_input_meter_levels(
                     if not 경로확정:
                         선택경로, 경로확정 = 현재경로, True
                         마지막_관찰창_시작 = began
+                        마지막_관찰창_종료 = ended
     return tuple(merged)
