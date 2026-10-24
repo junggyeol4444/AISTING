@@ -10,6 +10,7 @@ import math
 import re
 import secrets
 import threading
+from collections import deque
 from dataclasses import dataclass, field
 from typing import Callable
 
@@ -90,6 +91,23 @@ class TwitchReadOnlySession:
         self._socket = None
         self._mutex = threading.Lock()
         self._running = False
+        # 같은 수신 세션에서 이미 파싱한 IRC 채팅은 AI FIFO 수용까지
+        # 유지한다. 상위 조정기가 재연결 수신기와 이 deque를 공유한다.
+        self._pending_chats = deque()
+
+    def _flush_pending_chats(self) -> int:
+        """JOIN 승인 뒤 이미 파싱한 채팅만 순서대로 전달한다.
+
+        콜백 False/예외 시 선두와 뒤쪽 사건을 보존한다. Stop 이후
+        재전달하지 않으며, 수신 프레임 이전 서버 사건은 복원하지 못한다.
+        """
+        accepted = 0
+        while self._pending_chats and not self._stop.is_set():
+            if self.emit("chat", self._pending_chats[0]) is False:
+                raise TwitchReadError("트위치 채팅이 AI 수신 큐에 수용되지 않았습니다.")
+            self._pending_chats.popleft()
+            accepted += 1
+        return accepted
 
     def stop(self) -> None:
         self._stop.set()
@@ -192,9 +210,8 @@ class TwitchReadOnlySession:
                 return
             self.emit("connecting", self.channel)
             buffer = ""
-            # IRC JOIN 실제 승인 이전에 선행 도착한 PRIVMSG를 잃거나
-            # 승인되지 않은 AI 처리에 넣지 않도록 메모리에서 FIFO 보류.
-            startup_chats = []
+            # IRC JOIN 승인 전 채팅과 재연결 뒤 미수용 채팅 모두
+            # self._pending_chats에서 처리한다. 임의 폐기하지 않는다.
             # IRC의 PING/서버 알림도 실제 통신 활동이다. 무채팅을
             # 장애로 오판하지 않으며 15분간 무프레임이면 재접속한다.
             last_received_at = time.monotonic()
@@ -228,6 +245,20 @@ class TwitchReadOnlySession:
                     *complete_lines, buffer = buffer.split("\r\n")
                 else:
                     complete_lines = ()
+                # 같은 프레임의 중간 콜백이 실패해도 뒤쪽 채팅이
+                # 소실되지 않도록, 전달 시도 전에 프레임 전체를 파싱한다.
+                # 중복 서버 ID는 상위 조정기에서 수용 완료 건만 차단한다.
+                for line in complete_lines:
+                    if self._stop.is_set():
+                        break
+                    if len(line) > 65536:
+                        raise TwitchReadError("트위치 채팅 한 줄 크기 한도 초과")
+                    parsed = parse_irc_chat_line(line, self.channel)
+                    if parsed is not None:
+                        self._pending_chats.append(parsed)
+                        if not ready and len(self._pending_chats) > 4096:
+                            raise TwitchReadError(
+                                "트위치 JOIN 확인 전 임시 채팅 한도 초과 · 누락 위험")
                 server_requested_reconnect = False
                 for line in complete_lines:
                     if self._stop.is_set():
@@ -252,32 +283,13 @@ class TwitchReadOnlySession:
                         if ack.group(1).lower() == self.channel and not ready:
                             ready = True
                             self.emit("ready", self.channel)
-                            for waiting_chat in startup_chats:
-                                if self._stop.is_set():
-                                    break
-                                if self.emit("chat", waiting_chat) is False:
-                                    raise TwitchReadError(
-                                        "트위치 JOIN 전 수신 채팅이 AI 큐에 수용되지 않았습니다."
-                                    )
-                                received += 1
-                            startup_chats.clear()
+                            received += self._flush_pending_chats()
                     elif _WELCOME.match(line) and not ready:
                         self.emit("welcome", self.channel)
-                    else:
-                        chat = parse_irc_chat_line(line, self.channel)
-                        if chat is not None:
-                            if not ready:
-                                if len(startup_chats) >= 4096:
-                                    raise TwitchReadError(
-                                        "트위치 JOIN 확인 전 임시 채팅 한도 초과 · 누락 위험"
-                                    )
-                                startup_chats.append(chat)
-                                continue
-                            if self.emit("chat", chat) is False:
-                                raise TwitchReadError(
-                                    "트위치 채팅이 AI 수신 큐에 수용되지 않았습니다."
-                                )
-                            received += 1
+                # JOIN 확인 뒤에는 현재 프레임의 모든 채팅을 먼저
+                # 보존한 상태에서, 미수용 선두부터 다시 전달한다.
+                if ready and not self._stop.is_set():
+                    received += self._flush_pending_chats()
                 if server_requested_reconnect and not self._stop.is_set():
                     raise TwitchServerReconnect("트위치 서버 RECONNECT 요청 · 재연결 필요")
                 if not self._stop.is_set() and len(buffer) > 65536:
