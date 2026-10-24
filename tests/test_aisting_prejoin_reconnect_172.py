@@ -177,10 +177,10 @@ class 입장전보류검사(unittest.TestCase):
                 }}).encode("utf-8")
 
         # 0005는 서버 채팅 프레임, 0001/0002는 가상 CONNECT/JOIN 승인.
-        first_sock = 가상소켓(["\\x1b\\t000500000000\\x0c먼저온말\\x0c가상\\x0c"])
+        first_sock = 가상소켓(["\x1b\t000500000000\x0c먼저온말\x0c가상\x0c"])
         second_sock = 가상소켓([
-            "\\x1b\\t000100000000\\x0c",
-            "\\x1b\\t000200000000\\x0c",
+            "\x1b\t000100000000\x0c",
+            "\x1b\t000200000000\x0c",
         ])
         sockets = [first_sock, second_sock]
         received = []
