@@ -64,8 +64,13 @@ def parse_chzzk_frame(raw: str, channel: str) -> list[PlatformChat]:
         raise ValueError("치지직 채팅 목록 형식 오류")
     out = []
     for item in body:
-        if not isinstance(item, dict) or not isinstance(item.get("msg"), str):
-            continue
+        # 실제 채팅 명령의 형식 오류를 조용히 건너뛰면 이 프레임의
+        # 서버 채팅 수와 로컬 FIFO 전달 건수가 달라도 알아챌 수 없다.
+        # 전달 전 전체 프레임 파싱을 실패시켜 재연결·운영자 경고로 남긴다.
+        if not isinstance(item, dict):
+            raise ValueError("치지직 채팅 항목 형식 오류 · 프레임 전달 미확정")
+        if not isinstance(item.get("msg"), str):
+            raise ValueError("치지직 채팅 본문 형식 오류 · 프레임 전달 미확정")
         profile = item.get("profile") or {}
         if isinstance(profile, str):
             try:
@@ -99,11 +104,15 @@ def parse_soop_frame(raw: bytes | str, channel: str) -> list[PlatformChat]:
     # Only chat command 0005 is forwarded. Preserve duplicates and order.
     result = []
     for frame in raw.split("\x1b\t")[1:]:
-        if len(frame) < 12 or frame[:4] != "0005":
+        if frame[:4] != "0005":
             continue
+        # SOOP의 0005는 실제 채팅 명령이다. 짧거나 필드가
+        # 잘린 채팅을 무시하고 프레임 처리를 성공으로 표시하지 않는다.
+        if len(frame) < 12:
+            raise ValueError("SOOP 채팅 프레임 길이 오류 · 전달 미확정")
         fields = frame[12:].split("\x0c")
         if len(fields) < 3:
-            continue
+            raise ValueError("SOOP 채팅 필드 형식 오류 · 전달 미확정")
         content, uid = fields[1], fields[2]
         # 0005 means an actual chat message. Never filter messages by
         # viewer-entered words like "1", "-1", "fw=", or whitespace.
@@ -118,19 +127,24 @@ def parse_youtube_page(page: dict, channel: str) -> list[PlatformChat]:
         raise ValueError("유튜브 채팅 응답 형식 오류")
     result = []
     for item in page.get("items", []):
+        # 이미 API에서 수신한 항목이 손상됐다면 페이지를 완료로
+        # 표시하지 않는다. 상위 수신기는 이 페이지를 FIFO에 넣기
+        # 전에 전체 파싱하므로 잘못된 커서 확정을 피할 수 있다.
         if not isinstance(item, dict):
-            continue
-        snippet = item.get("snippet") or {}
-        author = item.get("authorDetails") or {}
-        if not isinstance(snippet, dict) or not isinstance(author, dict):
-            continue
-        # Ignore non-chat control events, do not invent a message body.
+            raise ValueError("유튜브 채팅 페이지 항목 형식 오류 · 페이지 미확정")
+        snippet = item.get("snippet")
+        if not isinstance(snippet, dict):
+            raise ValueError("유튜브 채팅 페이지 내용 형식 오류 · 페이지 미확정")
+        # 기존 비채팅 제어 이벤트는 계속 제외한다.
         if snippet.get("type") not in ("textMessageEvent", "superChatEvent",
                                        "superStickerEvent", "memberMilestoneChatEvent"):
             continue
+        author = item.get("authorDetails") or {}
+        if not isinstance(author, dict):
+            raise ValueError("유튜브 채팅 작성자 형식 오류 · 페이지 미확정")
         text = snippet.get("displayMessage")
         if not isinstance(text, str) or not text:
-            continue
+            raise ValueError("유튜브 채팅 본문 형식 오류 · 페이지 미확정")
         raw_id = item.get("id")
         event_id = (raw_id if isinstance(raw_id, str)
                     and 1 <= len(raw_id) <= 256 else None)
