@@ -3291,3 +3291,10 @@ F) 원본 100단계 roadmap.json status는 completed=9, pending=91이며 **코�
 - **미완료:** 기존 회귀 36실패·31오류, Windows EXE 통합·OBS 실기기 검증, 실제 권리 보유 음성·공식 Cubism 입·OBS 동일 발화, 실제 4플랫폼 수백 명·24시간·재연결 안전성, FIFO/AI/음성/영상/시청자 지연 병목 개선 및 전체 재검증.
 - **진행 중 멈춘 것:** 155절 신규 CI 최종 결과 및 실제 Windows 환경·권리 모델·계정이 필요한 실증. 자동 CI가 시작되더라도 통과 전에는 미검증.
 - **다음 시작 기준:** GitHub `junggyeol4444/AISTING/main`의 **실제 최신 HEAD를 재조회**하고 155절 신규 CI 결과·실패 로그를 확인한다. 코드 커밋 및 최종 인수인계 커밋은 현재 main에서 조회한다. 원문 1~155절과 모든 부록·캐릭터·SQLite·설정·기획을 그대로 보존하며 개발 우선→전체 회귀/Windows 실검사→오류 수정·전체 재검증. 새 브랜치/force push/롤백/다른 프로젝트·Drive·예약 변경, 무단 계정/OAuth·송출·녹화·채팅 발신·모델 훈련·권리 없는 보이스·토큰 96·keep_alive 10m 변경 금지.
+
+### 155절 실제 반영 HEAD 및 신규 CI 추적 추가 (원문 뒤 누적)
+- 첫 155절 코드·테스트·원문 인수인계 실제 반영 HEAD: `6e6ae5186d49b4db308872f260e851d3c09f2656` (시작 `13657a091983b36a6ae570dd289ab034e6f5aea0` 대비 `ahead_by=1, behind_by=0`; 기존 원본 보존).
+- 해당 HEAD [전체 회귀 40067021099](https://github.com/junggyeol4444/AISTING/actions/runs/40067021099): 최초 조회 `queued`. 7건 신규 계약검사 실행/통과 및 전체 회귀 성공 여부 **미확정**.
+- 해당 HEAD [Windows EXE 40067021073](https://github.com/junggyeol4444/AISTING/actions/runs/40067021073): 최초 조회 `queued`. Windows EXE·GUI·실 OBS 성공 **미확정**.
+- 해당 HEAD [실제 Ollama 500건 40067021030](https://github.com/junggyeol4444/AISTING/actions/runs/40067021030): 최초 조회 `queued`. 1~3초 성능 달성 **미확정**.
+- 다음 실행은 인수인계 보강 커밋 이후의 **실제 main HEAD**를 반드시 다시 조회하고 위 CI 세 개의 최종 상태/실패 로그부터 확인한다. 인수인계 커밋 SHA를 문서 내용에 자기 참조로 고정할 수 없으므로 현재 브랜치 HEAD 조회를 기준으로 한다.
