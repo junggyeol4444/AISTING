@@ -138,6 +138,48 @@ def _current_prompt_pcm_meter_bounds(
     return (since, until) if since < until else None
 
 
+
+def _current_prompt_renderer_rms_levels(
+    rendered_rms, wav_received_at, pcm_meter_bounds,
+) -> tuple[tuple[float, float], ...]:
+    """이번 질문의 공식 WAV·입 구간 안에 있는 실제 렌더러 RMS만 반환.
+
+    과거 발화나 질문 종료 뒤의 렌더러 표본을 동일 WAV의 상관 근거로
+    합치지 않는다. OBS 비교와 같은 기존 질문·입 관측 시간 범위를 쓴다.
+    실제 출력·송출·시청자 수신을 확인하는 함수는 아니다.
+    """
+    if (type(wav_received_at) not in (int, float)
+            or not math.isfinite(wav_received_at) or wav_received_at <= 0
+            or not isinstance(pcm_meter_bounds, tuple)
+            or len(pcm_meter_bounds) != 2
+            or not isinstance(rendered_rms, tuple)
+            or len(rendered_rms) > 100):
+        return ()
+    since, until = pcm_meter_bounds
+    if (type(since) not in (int, float)
+            or type(until) not in (int, float)
+            or not math.isfinite(since) or not math.isfinite(until)
+            or not wav_received_at <= since < until <= wav_received_at + 12.0):
+        return ()
+    converted: list[tuple[float, float]] = []
+    previous_offset: float | None = None
+    for sample in rendered_rms:
+        if not isinstance(sample, tuple) or len(sample) != 2:
+            return ()
+        offset, level = sample
+        if (type(offset) not in (int, float)
+                or type(level) not in (int, float)
+                or not math.isfinite(offset) or not math.isfinite(level)
+                or not 0 <= offset <= 12.0 or not 0 <= level <= 10.0
+                or (previous_offset is not None and offset <= previous_offset)):
+            return ()
+        previous_offset = float(offset)
+        when = float(wav_received_at) + float(offset)
+        if since <= when <= until:
+            converted.append((when, float(level)))
+    return tuple(converted)
+
+
 def _observed_mouth_obs_overlap(observation, lip, prompt_started_at, prompt_finished_at) -> bool:
     """한 질문의 공식 입 움직임과 실제 OBS 미터가 겹쳤을 때만 참.
 
@@ -737,12 +779,8 @@ def verify_official_chat_live2d_obs(
     # 동일 공식 WebSocket WAV와 같은 공식 렌더러가 실제 반환한 RMS.
     # 이 비교에서도 PCM WAV 본문이나 WebView2 PCM 원본을 저장하지 않는다.
     rendered_rms = getattr(lip, "official_pcm_live2d_rms_samples", ())
-    renderer_levels = (
-        tuple((pcm_first_received_at + offset, level)
-              for offset, level in rendered_rms)
-        if pcm_first_received_at is not None
-        else ()
-    )
+    renderer_levels = _current_prompt_renderer_rms_levels(
+        rendered_rms, pcm_first_received_at, pcm_meter_bounds)
     render_score, render_used, render_lag = compare_official_pcm_obs_levels(
         pcm_first_envelope, pcm_first_received_at, renderer_levels)
     # 연속 관찰 구간 중 실제 근접 표본이 가장 많은 후보를 선택한다.
