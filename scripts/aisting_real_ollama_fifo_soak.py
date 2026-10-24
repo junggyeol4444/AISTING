@@ -43,7 +43,7 @@ class _TimestampedInputQueue(queue.Queue):
     AI 대기시간을 왜곡하지 않는다. 실제 방송 큐는 변경하지 않는다.
     """
 
-    def put_chat(self, item, arrivals, *, timeout: float) -> None:
+    def put_chat(self, item, arrivals, *, timeout: float) -> tuple[float, bool]:
         if type(timeout) not in (int, float) or not math.isfinite(timeout) or timeout < 0:
             raise ValueError("검증 큐 대기 시간이 올바르지 않습니다.")
         # 실제 수신기의 reader_received_at과 동일하게 큐 진입을
@@ -51,6 +51,7 @@ class _TimestampedInputQueue(queue.Queue):
         # 응답 지연에 포함하고, 미접수 사건의 시각은 남기지 않는다.
         entered_at = time.monotonic()
         with self.not_full:
+            blocked = self._qsize() >= self.maxsize
             deadline = entered_at + timeout
             while self._qsize() >= self.maxsize:
                 remaining = deadline - time.monotonic()
@@ -61,6 +62,9 @@ class _TimestampedInputQueue(queue.Queue):
             self._put(item)
             self.unfinished_tasks += 1
             self.not_empty.notify()
+            # 실제 큐 접수까지 걸린 시간과 포화 대기 여부를 함께 반환한다.
+            # 기존 채팅/도착 시각 큐의 원자적 순서는 변경하지 않는다.
+            return max(0.0, time.monotonic() - entered_at), blocked
 
 
 def make_message(index: int, *, duplicate: bool = False):
@@ -158,6 +162,21 @@ def run_real_load(*, model: str, messages: int, duration_seconds: float,
     platform_over_three = Counter()
     platform_model_failures = Counter()
     max_observed_fifo_backlog = 0
+    # 최초 네트워크 수신 이후 AI FIFO 접수까지의 백프레셔를
+    # 모델 추론·AI 대기시간과 분리해 실제 1~3초 병목을 확인한다.
+    # 최근 1024건만 표본으로 보유하며 총 건수·누적 대기시간은 보존한다.
+    queue_accept_wait_samples = deque(maxlen=1024)
+    queue_accept_blocked_samples = deque(maxlen=1024)
+    queue_accept_blocked_events = 0
+    queue_accept_blocked_total_seconds = 0.0
+    queue_accept_blocked_max_seconds = 0.0
+    platform_accept_blocked_counts = Counter()
+    platform_accept_blocked_samples = {
+        code: deque(maxlen=1024) for code in platform_names}
+
+    def wait_p95(samples):
+        values = sorted(samples)
+        return values[math.ceil(len(values) * .95) - 1] if values else None
 
     def platform_p95(code):
         samples = sorted(platform_latency_samples[code])
@@ -202,6 +221,16 @@ def run_real_load(*, model: str, messages: int, duration_seconds: float,
                 "p95_wait_seconds": snap.wait_p95,
                 "p95_ai_seconds": snap.inference_p95,
                 "max_observed_fifo_backlog": max_observed_fifo_backlog,
+                "queue_accept_wait_p95_seconds": wait_p95(queue_accept_wait_samples),
+                "queue_accept_wait_sample_count": len(queue_accept_wait_samples),
+                "queue_accept_blocked_events": queue_accept_blocked_events,
+                "queue_accept_blocked_p95_seconds": wait_p95(queue_accept_blocked_samples),
+                "queue_accept_blocked_total_seconds": queue_accept_blocked_total_seconds,
+                "queue_accept_blocked_max_seconds": queue_accept_blocked_max_seconds,
+                "platform_queue_accept_blocked_counts": dict(platform_accept_blocked_counts),
+                "platform_queue_accept_blocked_p95_seconds": {
+                    code: wait_p95(platform_accept_blocked_samples[code])
+                    for code in platform_names},
                 "platform_completed_timing_counts": dict(platform_timing_counts),
                 "platform_over_three_seconds": dict(platform_over_three),
                 "platform_model_failures": dict(platform_model_failures),
@@ -336,7 +365,7 @@ def run_real_load(*, model: str, messages: int, duration_seconds: float,
                 try:
                     # Timestamp must precede the worker dequeue. Existing
                     # GUI uses a second FIFO with exactly this ordering.
-                    input_fifo.put_chat(
+                    queue_wait_seconds, queue_was_blocked = input_fifo.put_chat(
                         event, arrivals,
                         timeout=min(3, max(.01, deadline-time.monotonic())))
                 except queue.Full:
@@ -344,7 +373,17 @@ def run_real_load(*, model: str, messages: int, duration_seconds: float,
                     break
                 metrics.accept()
                 emitted += 1
-                platform_counts[getattr(event, "platform", "twitch")] += 1
+                platform = getattr(event, "platform", "twitch")
+                platform_counts[platform] += 1
+                queue_accept_wait_samples.append(queue_wait_seconds)
+                if queue_was_blocked:
+                    queue_accept_blocked_events += 1
+                    queue_accept_blocked_samples.append(queue_wait_seconds)
+                    queue_accept_blocked_total_seconds += queue_wait_seconds
+                    queue_accept_blocked_max_seconds = max(
+                        queue_accept_blocked_max_seconds, queue_wait_seconds)
+                    platform_accept_blocked_counts[platform] += 1
+                    platform_accept_blocked_samples[platform].append(queue_wait_seconds)
                 max_observed_fifo_backlog = max(
                     max_observed_fifo_backlog, input_fifo.qsize())
                 drain_observed()
@@ -427,6 +466,17 @@ def run_real_load(*, model: str, messages: int, duration_seconds: float,
         "local_ai_p95_seconds": snap.inference_p95,
         "local_p95_sample_count": snap.sampled,
         "max_observed_fifo_backlog": max_observed_fifo_backlog,
+        "queue_accept_wait_p95_seconds": wait_p95(queue_accept_wait_samples),
+        "queue_accept_wait_sample_count": len(queue_accept_wait_samples),
+        "queue_accept_blocked_events": queue_accept_blocked_events,
+        "queue_accept_blocked_p95_seconds": wait_p95(queue_accept_blocked_samples),
+        "queue_accept_blocked_sample_count": len(queue_accept_blocked_samples),
+        "queue_accept_blocked_total_seconds": queue_accept_blocked_total_seconds,
+        "queue_accept_blocked_max_seconds": queue_accept_blocked_max_seconds,
+        "platform_queue_accept_blocked_counts": dict(platform_accept_blocked_counts),
+        "platform_queue_accept_blocked_p95_seconds": {
+            code: wait_p95(platform_accept_blocked_samples[code])
+            for code in platform_names},
         "platform_completed_timing_counts": dict(platform_timing_counts),
         "platform_over_three_seconds": dict(platform_over_three),
         "platform_model_failures": dict(platform_model_failures),
