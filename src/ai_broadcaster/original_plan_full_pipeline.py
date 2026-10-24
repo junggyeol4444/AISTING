@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 
 from .original_plan_frontend import send_to_native_live2d_session_with_observation
 from .original_plan_obs import OfficialObsWebsocket
-from .obs_consecutive_audio import collect_obs_audio_times, collect_obs_input_meter_levels
+from .obs_consecutive_audio import collect_obs_audio_evidence, collect_obs_audio_times, collect_obs_input_meter_levels
 from .official_ws_wav_obs_match import compare_official_pcm_obs_levels
 from .official_media_stage_timing import (
     OfficialMediaStageTiming, measure_official_media_stages,
@@ -40,6 +40,22 @@ def _coherent_mouth_obs_window(began, ended, sample, mouth_first, mouth_last) ->
         and began <= first < last <= ended
         and first < mouth_last and last > mouth_first
     )
+
+
+def _matched_obs_audio_candidates(observation, mouth_first, mouth_last):
+    """실제 채택된 OBS 오디오 창만 같은 발화의 영상·음성 후보로 연결.
+
+    경로 단절·무관측 공백·손상 뒤의 창은 시각상 겹치더라도 제외한다.
+    실제 시청자 송출과 음성·영상 동일성의 최종 증명은 아니다.
+    """
+    times, count, indices = collect_obs_audio_evidence(
+        observation, mouth_first, mouth_last)
+    matching = [
+        observation[index][2] for index in indices
+        if _coherent_mouth_obs_window(
+            *observation[index], mouth_first, mouth_last)
+    ]
+    return times, count, matching
 
 
 def _observed_mouth_obs_overlap(observation, lip, prompt_started_at, prompt_finished_at) -> bool:
@@ -607,18 +623,11 @@ def verify_official_chat_live2d_obs(
                           # 가로질러도 동일 발화로 잘못 인정하지 않는다.
                           and prompt_started_at <= mouth_first
                           and mouth_last <= prompt_finished_at)
-    # Match the actual NON-SILENT OBS meter timestamps, not a broad
-    # 3-second video+audio inspection window that could include unrelated
-    # noise before/after the Cubism mouth change.
-    def same_utterance_window(began, ended, sample):
-        return bool(valid_mouth_window and _coherent_mouth_obs_window(
-            began, ended, sample, mouth_first, mouth_last))
-
-    matching = [sample for began, ended, sample in observation
-                if same_utterance_window(began, ended, sample)]
-    # 연속 OBS 관찰창 경계에 걸친 실제 오디오 표본 누적
-    combined_audio_times, matched_window_count = collect_obs_audio_times(
-        observation, mouth_first, mouth_last) if valid_mouth_window else ((), 0)
+    # 실제 오디오 표본을 채택한 OBS 창만 동일 발화 후보로 선택.
+    # 경로 단절·무관측 공백 뒤의 다른 창은 후보에 합치지 않는다.
+    combined_audio_times, matched_window_count, matching = (
+        _matched_obs_audio_candidates(observation, mouth_first, mouth_last)
+        if valid_mouth_window else ((), 0, []))
     # 동일 공식 WebSocket이 실제 전달한 PCM16 WAV 첫 음량 정보와
     # OBS의 같은 승인 검사 중 실제 선택 입력 미터 콜백을 결합한다.
     pcm_first_received_at = getattr(

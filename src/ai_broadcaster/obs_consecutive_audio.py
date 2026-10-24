@@ -34,14 +34,14 @@ def _관찰창_경로(sample: object) -> tuple[bool, object | None]:
         return False, None
     return True, before
 
-def collect_obs_audio_times(
+def collect_obs_audio_evidence(
     observations: Iterable[tuple[float, float, object]],
     mouth_first: float,
     mouth_last: float,
     *,
     near_seconds: float = 0.2,
-) -> tuple[tuple[float, ...], int]:
-    """실제 RMS/입 움직임 구간 근접 표본만 순서대로 결합한다.
+) -> tuple[tuple[float, ...], int, tuple[int, ...]]:
+    """실측 표본과 채택한 OBS 관찰창 순번을 함께 반환한다.
 
     간격을 임의 보간하지 않는다. 선택된 경로와 OBS 장면 후보가
     확인되지 않은 구간, 시간 역행/중복 표본은 포함하지 않는다.
@@ -50,14 +50,15 @@ def collect_obs_audio_times(
             and mouth_first < mouth_last
             and type(near_seconds) in (int, float)
             and math.isfinite(near_seconds) and 0 <= near_seconds <= 1.0):
-        return (), 0
+        return (), 0, ()
     collected: list[float] = []
     window_count = 0
+    accepted_window_indices: list[int] = []
     경로확정 = False
     선택경로 = None
     마지막_관찰창_시작 = None
     마지막_관찰창_종료 = None
-    for began, ended, sample in observations:
+    for window_index, (began, ended, sample) in enumerate(observations):
         if not (_valid_time(began) and _valid_time(ended) and began < ended):
             # 한 번 근거를 채택한 뒤의 불명확한 창을 건너뛰고
             # 뒤의 표본을 같은 발화로 이어 붙이지 않는다.
@@ -127,11 +128,26 @@ def collect_obs_audio_times(
             continue
         collected.extend(near)
         window_count += 1
+        accepted_window_indices.append(window_index)
         if not 경로확정:
             선택경로, 경로확정 = 현재경로, True
             마지막_관찰창_시작 = began
             마지막_관찰창_종료 = ended
-    return tuple(collected), window_count
+    return tuple(collected), window_count, tuple(accepted_window_indices)
+
+
+def collect_obs_audio_times(
+    observations: Iterable[tuple[float, float, object]],
+    mouth_first: float,
+    mouth_last: float,
+    *,
+    near_seconds: float = 0.2,
+) -> tuple[tuple[float, ...], int]:
+    """기존 호출자의 오디오 시각·채택 창 개수 반환 계약 유지."""
+    times, count, _ = collect_obs_audio_evidence(
+        observations, mouth_first, mouth_last, near_seconds=near_seconds)
+    return times, count
+
 
 def collect_obs_input_meter_levels(
     observations: Iterable[tuple[float, float, object]],
