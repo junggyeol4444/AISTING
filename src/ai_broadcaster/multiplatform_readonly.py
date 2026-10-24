@@ -147,6 +147,32 @@ class ReadOnlySession:
         self.channel, self.emit = channel.strip(), emit
         self._stop = threading.Event()
         self._socket = None
+        # 읽기 전용 WebSocket 프레임 안의 채팅은 로컬 FIFO가
+        # 수용하기 전까지 메모리에만 보류한다. 재연결 시 상위
+        # 세션에서 같은 deque를 연결해 미수용 프레임을 이어받는다.
+        # 본문을 디스크·로그에 저장하거나 외부로 발신하지 않는다.
+        self._pending_chats: deque[PlatformChat] = deque()
+        self._chat_room_ready = False
+
+    def _queue_received_chats(self, chats) -> None:
+        """프레임 전체를 수용 확정 전에 보류해 뒤쪽 채팅도 보존한다."""
+        self._pending_chats.extend(chats)
+
+    def _flush_pending_chats(self) -> None:
+        """실제 방 입장 뒤에만 이전 프레임부터 FIFO 순서로 전달한다.
+
+        콜백이 False를 반환하거나 예외가 나면 미수용 선두 사건과
+        나머지 사건을 pop하지 않는다. 다음 수신기에서 재시도한다.
+        """
+        if not self._chat_room_ready:
+            return
+        while self._pending_chats and not self._stop.is_set():
+            item = self._pending_chats[0]
+            if self.emit("chat", item) is False:
+                raise RuntimeError(
+                    "채팅 이벤트가 로컬 AI 큐에 수용되지 않아 보류 후 재연결합니다."
+                )
+            self._pending_chats.popleft()
 
     def stop(self):
         self._stop.set()
@@ -169,6 +195,10 @@ class ReadOnlySession:
                 return
             if on_tick is not None:
                 on_tick()
+            # 새 연결이 JOIN 승인을 받은 뒤 과거 프레임의 미수용
+            # 채팅부터 전달한다. 그 전에 새 소켓 데이터를 읽어
+            # 채팅 순서를 뒤집지 않는다.
+            self._flush_pending_chats()
             try:
                 sock.settimeout(1)
                 data = sock.recv()
@@ -192,16 +222,11 @@ class ReadOnlySession:
             # 내용 없는 채팅방에서도 실제 WebSocket 프레임 수신은
             # 연결 활동의 증거다. 메타데이터만 전달하고 본문 저장 없음.
             self.emit("transport_activity", None)
-            for item in parser(data, self.channel):
-                if self._stop.is_set():
-                    return
-                # 콜백이 명시적으로 False를 반환하면 AI 큐가 해당 채팅을
-                # 수용하지 않은 것이다. 성공이나 무누락으로 위장하지 않고
-                # 현재 소켓 읽기 작업을 종료해 플랫폼별 장애로 표시한다.
-                if self.emit("chat", item) is False:
-                    raise RuntimeError(
-                        "채팅 이벤트가 로컬 AI 큐에 수용되지 않아 읽기를 중단했습니다."
-                    )
+            # 전체 프레임을 먼저 보관한다. 콜백의 한 채팅이 실패해도
+            # 동일 프레임 뒤쪽의 아직 미전달 채팅을 조용히 잃지 않는다.
+            # 명시적 Stop에서는 후속 전달을 중지한다.
+            self._queue_received_chats(parser(data, self.channel))
+            self._flush_pending_chats()
 
 
 class ChzzkReadOnlySession(ReadOnlySession):
@@ -273,14 +298,12 @@ class ChzzkReadOnlySession(ReadOnlySession):
                 return
             if not accepted:
                 raise RuntimeError("치지직 실제 채팅 연결 승인 응답이 없습니다.")
+            self._chat_room_ready = True
             self.emit("ready", self.channel)
-            for item in startup_chats:
-                if self._stop.is_set():
-                    return
-                if self.emit("chat", item) is False:
-                    raise RuntimeError(
-                        "치지직 채팅 이벤트가 AI 큐에 수용되지 않았습니다."
-                    )
+            # JOIN 전 받은 프레임도 현재 접속이 승인된 후에만
+            # 이전 미수용 프레임 뒤에 넣고, 실패 시 함께 보존한다.
+            self._queue_received_chats(startup_chats)
+            self._flush_pending_chats()
             def parser(data, channel):
                 frame = json.loads(data)
                 if frame.get("cmd") == 0:
@@ -358,6 +381,7 @@ class SoopReadOnlySession(ReadOnlySession):
                             join_sent = True
                         elif code == "0002" and join_sent and not entered:
                             entered = True
+                            self._chat_room_ready = True
                             next_ping = time.monotonic() + 60
                             self.emit("ready", self.channel)
                         elif code == "0007":
