@@ -3492,3 +3492,8 @@ F) 원본 100단계 roadmap.json status는 completed=9, pending=91이며 **코�
 - **진행 중 멈춘 것:** 160/161회차 실모델 500건 재측정과 신규 계약검사 CI 결과, Windows EXE 실제 검증, 실계정·권리 있는 음성/모델이 필요한 실증.
 - **다음 회차:** 최신 main HEAD와 `40090053681`, `40090053684`, `40090038323`, `40086142064` 및 새 최종 HEAD의 모든 CI를 다시 조회한다. 기존 원문 1~161절과 과거 부록을 삭제·요약 대체하지 않고, 실제 코드 누적 개발 우선 → 전체 회귀/Windows 네이티브 검사 → 오류 수정 후 전체 재검증 순서를 지킨다. 기존 매시간 예약은 유지하고 중복 생성하지 않는다. 다른 프로젝트·Drive·브랜치·예약·사용자 계정·SQLite·캐릭터·설정은 변경하지 않았다.
 
+### 161절 후속 — 실제 반영 HEAD·신규 CI 추적 (2026-10-24)
+- 161절 코드·검사·전체 인수인계 최초 누적 HEAD: `bf19ce09ca4c50d7fe12785b10bf793fb8d043af`. 160절 시작 HEAD `eb1adae620f349c5a5b6ca34c7b38f426e965860` 대비 `ahead_by=3`, `behind_by=0` 확인. 기존 문서 두 개는 앞부분 원문 전체가 정확히 보존되었고 추가 30줄씩만 생겼다. 과거 부록·원본 소스·캐릭터·SQLite·설정은 삭제하거나 바꾸지 않았다.
+- 최초 문서 HEAD 전체 회귀 [40090134919](https://github.com/junggyeol4444/AISTING/actions/runs/40090134919): 최초 조회 `queued`; Windows EXE [40090134918](https://github.com/junggyeol4444/AISTING/actions/runs/40090134918): `queued`. 코드/검사 HEAD 전체 회귀 [40090053681](https://github.com/junggyeol4444/AISTING/actions/runs/40090053681): `in_progress`; Windows [40090053684](https://github.com/junggyeol4444/AISTING/actions/runs/40090053684): `cancelled`. 실제 모델 500건 [40090038323](https://github.com/junggyeol4444/AISTING/actions/runs/40090038323): `queued`. 실제 160절 모델 500건 [40086142064](https://github.com/junggyeol4444/AISTING/actions/runs/40086142064): `in_progress`.
+- 본 후속 기록 자체가 별도 fast-forward 문서 커밋을 만들므로 다음 회차는 이 SHA를 최종 HEAD로 가정하지 않고 **main 실제 HEAD와 최종 HEAD의 CI를 재조회**한다. 검사 성공·실모델 1~3초 달성·Windows GUI/OBS 실증은 미확인. 기존 매시간 예약 변경/중복 생성 없음.
+
