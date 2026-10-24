@@ -23,3 +23,11 @@
 - **미완료:** 기존 36 실패·31 오류, Windows EXE 완료 확인, 음성·입·OBS 실측, 4플랫폼 무누락, 24시간 안정성, FIFO 장기 대기 병목, Windows 통합검증·수정 후 전체 재검증.
 - **진행 중 멈춘 것:** 신규 코드 CI 완료/실패 로그 확인, Windows/실모델/실계정 환경이 필요한 검증.
 - **다음 회차:** 반드시 현재 main HEAD와 158회차 신규 CI를 재조회한다. 1~158절 원문과 과거 부록, `docs/ORIGINAL_PLAN.txt`, `docs/ROADMAP_100.md`, `config/roadmap.json`, 기존 main 소스를 기준으로 개발 우선 진행하고 전체 검증·수정을 이어간다. 기존 예약 유지, 새 예약 생성 금지.
+
+
+### 158절 후속 — 코드 반영 HEAD와 신규 CI 추적 (2026-10-24)
+- 158절 코드·계약검사·전체 원문 누적 커밋 `27cb4587b21962757cd0a37cd12c48035f747f9c`: 기존 157회차 HEAD `7d7f029c2a33f703797e87ec8bb09ddee382e746`에서 1커밋 fast-forward, behind 0 확인.
+- 전체 회귀 [40078374011](https://github.com/junggyeol4444/AISTING/actions/runs/40078374011): 조회 시 대기(queued). **신규 10건 통과 및 전체 회귀 성공을 주장하지 않는다.**
+- Windows EXE [40078374033](https://github.com/junggyeol4444/AISTING/actions/runs/40078374033): 조회 시 대기(queued). 실제 Windows 10/11 PC의 GUI·OBS·공식 Cubism·권리 있는 GPT-SoVITS 실사용 검증과 별도다.
+- 실제 Ollama 500건 [40078374144](https://github.com/junggyeol4444/AISTING/actions/runs/40078374144): 조회 시 진행 중(in_progress). 실제 500명 시청자 실증이 아니며 최종 1~3초 성공으로 보고하지 않는다.
+- 다음 회차는 이 문서만 믿고 이전 SHA를 재사용하지 말고 `main`의 최신 HEAD를 먼저 확인하고 위 세 CI의 실제 최종 결과·실패 로그부터 확인한다. 본 후속 문서 커밋도 새 HEAD 및 CI를 생성하므로 다음 회차에서 반드시 재조회한다.
