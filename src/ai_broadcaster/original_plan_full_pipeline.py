@@ -65,6 +65,30 @@ def _matched_obs_audio_candidates(observation, mouth_first, mouth_last):
     return times, count, matching
 
 
+
+def _confirmed_mouth_obs_audio_provenance(
+    observation, lip, prompt_started_at, prompt_finished_at,
+) -> bool:
+    """OBS 관찰 조기 종료 전에 실제 동일 발화 오디오 표본 출처를 확인한다.
+
+    OBS의 단순 양성 미터 구간은 이전 발화나 변경된 경로일 수 있다.
+    시간·경로·선택 신호 시각이 확인된 표본 두 개 이상만 조기 종료 근거다.
+    최종 시청자 출력이나 공식 WAV 파형 일치의 증명은 아니다.
+    """
+    if lip is None:
+        return False
+    mouth_first = getattr(lip, "first_audio_mouth_monotonic", None)
+    mouth_last = getattr(lip, "last_audio_mouth_monotonic", None)
+    values = (prompt_started_at, prompt_finished_at, mouth_first, mouth_last)
+    if (not all(type(v) in (int, float) and math.isfinite(v) for v in values)
+            or not (0 < prompt_started_at <= mouth_first < mouth_last
+                    <= prompt_finished_at)):
+        return False
+    times, count, matching, _ = _matched_obs_audio_evidence(
+        observation, mouth_first, mouth_last)
+    return bool(count > 0 and len(times) >= 2 and matching)
+
+
 def _observed_mouth_obs_overlap(observation, lip, prompt_started_at, prompt_finished_at) -> bool:
     """한 질문의 공식 입 움직임과 실제 OBS 미터가 겹쳤을 때만 참.
 
@@ -432,7 +456,10 @@ def verify_official_chat_live2d_obs(
             return False
         if send_failure is not None:
             return True
-        if _observed_mouth_obs_overlap(
+        # OBS 미터가 양성이기만 해서는 다른 발화·입력의 소리를
+        # 같은 발화로 오인하고 관찰을 너무 일찍 종료할 수 있다.
+        # 실제 채택된 OBS 선택 오디오 표본과 경로가 확인될 때만 종료.
+        if _confirmed_mouth_obs_audio_provenance(
                 observation, lip, prompt_started_at, prompt_finished_at):
             return True
         # 운영자가 기존에 지정한 관찰 시간만 사용하며 새 지연 옵션은 없다.
