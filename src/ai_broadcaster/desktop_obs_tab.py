@@ -170,6 +170,7 @@ class ObsStatusTab(ttk.Frame):
             return
         try:
             from .approved_live_scheduler import ApprovedLiveScheduler
+            from .approved_live_slot_journal import ApprovedLiveSlotJournal
             from .offline_broadcast_schedule import load_schedule, schedule_path
             from .offline_broadcast_duration import BroadcastDurationRules
 
@@ -235,6 +236,9 @@ class ObsStatusTab(ttk.Frame):
                 "음성에 사용 권리가 있고 실제 방송 자동 제어와 선택한 "
                 "공지 전송을 승인합니까?", parent=self):
                 return
+            # 별도 로컬 SQLite 영구 장부: 강제 종료 후 같은 슬롯의
+            # 중복 OBS 시작을 예방한다. 사용자 승인 전에는 생성하지 않는다.
+            journal=ApprovedLiveSlotJournal()
             runner=ApprovedLiveScheduler(
                 draft, rules, obs_password=password, obs_port=port,
                 scene=scene, closing_text=closing,
@@ -248,7 +252,8 @@ class ObsStatusTab(ttk.Frame):
                     (lambda token=approval_token: self._request_live_chat_start(token))
                     if auto_chat else None),
                 end_live_chat=(self._request_live_chat_stop if auto_chat else None),
-                chat_approved=auto_chat)
+                chat_approved=auto_chat,
+                occurrence_claim=journal.claim)
             if auto_chat:
                 self._chat_tab._scheduled_chat_permission = approval_token
                 self._scheduled_chat_token = approval_token
@@ -265,7 +270,8 @@ class ObsStatusTab(ttk.Frame):
         self._live_arm_button.configure(state="disabled")
         self._live_disarm_button.configure(state="normal")
         self._live_schedule_status.set(
-            "사용자 승인 완료 · 등록된 KST 일정 대기 · 송출 아직 시작하지 않음")
+            "사용자 승인 완료 · KST 일정 대기 · SQLite 중복시작 방지 적용 · "
+            "송출 아직 시작하지 않음")
         self._approved_scheduler_thread.start()
 
     def _run_approved_schedule(self, runner) -> None:
