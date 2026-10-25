@@ -781,6 +781,20 @@ class LocalChatTab(ttk.Frame):
                 "로컬 발화 장부를 열 수 없습니다 (" + type(exc).__name__ + ")",
                 parent=self)
             return
+        # 실제 방송 중 음성 원문은 Windows 사용자 DPAPI 암호문으로만
+        # 영구 대기하며, 이전 방송 세션은 새 방송에서 자동 발화하지 않음.
+        if sys.platform == "win32":
+            try:
+                from .approved_live_voice_outbox import ApprovedLiveVoiceOutbox
+                pending, uncertain = ApprovedLiveVoiceOutbox().unresolved_totals()
+                message += (
+                    f"\n\n영구 음성 대기 {pending}건 · "
+                    f"이전 시도/불명 가능 {uncertain}건"
+                    "\n다른 방송으로 자동 재전송하지 않습니다.")
+            except Exception as exc:
+                message += (
+                    "\n\n영구 음성 대기함 조회 불가 (" +
+                    type(exc).__name__ + ")")
         messagebox.showinfo(
             "한국어 GPT-SoVITS·Cubism·OBS 발화 기록",
             message + "\n\n※ 재생요청완료는 실제 시청자 수신 증명이 아닙니다. "
@@ -1147,8 +1161,12 @@ class LocalChatTab(ttk.Frame):
                     + type(exc).__name__ + ")", parent=self)
                 return
             self._approved_live_voice_output = live_voice
+            previous_pending, previous_unknown = live_voice.previous_unresolved
             self._approved_live_voice_status.set(
-                "실제 한국어 방송 발화 FIFO 시작 · 기존 OBS 방송 중에만 음성 전송")
+                "실제 한국어 방송 발화 FIFO 시작 · 기존 OBS 방송 중에만 음성 전송"
+                + (f" · 이전 방송 보류 {previous_pending}건/"
+                   f"불명 시도 {previous_unknown}건은 새 방송 자동 발화 금지"
+                   if previous_pending or previous_unknown else ""))
         else:
             self._approved_live_voice_output = None
         self._twitch_parallel_ai = parallel_ai
@@ -2326,8 +2344,9 @@ class LocalChatTab(ttk.Frame):
                                     + ") · 원문 AI 텍스트 유지")
                             else:
                                 self._approved_live_voice_status.set(
-                                    f"실제 한국어 발화 FIFO {count}번 등록 "
-                                    f"· 대기 {live_voice.pending}건")
+                                    f"실제 한국어 발화 FIFO {count}번 영구 접수 "
+                                    f"· 같은 방송 대기 {live_voice.pending}건 "
+                                    "· 다른 방송 자동 재발화 금지")
                         else:
                             selected = self._tts_voices.get(self._voice_name.get())
                             if should_auto_read(self._auto_voice.get(), selected, result.reply):
