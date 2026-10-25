@@ -77,6 +77,11 @@ def start_pcm_driver_script(envelope: tuple[float, ...], token: str) -> str:
         "if(state.expiry!==null)clearTimeout(state.expiry);};"
         "state.cleanup=cleanup;"
         "state.wrapper=function(){"
+        "let upstream=0;"
+        "try{upstream=Number(original.call(wav));}catch(_error){"
+        "state.reason='원본음성상태오류';cleanup();return 0;}"
+        "if(Number.isFinite(upstream)&&upstream>0.02){"
+        "state.reason='공식음성중첩';cleanup();return upstream;}"
         "const elapsed=performance.now()-started;"
         "if(manager.getModel(0)!==model){state.reason='모델변경';cleanup();return 0;}"
         "if(elapsed>=levels.length*50){state.reason='끝';cleanup();return 0;}"
@@ -116,6 +121,7 @@ def finish_pcm_driver_script(token: str) -> str:
     nonce = json.dumps(token)
     return (
         "(() => {"
+        "if(location.origin!=='http://127.0.0.1:12393')return {ok:false};"
         "const state=window.__aistingAuthorizedPcm;"
         "if(!state||state.token!==" + nonce + ")return {ok:false};"
         "state.cleanup();"
