@@ -887,6 +887,7 @@ class LocalChatTab(ttk.Frame):
             durable = DurablePublicChatQueue()
             durable.acquire_exclusive_consumer()
             recovery_snapshot = durable.recovery_snapshot(session._channels)
+            prior_ai_incidents = durable.recent_processing_incidents(limit=25)
         except Exception as exc:
             if "durable" in locals():
                 durable.release_exclusive_consumer()
@@ -896,6 +897,12 @@ class LocalChatTab(ttk.Frame):
                 "원본은 변경하지 않았습니다 (" + type(exc).__name__ + ")",
                 parent=self)
             return
+        if prior_ai_incidents:
+            self._append(
+                "[과거 실제 AI 처리 실패] 마지막 25건 중 "
+                + str(len(prior_ai_incidents))
+                + "개 사건 기록 있음 · 해당 채팅의 성공/송출 미확인 · "
+                "원본 SQLite 보존 상태 확인 필요")
         self._twitch_chat_spool = durable
         self._twitch_session = session
         self._platform_health_updated_at = 0.0
@@ -1248,6 +1255,20 @@ class LocalChatTab(ttk.Frame):
                 if isinstance(chat, PendingChat):
                     pending_sequence, chat = chat.sequence, chat.message
 
+                def record_durable_failure(incident_kind):
+                    if pending_sequence is None or session is None:
+                        return
+                    spool = getattr(self, "_twitch_chat_spool", None)
+                    if spool is None:
+                        report("twitch_ai_incident_error", "SQLite 장부 연결 없음")
+                        return
+                    try:
+                        spool.record_processing_incident(
+                            pending_sequence, incident_kind)
+                    except Exception:
+                        report("twitch_ai_incident_error",
+                               "SQLite AI 처리 사건 영구 기록 실패")
+
                 def confirm_durable_after_success():
                     # 실제 AI 처리 완료/공식 전달이 확인된 경우에만 항목 삭제.
                     # 재시작 직전에는 중복 처리 가능성이 남음을 숨기지 않는다.
@@ -1383,6 +1404,7 @@ class LocalChatTab(ttk.Frame):
                     if (attempt_failed and pending_sequence is not None
                             and isinstance(session, MultiPlatformReadOnlySession)
                             and not session._stop.is_set()):
+                        record_durable_failure("공식AI전달불명")
                         report("twitch_ai_fifo_paused", (
                             getattr(chat, "platform", "twitch"), pending_sequence,
                             "공식 AI 발화 상태 불확실 · 원본 SQLite 보존"))
@@ -1471,6 +1493,7 @@ class LocalChatTab(ttk.Frame):
                     # 실패한 이전 sequence를 SQLite에 남긴 채 다음
                     # 채팅으로 넘어가면 FIFO 원순서가 훼손된다. 모델
                     # 복구 한도 초과/기타 확정 실패 시 안전하게 수신 종료.
+                    record_durable_failure("로컬AI확정실패")
                     report("twitch_ai_fifo_paused", (
                         getattr(chat, "platform", "twitch"), pending_sequence,
                         "로컬 모델 연속 실패 · 원본 SQLite 보존"))
@@ -2007,6 +2030,10 @@ class LocalChatTab(ttk.Frame):
                         self._twitch_status.set(
                             "공식 Live2D 성공 " + str(self._twitch_replied) +
                             "건 · 미검증/오류 " + str(self._twitch_ai_failures) + "건")
+                    elif kind == "twitch_ai_incident_error":
+                        self._append(
+                            "[SQLite 사건 장부 오류] " + str(payload) +
+                            " · 미처리 채팅은 삭제하지 않음")
                     elif kind == "twitch_ai_retry":
                         platform, attempt, wait_seconds = payload
                         # 실패한 한 채팅만 같은 FIFO 자리에서 재시도.
