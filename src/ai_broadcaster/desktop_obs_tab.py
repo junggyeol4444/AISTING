@@ -112,10 +112,49 @@ class ObsStatusTab(ttk.Frame):
             actions, text="자동 실행 중지 / 내가 시작한 방송 종료",
             command=self._disarm_live_schedule, state="disabled")
         self._live_disarm_button.pack(side="left", padx=(8,0))
+        ttk.Button(self, text="지난 방송 시작·종료 시도 기록 조회 (읽기 전용)",
+                   command=self._show_live_history).pack(anchor="w", pady=(3,2))
         ttk.Label(self, textvariable=self._live_schedule_status, wraplength=560).pack(
             anchor="w", pady=(2,5))
         self._scenes.bind("<<ListboxSelect>>",lambda _event:self._update_inspect_button())
         self.after(150,self._poll)
+
+    def _show_live_history(self) -> None:
+        """로컬 시작/종료 이력만 표시. OBS 연결·송출·파일 삭제 없음."""
+        from .approved_live_slot_journal import ApprovedLiveSlotJournal
+        from .offline_settings import data_dir
+        path = data_dir() / "approved_live_slots.sqlite3"
+        if not path.exists():
+            messagebox.showinfo(
+                "방송 시작 기록", "아직 로컬 방송 시작 시도 기록이 없습니다.",
+                parent=self)
+            return
+        try:
+            journal = ApprovedLiveSlotJournal(path)
+            claims = journal.recent_claims(limit=20)
+            events = journal.recent_events(limit=100)
+            latest = {}
+            for occurrence, state, logged_at in events:
+                if occurrence not in latest:
+                    latest[occurrence] = (state, logged_at)
+            if not claims:
+                body = "아직 로컬 방송 시작 시도 기록이 없습니다."
+            else:
+                body = "\\n".join(
+                    occurrence + " · " + (
+                        latest[occurrence][0]
+                        if occurrence in latest
+                        else "종료 여부 미확인 · OBS 실제 상태 확인 필요"
+                    ) for occurrence, _ in claims)
+            messagebox.showinfo(
+                "방송 시작·종료 기록 (최근 20회)",
+                body + "\\n\\n이 기록은 실제 플랫폼 송출/시청자 수신 증명이 아닙니다.",
+                parent=self)
+        except Exception:
+            messagebox.showwarning(
+                "방송 기록 조회 실패",
+                "로컬 방송 시작 장부를 확인할 수 없습니다. OBS 실제 상태를 직접 확인하세요.",
+                parent=self)
 
     def _approved_live_preflight(self) -> bool:
         """실제 방송 제어 직전 원래 사용자가 저장한 캐릭터·한국어 음성 점검."""
@@ -253,7 +292,8 @@ class ObsStatusTab(ttk.Frame):
                     if auto_chat else None),
                 end_live_chat=(self._request_live_chat_stop if auto_chat else None),
                 chat_approved=auto_chat,
-                occurrence_claim=journal.claim)
+                occurrence_claim=journal.claim,
+                occurrence_event=journal.record_event)
             if auto_chat:
                 self._chat_tab._scheduled_chat_permission = approval_token
                 self._scheduled_chat_token = approval_token
@@ -420,7 +460,8 @@ class ObsStatusTab(ttk.Frame):
                 snap.state + " · " + snap.detail +
                 " · 공지 시작 " + snap.start_notice +
                 " / 종료 " + snap.end_notice +
-                " · 채팅/AI " + snap.live_chat)
+                " · 채팅/AI " + snap.live_chat +
+                (" · " + snap.journal_error if snap.journal_error else ""))
         self.after(150,self._poll)
 
     def destroy(self) -> None:
