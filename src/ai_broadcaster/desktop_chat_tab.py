@@ -1398,11 +1398,17 @@ class LocalChatTab(ttk.Frame):
             peak_gui = self._live_peak_gui_backlog
         active_waits = sum(stats["진행중"] for stats in wait_snapshots.values())
         interrupted_waits = sum(stats["중단"] for stats in wait_snapshots.values())
+        durable = getattr(self, "_twitch_chat_spool", None)
+        durable_count = durable.pending_count() if durable is not None else None
         self._platform_health_status.set(
             "플랫폼별 실제 수신 진단 (무누락·24시간·시청자 지연 미검증):\n"
             + "\n".join(lines)
             + f"\nGUI 이벤트 대기 {self._results.qsize()}건"
             + f" / 로컬 AI FIFO 대기 {pending}건"
+            + (" / 디스크 미처리 채팅 "
+               + (str(durable_count) + "건" if durable_count is not None
+                  else "저장소 미연결"))
+            + " · 재시작 복구 가능/장애 경계 중복 처리 가능"
             + f" / 수신 큐 대기 완료 {blocked_count}건"
             + f" / 누적 {blocked_total:.2f}초 / 최장 {blocked_max:.2f}초"
             + f" / 최대 AI 적체 {peak_ai}건 / GUI 적체 {peak_gui}건"
