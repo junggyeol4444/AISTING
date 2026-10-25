@@ -5024,3 +5024,13 @@ F) 원본 100단계 roadmap.json status는 completed=9, pending=91이며 **코�
 - 상세 부록: `docs/hourly-handoff-appendices/AISTING_20261026_205_OPERATOR_APPROVED_VOICE_RECOVERY_DEVELOPMENT.md`.
 - **테스트 NOT_RUN, CI 미조회·미확인, Windows EXE GUI NOT_RUN, 실제 OBS·공식 Cubism·GPT-SoVITS·4플랫폼 실계정·24시간·수백 명·최종 시청자 1~3초 NOT_RUN.** 전체 AISTING 미완료. 이전 CI 39720448468의 500/500 3초 초과·FIFO p95 2973.875초/전체 p95 2979.984초 실패, Windows CI 39722213656 취소 기록 보존.
 - 다음 매시간 실행: 최신 `main` HEAD 재조회, 기존 원본/전체 인수인계/205절 부록 확인, 4플랫폼 채팅 내구 처리·로컬 AI 1~3초 목표 병목·실제 한국어 WAV/Cubism/OBS 장시간 동기화·24시간 복구·자율 게임/콘텐츠 등 **남은 원래 제품 기능 실제 개발부터** 계속. **개발 전체 완료 → 통합 검증 → 일괄 수정 → 재검증**. 소스 먼저 기존 main에 커밋한 뒤 전체 인수인계 원문 끝에만 append.
+
+
+## 206절 (2026-10-26 08시대) — 실제 음성 구간 선행 합성 개발 누적 인계
+- **원래 AISTING 예약이 연결된 바로 이 대화에서 계속 개발·한국어 보고 우선.** 사용자가 직접 지시하지 않으면 새 대화 이전 요구 금지. 플랫폼 게시 위치 보장은 주장하지 않음. 기존 매시간 예약 중복 생성·해제/다른 예약·프로젝트·Drive·브랜치 조작 금지.
+- 시작 `main` HEAD `769aa2a7bd8e56a7d917f918cd3f00d004cfd879`. 실제 제품 소스 커밋 `26b3f69f9e32bbc8a4915db11edd0eff70f77fe8` (신규 `src/ai_broadcaster/approved_live_voice_prefetch.py`), `a03478e8182e2cee88b192c1e80ccc9a0b23bb5c` (기존 `src/ai_broadcaster/approved_live_voice_output.py` 수정), 기존 `main` 정상 비강제 반영.
+- 구현: 이미 승인된 권리 있는 한국어 GPT-SoVITS 모델의 다음 음성 구간 **최대 한 건**을 현재 동일 WAV 공식 Cubism 입·OBS 음성 발화 중 백그라운드 선행 합성. 원래 순서의 WAV만 재생, 중지·합성 오류·OBS Lease 불명 시 후속 발화 차단, 8초 초과 재분절/기존 발화 인과·영구 SQLite FIFO·승인 정책 보존. 실시간 최종 1~3초 성능 달성 주장 금지.
+- 부록: `docs/hourly-handoff-appendices/AISTING_20261026_206_APPROVED_VOICE_SEGMENT_PREFETCH_DEVELOPMENT.md`.
+- **테스트 NOT_RUN / 통합 회귀 NOT_RUN / CI 미조회·미확인 / Windows 10·11 네이티브 EXE·GUI NOT_RUN / 실제 GPT-SoVITS·공식 Live2D·OBS·4플랫폼 실계정·24시간·수백 명·시청자 1~3초 NOT_RUN**. 전체 개발 미완료.
+- 이전 실모델 CI `39720448468` 500/500 3초 초과·FIFO p95 2973.875초·전체 p95 2979.984초 실패, Windows CI `39722213656` 취소 그대로 유지.
+- 다음 매시간 실행: 최신 `main` HEAD 다시 조회, 기존 원본·전체 인수인계·206절 부록 확인, 4플랫폼 SQLite 내구 채팅/재연결, 로컬 AI 추론 병목, 한국어 WAV·Cubism·OBS 장시간 동기화/24시간 복구, 자율 게임·콘텐츠 등 **남은 원래 핵심 제품 개발부터** 계속. 전체 기능 개발 완료 후에만 전체 Windows/실계정/OBS/Live2D 통합 검증 → 오류 일괄 수정 → 전체 재검증. 기존 캐릭터·모델·설정·96토큰·keep_alive 10m·사용자 SQLite/기획·인수인계 원문 절대 훼손 금지.
