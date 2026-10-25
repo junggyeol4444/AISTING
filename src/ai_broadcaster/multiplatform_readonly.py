@@ -28,6 +28,9 @@ class PlatformChat:
     # 서버가 제공한 실제 이벤트 ID만 재연결 중복 수신 확인에 사용한다.
     # 동일한 본문·작성자의 별개 채팅은 절대 합치지 않는다.
     event_id: str | None = field(default=None, compare=False, repr=False)
+    # 파서가 실제로 채팅을 식별한 로컬 monotonic 시각.
+    # 서버 게시 시각·시청자 응답 완료 시각과는 구별한다.
+    parsed_at_monotonic: float | None = field(default=None, compare=False, repr=False)
 
 
 def _json_get(url: str, *, timeout: float = 10, headers: dict | None = None) -> dict:
@@ -90,7 +93,8 @@ def parse_chzzk_frame(raw: str, channel: str) -> list[PlatformChat]:
                          or any(ord(ch) < 33 or ord(ch) > 126 for ch in event_id))):
                 event_id = None
             out.append(PlatformChat(
-                channel, str(nick), item["msg"], "chzzk", event_id))
+                channel, str(nick), item["msg"], "chzzk", event_id,
+                time.monotonic()))
     return out
 
 
@@ -118,7 +122,8 @@ def parse_soop_frame(raw: bytes | str, channel: str) -> list[PlatformChat]:
         # viewer-entered words like "1", "-1", "fw=", or whitespace.
         nick = (fields[6] if len(fields) > 6 and fields[6] not in ("0", "-1", "")
                 else fields[3] if len(fields) > 3 and fields[3] else uid or "anonymous")
-        result.append(PlatformChat(channel, nick, content, "soop"))
+        result.append(PlatformChat(
+            channel, nick, content, "soop", None, time.monotonic()))
     return result
 
 
@@ -150,7 +155,7 @@ def parse_youtube_page(page: dict, channel: str) -> list[PlatformChat]:
                     and 1 <= len(raw_id) <= 256 else None)
         result.append(PlatformChat(
             channel, str(author.get("displayName") or "YouTube 시청자"),
-            text, "youtube", event_id))
+            text, "youtube", event_id, time.monotonic()))
     return result
 
 
