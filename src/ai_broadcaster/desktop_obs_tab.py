@@ -1,6 +1,7 @@
 """Windows EXE OBS 5.x status probe tab. READ-ONLY, explicit button only."""
 from __future__ import annotations
 
+import os
 import queue
 import threading
 import tkinter as tk
@@ -20,6 +21,13 @@ class ObsStatusTab(ttk.Frame):
         self._capture=tk.StringVar(value="장면을 선택해 소스 상태를 확인할 수 있어요.")
         self._events: queue.SimpleQueue[tuple[str,object]]=queue.SimpleQueue()
         self._working=False
+        self._approved_scheduler = None
+        self._approved_scheduler_thread = None
+        self._live_schedule_status = tk.StringVar(
+            value="자동 방송 시작/종료: 비활성 · 사용자 명시 승인 전에는 실제 OBS 제어 없음")
+        self._schedule_minimum = tk.StringVar()
+        self._schedule_maximum = tk.StringVar()
+        self._schedule_closing = tk.StringVar()
         ttk.Label(self,text="OBS Studio 로컬 연결 확인 (읽기 전용)",
                   font=("Malgun Gothic",12,"bold")).pack(anchor="w",pady=(4,10))
         ttk.Label(self,text="OBS가 PC에 이미 설치돼 있어야 해요. 연결 확인만 하며 방송을 시작하거나 설정을 변경하지 않습니다.",
@@ -51,10 +59,144 @@ class ObsStatusTab(ttk.Frame):
         ttk.Label(self,textvariable=self._capture,wraplength=560).pack(anchor="w",pady=(7,2))
         ttk.Label(self,text="소스가 있다고 해서 실제 아바타 창이 캡처 중이라는 뜻은 아닙니다.",
                   wraplength=560).pack(anchor="w",pady=(2,3))
-        ttk.Label(self,text="실제 송출·장면 전환·OBS 설치·외부 API 연결은 하지 않습니다.",
-                  wraplength=560).pack(anchor="w",pady=(2,0))
+        ttk.Label(self,text="위 연결 확인은 읽기 전용입니다. 아래 예약 제어는 사용자 별도 승인과 "
+                           "기존 OBS 송출 허가 환경 설정이 모두 있어야만 작동합니다.",
+                  wraplength=560).pack(anchor="w",pady=(2,8))
+        ttk.Separator(self, orient="horizontal").pack(fill="x", pady=(5,7))
+        ttk.Label(self, text="주간 일정에 따라 실제 OBS 시작·종료 (승인형, 기본 꺼짐)",
+                  font=("Malgun Gothic", 11, "bold")).pack(anchor="w")
+        ttk.Label(self, text="이 프로그램이 열린 동안만 작동하며, 기존에 저장한 KST 주간 일정과 "
+                             "실제 공식 Live2D/한국어 GPT-SoVITS를 사용합니다. "
+                             "이 기능은 방송 시작/종료만 연결합니다. 공지 자동 게시·게임 조작·시청자 "
+                             "수신 1~3초 보장은 별도 개발/검증 대상입니다.",
+                  wraplength=560).pack(anchor="w", pady=(3,7))
+        live_row=ttk.Frame(self)
+        live_row.pack(fill="x")
+        ttk.Label(live_row, text="최소(분)").pack(side="left")
+        ttk.Entry(live_row, textvariable=self._schedule_minimum, width=7).pack(side="left", padx=4)
+        ttk.Label(live_row, text="최대(분)").pack(side="left", padx=(10,0))
+        ttk.Entry(live_row, textvariable=self._schedule_maximum, width=7).pack(side="left", padx=4)
+        ttk.Label(self, text="종료 인사(운영자 지정):").pack(anchor="w", pady=(6,0))
+        ttk.Entry(self, textvariable=self._schedule_closing, width=64).pack(
+            fill="x", pady=(1,4))
+        actions=ttk.Frame(self)
+        actions.pack(fill="x", pady=(5,4))
+        self._live_arm_button=ttk.Button(
+            actions, text="저장된 일정으로 실제 방송 자동 실행 승인",
+            command=self._arm_live_schedule)
+        self._live_arm_button.pack(side="left")
+        self._live_disarm_button=ttk.Button(
+            actions, text="자동 실행 중지 / 내가 시작한 방송 종료",
+            command=self._disarm_live_schedule, state="disabled")
+        self._live_disarm_button.pack(side="left", padx=(8,0))
+        ttk.Label(self, textvariable=self._live_schedule_status, wraplength=560).pack(
+            anchor="w", pady=(2,5))
         self._scenes.bind("<<ListboxSelect>>",lambda _event:self._update_inspect_button())
         self.after(150,self._poll)
+
+    def _approved_live_preflight(self) -> bool:
+        """실제 방송 제어 직전 원래 사용자가 저장한 캐릭터·한국어 음성 점검."""
+        from .offline_settings import settings_file, load_settings, active_persona
+        from .official_tts_readiness import require_saved_korean_gpt_sovits
+        from .original_plan_studio import inspect_saved_persona_alignment
+        from . import original_plan_frontend as frontend
+
+        model = frontend._native_viewer
+        project = frontend._native_viewer_project
+        settings_path = settings_file()
+        if (model is None or model.poll() is not None
+                or frontend._native_bridge is None or project is None
+                or not settings_path.is_file() or settings_path.is_symlink()
+                or settings_path.parent.is_symlink()):
+            return False
+        saved = active_persona(load_settings(settings_path))
+        if not inspect_saved_persona_alignment(project, saved):
+            return False
+        require_saved_korean_gpt_sovits(project)
+        return True
+
+    def _approved_live_closing(self, words: str) -> bool:
+        """기존 공식 Live2D 음성 경로에 운영자가 입력한 종료 문구만 전달."""
+        from .original_plan_frontend import (
+            send_to_native_live2d_session_with_observation)
+        observation = send_to_native_live2d_session_with_observation(
+            words, operator_approved=True, duration=8)
+        return observation.verified_signal is True
+
+    def _arm_live_schedule(self) -> None:
+        """실제 방송은 사용자가 선택해 명시적으로 승인한 다음에만 허용."""
+        if self._approved_scheduler_thread is not None and self._approved_scheduler_thread.is_alive():
+            messagebox.showwarning("방송 예약 중", "기존 방송 예약 작업을 먼저 종료하세요.", parent=self)
+            return
+        try:
+            from .approved_live_scheduler import ApprovedLiveScheduler
+            from .offline_broadcast_schedule import load_schedule, schedule_path
+            from .offline_broadcast_duration import BroadcastDurationRules
+
+            if os.environ.get("AISTING_APPROVED_OBS_OUTGOING") != "YES":
+                raise PermissionError("기존 AISTING_APPROVED_OBS_OUTGOING=YES 허가가 없습니다.")
+            draft=load_schedule(schedule_path())
+            if draft is None or not draft.slots:
+                raise ValueError("운영자가 기존 주간 일정 탭에서 KST 일정을 저장해야 합니다.")
+            selected=self._scenes.curselection()
+            if not selected:
+                raise ValueError("OBS 연결 상태를 확인한 뒤 실제 방송 장면을 선택해야 합니다.")
+            scene=self._scenes.get(selected[0])
+            minimum=int(self._schedule_minimum.get().strip())
+            maximum=int(self._schedule_maximum.get().strip())
+            rules=BroadcastDurationRules(minimum, maximum)
+            port=int(self._port.get())
+            password=self._password.get()
+            closing=self._schedule_closing.get().strip()
+            if not self._approved_live_preflight():
+                raise ValueError("기존 공식 Live2D·저장된 캐릭터·한국어 음성이 준비되지 않았습니다.")
+            if not messagebox.askyesno(
+                "실제 자동 방송 시작·종료 최종 승인",
+                "이 컴퓨터의 실제 OBS가 주간 일정에 따라 외부 플랫폼에 방송을 시작합니다. "
+                "내가 직접 입력한 최소/최대 방송 시간과 종료 인사를 사용합니다. "
+                "프로그램을 종료하거나 중지 버튼을 누르면 이 기능이 시작한 방송만 "
+                "종료하도록 시도합니다. OBS 서버 오류 시 직접 확인이 필요합니다. "
+                "공지 자동 게시·외부 채팅 발신은 하지 않습니다. "
+                "저장된 캐릭터와 한국어 음성에 사용 권리가 있고 이 실제 방송 "
+                "자동 제어를 승인합니까?", parent=self):
+                return
+            runner=ApprovedLiveScheduler(
+                draft, rules, obs_password=password, obs_port=port,
+                scene=scene, closing_text=closing,
+                operator_approved=True, rights_confirmed=True,
+                media_preflight=self._approved_live_preflight,
+                deliver_closing=self._approved_live_closing)
+        except Exception as exc:
+            # OBS credential, endpoint, exception body must not enter the GUI.
+            self._live_schedule_status.set(
+                "실제 방송 예약을 시작하지 않았습니다 · " + type(exc).__name__ +
+                " · 일정/모델/입력/기존 송출 허가 확인 필요")
+            return
+        self._approved_scheduler=runner
+        self._approved_scheduler_thread=threading.Thread(
+            target=self._run_approved_schedule, args=(runner,),
+            name="AISTING-운영자승인-실제OBS일정", daemon=False)
+        self._live_arm_button.configure(state="disabled")
+        self._live_disarm_button.configure(state="normal")
+        self._live_schedule_status.set(
+            "사용자 승인 완료 · 등록된 KST 일정 대기 · 송출 아직 시작하지 않음")
+        self._approved_scheduler_thread.start()
+
+    def _run_approved_schedule(self, runner) -> None:
+        try:
+            runner.run()
+        except Exception as exc:
+            # Do not include remote OBS URLs or credentials in error messages.
+            self._events.put(("live_schedule_error", type(exc).__name__))
+        finally:
+            self._events.put(("live_schedule_done", None))
+
+    def _disarm_live_schedule(self) -> None:
+        runner=self._approved_scheduler
+        if runner is not None:
+            runner.request_stop()
+            self._live_schedule_status.set(
+                "실제 방송 종료 요청 · 해당 예약이 시작한 방송만 종료 확인 중")
 
     def _update_inspect_button(self) -> None:
         self._inspect_button.configure(
@@ -98,6 +240,19 @@ class ObsStatusTab(ttk.Frame):
         try:
             while True:
                 kind,item=self._events.get_nowait()
+                if kind=="live_schedule_error":
+                    self._live_schedule_status.set(
+                        "실제 예약 작업 오류 (" + str(item) +
+                        ") · OBS가 계속 송출 중인지 직접 확인이 필요합니다.")
+                    continue
+                if kind=="live_schedule_done":
+                    self._live_arm_button.configure(state="normal")
+                    self._live_disarm_button.configure(state="disabled")
+                    if self._approved_scheduler is not None:
+                        snap=self._approved_scheduler.snapshot()
+                        self._live_schedule_status.set(snap.state + " · " + snap.detail)
+                    self._approved_scheduler=None
+                    continue
                 self._working=False
                 self._button.configure(state="normal")
                 if kind=="error":
@@ -128,4 +283,15 @@ class ObsStatusTab(ttk.Frame):
                 self._update_inspect_button()
         except queue.Empty:
             pass
+        if self._approved_scheduler is not None:
+            snap=self._approved_scheduler.snapshot()
+            self._live_schedule_status.set(snap.state + " · " + snap.detail)
         self.after(150,self._poll)
+
+    def destroy(self) -> None:
+        # 사용자 GUI가 종료되면 이후의 방송 예약 시작을 확실히 차단.
+        # daemon=False 작업자가 자신이 실제 시작한 OBS 송출만 종료 시도한다.
+        if self._approved_scheduler is not None:
+            self._approved_scheduler.request_stop()
+        self._password.set("")
+        super().destroy()
