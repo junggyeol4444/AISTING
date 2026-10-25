@@ -17,7 +17,10 @@ _APPLICATION_ID = 0x41534A31  # ASJ1: 독립 소유권
 _TABLE = "approved_live_slot_attempts"
 _EVENTS = "approved_live_slot_events"
 _PRE_NOTICES = "approved_live_pre_notices"
-_EVENT_STATES = frozenset(("송출시작확인", "송출시작실패", "송출종료확인", "송출종료실패"))
+_EVENT_STATES = frozenset((
+    "송출시작확인", "송출시작실패", "송출종료확인", "송출종료실패",
+    "OBS재연결감지", "OBS혼잡지속", "OBS프레임정체", "OBS전송프레임누락",
+))
 
 
 class ApprovedLiveSlotJournal:
