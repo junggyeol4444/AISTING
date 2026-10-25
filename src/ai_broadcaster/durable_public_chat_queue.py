@@ -51,8 +51,11 @@ class DurablePublicChatQueue:
             existing = db.execute(
                 "SELECT name FROM sqlite_master WHERE type='table' "
                 "AND name NOT LIKE 'sqlite_%'").fetchall()
+            tables = {row[0] for row in existing}
             if existing and (appid != _APPLICATION_ID
-                             or {row[0] for row in existing} != {"pending_public_chat"}):
+                             or "pending_public_chat" not in tables
+                             or not tables.issubset({
+                                 "pending_public_chat", "confirmed_server_events"})):
                 raise ValueError("AISTING 미처리 채팅 DB가 아닌 파일을 변경하지 않습니다.")
             if existed_before and not existing:
                 raise ValueError("기존 빈 SQLite 파일의 소유권을 확인할 수 없습니다.")
@@ -71,8 +74,24 @@ class DurablePublicChatQueue:
             if actual != ("sequence", "platform", "channel", "sender",
                           "message", "event_id", "created_at"):
                 raise ValueError("AISTING 미처리 채팅 DB 구조가 일치하지 않습니다.")
+            # 기존 pending 데이터/열은 변경하지 않는 추가 기록 장부.
+            # 실제 완료 ACK와 서버 ID 기록을 같은 SQLite 트랜잭션으로
+            # 커밋하여 정상 재연결 시 처리 완료된 동일 이벤트를 다시 AI에
+            # 전달하지 않는다. ID 없는 별도 채팅은 절대 병합하지 않는다.
+            db.execute(
+                "CREATE TABLE IF NOT EXISTS confirmed_server_events("
+                "platform TEXT NOT NULL, channel TEXT NOT NULL,"
+                "event_id TEXT NOT NULL,"
+                "confirmed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+                "PRIMARY KEY(platform,channel,event_id))")
+            completed_columns = tuple(row[1] for row in db.execute(
+                "PRAGMA table_info(confirmed_server_events)").fetchall())
+            if completed_columns != (
+                    "platform", "channel", "event_id", "confirmed_at"):
+                raise ValueError(
+                    "기존 채팅 완료 ID 기록 장부 구조가 일치하지 않습니다.")
             # 동일 본문/사용자의 별개 채팅은 보존. 플랫폼이 실제 발급한
-            # 이벤트 ID가 같은 미확인 재전송에 한해서만 중복 작업을 막는다.
+            # 이벤트 ID의 보류 중/처리 완료 재전송만 중복 작업으로 막는다.
             db.execute(
                 "CREATE UNIQUE INDEX IF NOT EXISTS "
                 "idx_aisting_pending_chat_server_event "
@@ -164,42 +183,66 @@ class DurablePublicChatQueue:
         return platform, channel, sender, message, (event_id or None)
 
     def append(self, chat) -> int | None:
-        """커밋 뒤 ID 반환. 이미 보류 중인 실제 서버 ID 재전송이면 None.
+        """서버 ID가 이미 완료되거나 보류 중일 때만 중복 등록을 차단.
 
-        본문 같은 별개 채팅 또는 서버 ID 없는 메시지는 절대 합치지 않는다.
+        실제 수신 이벤트를 로컬 SQLite에 먼저 커밋하고 sequence를
+        반환한다. 본문·닉네임만 같은 별개의 메시지는 각각 저장한다.
         """
         fields = self._fields(chat)
-        with self._lock, self._connection() as db:
-            if fields[-1] is not None:
-                old = db.execute(
-                    "SELECT sequence FROM pending_public_chat "
-                    "WHERE platform=? AND channel=? AND event_id=?",
-                    (fields[0], fields[1], fields[-1])).fetchone()
-                if old is not None:
-                    return None
-            number = db.execute("SELECT COUNT(*) FROM pending_public_chat").fetchone()[0]
-            if number >= _MAX_RECORDS:
-                raise RuntimeError("미처리 채팅 보호 한도에 도달했습니다. 조용히 폐기하지 않습니다.")
-            cursor = db.execute(
-                "INSERT OR IGNORE INTO pending_public_chat "
-                "(platform, channel, sender, message, event_id) VALUES(?,?,?,?,?)", fields)
-            # 외부 동시 인스턴스가 같은 실제 서버 ID를 막 넣은 경우.
-            if cursor.rowcount == 1:
+        with self._lock:
+            inserted = None
+            with self._connection() as db:
+                if fields[-1] is not None:
+                    completed = db.execute(
+                        "SELECT 1 FROM confirmed_server_events "
+                        "WHERE platform=? AND channel=? AND event_id=?",
+                        (fields[0], fields[1], fields[-1])).fetchone()
+                    if completed is not None:
+                        return None
+                    old = db.execute(
+                        "SELECT sequence FROM pending_public_chat "
+                        "WHERE platform=? AND channel=? AND event_id=?",
+                        (fields[0], fields[1], fields[-1])).fetchone()
+                    if old is not None:
+                        return None
+                number = db.execute(
+                    "SELECT COUNT(*) FROM pending_public_chat").fetchone()[0]
+                if number >= _MAX_RECORDS:
+                    raise RuntimeError(
+                        "미처리 채팅 보호 한도에 도달했습니다. 조용히 폐기하지 않습니다.")
+                cursor = db.execute(
+                    "INSERT OR IGNORE INTO pending_public_chat "
+                    "(platform,channel,sender,message,event_id) VALUES(?,?,?,?,?)",
+                    fields)
+                if cursor.rowcount == 1:
+                    inserted = int(cursor.lastrowid)
+            # COMMIT에 실패하면 메모리 카운터도 성공으로 올리지 않는다.
+            if inserted is not None:
                 self._pending += 1
-                return int(cursor.lastrowid)
-            return None
+            return inserted
 
     def confirm(self, sequence: int) -> bool:
-        """실제 AI 처리 결과가 끝났거나 공식 텍스트 전달이 확인된 것만 제거."""
+        """실제 AI/공식 전달 완료 시 서버 ID+삭제를 하나의 트랜잭션으로 확정."""
         if type(sequence) is not int or sequence < 1:
             raise ValueError("미처리 채팅 식별자가 올바르지 않습니다.")
-        with self._lock, self._connection() as db:
-            removed = db.execute(
-                "DELETE FROM pending_public_chat WHERE sequence=?", (sequence,)
-            ).rowcount == 1
+        with self._lock:
+            removed = False
+            with self._connection() as db:
+                row = db.execute(
+                    "SELECT platform,channel,event_id FROM pending_public_chat "
+                    "WHERE sequence=?", (sequence,)).fetchone()
+                if row is not None:
+                    if row[2] is not None:
+                        db.execute(
+                            "INSERT OR IGNORE INTO confirmed_server_events "
+                            "(platform,channel,event_id) VALUES(?,?,?)", row)
+                    removed = db.execute(
+                        "DELETE FROM pending_public_chat WHERE sequence=?",
+                        (sequence,)).rowcount == 1
             if removed:
                 self._pending = max(0, self._pending - 1)
             return removed
+
 
     def load_for(self, channels: dict[str, str], *, limit: int = 4096
                  ) -> list[PendingChat]:
