@@ -28,6 +28,10 @@ class ObsStatusTab(ttk.Frame):
         self._schedule_minimum = tk.StringVar()
         self._schedule_maximum = tk.StringVar()
         self._schedule_closing = tk.StringVar()
+        self._discord_notice_approved = tk.BooleanVar(value=False)
+        self._discord_webhook = tk.StringVar()
+        self._discord_start_text = tk.StringVar()
+        self._discord_end_text = tk.StringVar()
         ttk.Label(self,text="OBS Studio 로컬 연결 확인 (읽기 전용)",
                   font=("Malgun Gothic",12,"bold")).pack(anchor="w",pady=(4,10))
         ttk.Label(self,text="OBS가 PC에 이미 설치돼 있어야 해요. 연결 확인만 하며 방송을 시작하거나 설정을 변경하지 않습니다.",
@@ -79,6 +83,18 @@ class ObsStatusTab(ttk.Frame):
         ttk.Label(self, text="종료 인사(운영자 지정):").pack(anchor="w", pady=(6,0))
         ttk.Entry(self, textvariable=self._schedule_closing, width=64).pack(
             fill="x", pady=(1,4))
+        ttk.Checkbutton(
+            self, text="디스코드 시작·종료 공지도 자동 게시 승인 (기본 해제)",
+            variable=self._discord_notice_approved).pack(anchor="w", pady=(5,0))
+        ttk.Label(
+            self, text="승인 시에만 사용할 공식 Discord 웹훅 (파일에 저장하지 않음)"
+        ).pack(anchor="w")
+        ttk.Entry(self, textvariable=self._discord_webhook,
+                  show="*", width=64).pack(fill="x")
+        ttk.Label(self, text="방송 시작 공지(직접 지정, 자동 생성 아님)").pack(anchor="w")
+        ttk.Entry(self, textvariable=self._discord_start_text).pack(fill="x")
+        ttk.Label(self, text="방송 종료 공지(직접 지정, 자동 생성 아님)").pack(anchor="w")
+        ttk.Entry(self, textvariable=self._discord_end_text).pack(fill="x", pady=(0,4))
         actions=ttk.Frame(self)
         actions.pack(fill="x", pady=(5,4))
         self._live_arm_button=ttk.Button(
@@ -150,22 +166,47 @@ class ObsStatusTab(ttk.Frame):
             closing=self._schedule_closing.get().strip()
             if not self._approved_live_preflight():
                 raise ValueError("기존 공식 Live2D·저장된 캐릭터·한국어 음성이 준비되지 않았습니다.")
+            discord_enabled = self._discord_notice_approved.get() is True
+            on_started_notice = None
+            on_finished_notice = None
+            if discord_enabled:
+                from .approved_discord_notice import ApprovedDiscordNoticeSender
+                sender=ApprovedDiscordNoticeSender(
+                    self._discord_webhook.get(), operator_approved=True)
+                start_message=self._discord_start_text.get().strip()
+                end_message=self._discord_end_text.get().strip()
+                # 전송할 메시지는 승인 시 그대로 고정. 이후 GUI 입력을
+                # 수정하더라도 승인한 다른 문구로 조용히 바뀌지 않는다.
+                if (not 1 <= len(start_message) <= 2000
+                        or not 1 <= len(end_message) <= 2000):
+                    raise ValueError("시작·종료 공지 문구는 각각 1~2000자여야 합니다.")
+                on_started_notice=lambda _occurrence: sender.send(
+                    start_message, operator_approved=True)
+                on_finished_notice=lambda _occurrence: sender.send(
+                    end_message, operator_approved=True)
             if not messagebox.askyesno(
                 "실제 자동 방송 시작·종료 최종 승인",
                 "이 컴퓨터의 실제 OBS가 주간 일정에 따라 외부 플랫폼에 방송을 시작합니다. "
                 "내가 직접 입력한 최소/최대 방송 시간과 종료 인사를 사용합니다. "
                 "프로그램을 종료하거나 중지 버튼을 누르면 이 기능이 시작한 방송만 "
                 "종료하도록 시도합니다. OBS 서버 오류 시 직접 확인이 필요합니다. "
-                "공지 자동 게시·외부 채팅 발신은 하지 않습니다. "
-                "저장된 캐릭터와 한국어 음성에 사용 권리가 있고 이 실제 방송 "
-                "자동 제어를 승인합니까?", parent=self):
+                + ("내가 지정한 Discord 시작/종료 공지를 실제 외부 채널에 "
+                   "각 1회씩 자동 게시합니다. 실패 시 자동 재게시하지 않습니다. "
+                   if discord_enabled else
+                   "디스코드 자동 공지는 비활성입니다. ")
+                + "채팅 발신은 하지 않습니다. 저장된 캐릭터와 한국어 "
+                "음성에 사용 권리가 있고 실제 방송 자동 제어와 선택한 "
+                "공지 전송을 승인합니까?", parent=self):
                 return
             runner=ApprovedLiveScheduler(
                 draft, rules, obs_password=password, obs_port=port,
                 scene=scene, closing_text=closing,
                 operator_approved=True, rights_confirmed=True,
                 media_preflight=self._approved_live_preflight,
-                deliver_closing=self._approved_live_closing)
+                deliver_closing=self._approved_live_closing,
+                on_started_notice=on_started_notice,
+                on_finished_notice=on_finished_notice,
+                notice_approved=discord_enabled)
         except Exception as exc:
             # OBS credential, endpoint, exception body must not enter the GUI.
             self._live_schedule_status.set(
@@ -250,7 +291,10 @@ class ObsStatusTab(ttk.Frame):
                     self._live_disarm_button.configure(state="disabled")
                     if self._approved_scheduler is not None:
                         snap=self._approved_scheduler.snapshot()
-                        self._live_schedule_status.set(snap.state + " · " + snap.detail)
+                        self._live_schedule_status.set(
+                            snap.state + " · " + snap.detail +
+                            " · 디스코드 시작 공지 " + snap.start_notice +
+                            " / 종료 공지 " + snap.end_notice)
                     self._approved_scheduler=None
                     continue
                 self._working=False
@@ -285,7 +329,10 @@ class ObsStatusTab(ttk.Frame):
             pass
         if self._approved_scheduler is not None:
             snap=self._approved_scheduler.snapshot()
-            self._live_schedule_status.set(snap.state + " · " + snap.detail)
+            self._live_schedule_status.set(
+                snap.state + " · " + snap.detail +
+                " · 공지 시작 " + snap.start_notice +
+                " / 종료 " + snap.end_notice)
         self.after(150,self._poll)
 
     def destroy(self) -> None:
@@ -294,4 +341,7 @@ class ObsStatusTab(ttk.Frame):
         if self._approved_scheduler is not None:
             self._approved_scheduler.request_stop()
         self._password.set("")
+        self._discord_webhook.set("")
+        self._discord_start_text.set("")
+        self._discord_end_text.set("")
         super().destroy()
