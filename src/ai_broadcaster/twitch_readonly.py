@@ -10,6 +10,7 @@ import math
 import re
 import secrets
 import threading
+import time
 from collections import deque
 from dataclasses import dataclass, field
 from typing import Callable
@@ -43,6 +44,8 @@ class TwitchChatLine:
     sender: str
     text: str
     event_id: str | None = field(default=None, compare=False, repr=False)
+    # IRC 채팅 파싱 시각. 실제 서버 게시·시청자 송출 시각은 아님.
+    parsed_at_monotonic: float | None = field(default=None, compare=False, repr=False)
 
 
 def parse_irc_chat_line(line: str, channel: str) -> TwitchChatLine | None:
@@ -68,7 +71,9 @@ def parse_irc_chat_line(line: str, channel: str) -> TwitchChatLine | None:
     )
     if match is None or match.group(2).lower() != channel.lower():
         return None
-    return TwitchChatLine(channel.lower(), match.group(1), match.group(3), event_id)
+    return TwitchChatLine(
+        channel.lower(), match.group(1), match.group(3), event_id,
+        time.monotonic())
 
 
 class TwitchReadOnlySession:
