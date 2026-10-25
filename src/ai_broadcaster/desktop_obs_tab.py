@@ -658,7 +658,10 @@ class ObsStatusTab(ttk.Frame):
                 "이 컴퓨터의 실제 OBS가 주간 일정에 따라 외부 플랫폼에 방송을 시작합니다. "
                 "내가 직접 입력한 최소/최대 방송 시간과 종료 인사를 사용합니다. "
                 "프로그램을 종료하거나 중지 버튼을 누르면 이 기능이 시작한 방송만 "
-                "종료하도록 시도합니다. OBS 서버 오류 시 직접 확인이 필요합니다. "
+                "종료하도록 시도합니다. OBS WebSocket 연결만 끊기면 최대 90초 "
+                "같은 출력 가동시간·장면을 확인하며 연결 복구를 시도합니다. "
+                "방송을 자동 재시작하지 않으며 출력 소유권이 불확실하면 "
+                "종료 명령도 보내지 않고 수동 확인을 요청합니다. "
                 + ("내가 지정한 Discord 시작/종료 공지를 실제 외부 채널에 "
                    "각 1회씩 자동 게시합니다. 실패 시 자동 재게시하지 않습니다. "
                    if discord_enabled else
@@ -1005,6 +1008,7 @@ class ObsStatusTab(ttk.Frame):
                 " / 종료 " + snap.end_notice +
                 " · 채팅/AI " + snap.live_chat +
                 " · 채팅 복구 " + snap.chat_recovery +
+                " · OBS 연결 " + snap.obs_recovery +
                 " · " + snap.stream_health +
                 (" · " + snap.journal_error if snap.journal_error else ""))
         self.after(150,self._poll)
