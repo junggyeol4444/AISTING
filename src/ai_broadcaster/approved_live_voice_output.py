@@ -15,6 +15,7 @@ from __future__ import annotations
 import queue
 import re
 import secrets
+import sys
 import tempfile
 import threading
 import time
@@ -27,6 +28,8 @@ from .original_plan_tts import synthesize_local_gpt_sovits
 from .same_wav_cubism_driver import authorized_pcm_envelope
 from .obs_live2d_frame_link import active_official_window_capture
 from .approved_live_voice_journal import ApprovedLiveVoiceJournal, voice_turn_key
+from .approved_live_voice_outbox import ApprovedLiveVoiceOutbox
+from .approved_live_voice_stream_lease import ApprovedVoiceStreamLease
 
 
 _MAX_SEGMENT_CHARS = 64
@@ -107,6 +110,12 @@ class ApprovedLiveVoiceOutput:
         if journal is not None and not isinstance(journal, ApprovedLiveVoiceJournal):
             raise TypeError("실제 음성 영구 장부가 올바르지 않습니다.")
         self._journal = journal if journal is not None else ApprovedLiveVoiceJournal()
+        self._session_id = secrets.token_hex(16)
+        # 실제 배포 대상인 Windows에서는 AI 답변을 현재 사용자 DPAPI로
+        # 암호화해 SQLite에 먼저 영구 확정. 이전 방송의 대기는 자동 재생 금지.
+        self._outbox = ApprovedLiveVoiceOutbox() if sys.platform == "win32" else None
+        self._outbox_wakeup = threading.Event()
+        self._stream_lease = ApprovedVoiceStreamLease()
         self._stop = threading.Event()
         self._inbox: queue.Queue[tuple[str, str]] = queue.Queue(
             maxsize=_MAX_SPEECH_QUEUE)
@@ -120,7 +129,8 @@ class ApprovedLiveVoiceOutput:
         if self._stop.is_set():
             raise RuntimeError("중지된 실제 방송용 음성 작업자를 재사용하지 않습니다.")
         self._worker = threading.Thread(
-            target=self._run, name="AISTING-approved-live-voice", daemon=True)
+            target=self._run_persisted if self._outbox is not None else self._run,
+            name="AISTING-approved-live-voice", daemon=True)
         self._worker.start()
 
     def enqueue(
@@ -139,6 +149,14 @@ class ApprovedLiveVoiceOutput:
         # 합치지 않는다. 원문은 메모리 FIFO에만 두고 DB에는 SHA만 기록.
         turn_key = voice_turn_key(
             platform, channel, event_id, nonce=secrets.token_hex(16))
+        if self._outbox is not None:
+            seq, is_new = self._outbox.enqueue(self._session_id, turn_key, reply)
+            if not is_new:
+                self._publish("발화중복차단", turn_key[:12])
+                return seq
+            self._submitted += 1
+            self._outbox_wakeup.set()
+            return seq
         try:
             self._inbox.put_nowait((turn_key, reply))
         except queue.Full as exc:
@@ -151,10 +169,19 @@ class ApprovedLiveVoiceOutput:
     def stop(self) -> None:
         """새 음성 시작 차단, 진행 중 발화 종료 요청. OBS 방송은 중지 안 함."""
         self._stop.set()
+        self._outbox_wakeup.set()
 
     @property
     def pending(self) -> int:
+        if self._outbox is not None:
+            return self._outbox.pending(self._session_id)
         return self._inbox.qsize()
+
+    @property
+    def previous_unresolved(self) -> tuple[int, int]:
+        if self._outbox is None:
+            return (0, 0)
+        return self._outbox.previous_unresolved(self._session_id)
 
     def _publish(self, kind: str, value: object) -> None:
         if self._on_event is not None:
@@ -209,6 +236,71 @@ class ApprovedLiveVoiceOutput:
             finally:
                 self._inbox.task_done()
 
+    def _run_persisted(self) -> None:
+        """Windows 실제 방송: SQLite 대기 원문을 먼저 시도로 고정한 후 송출.
+
+        앱이 중단되어도 다른 방송 세션의 남은 문장을 자동으로 읽지
+        않으며, 출력 여부가 불명확한 시도는 다시 합성하지 않는다.
+        """
+        outbox = self._outbox
+        if outbox is None:
+            raise RuntimeError("Windows 영구 음성 대기함이 없습니다.")
+        while not self._stop.is_set():
+            try:
+                turn = outbox.claim_next(self._session_id)
+            except Exception as exc:
+                self._publish("발화오류", type(exc).__name__)
+                self._stop.set()
+                break
+            if turn is None:
+                self._outbox_wakeup.wait(0.2)
+                self._outbox_wakeup.clear()
+                continue
+            seq, turn_key, text = turn
+            claimed = False
+            try:
+                if self._stop.is_set():
+                    outbox.finish(seq, "중단")
+                    break
+                if not self._journal.claim(turn_key, text):
+                    outbox.finish(seq, "중복")
+                    self._publish("발화중복차단", turn_key[:12])
+                    continue
+                claimed = True
+                completed = 0
+                duration = 0.0
+                segments = korean_voice_segments(text)
+                self._publish("발화시작", len(segments))
+                for segment in segments:
+                    if self._stop.is_set():
+                        break
+                    duration += self._speak_segment(segment)
+                    completed += 1
+                    self._publish("구간완료", (completed, len(segments)))
+                if self._stop.is_set() or completed != len(segments):
+                    self._journal.finish(turn_key, "중단")
+                    outbox.finish(seq, "중단")
+                    self._publish("발화중단", (completed, len(segments)))
+                    break
+                self._journal.finish(turn_key, "재생요청완료")
+                outbox.finish(seq, "완료")
+                self._finished += 1
+                self._publish("발화완료", ApprovedVoiceTurn(
+                    completed, len(segments), duration, True, True))
+            except Exception as exc:
+                if claimed:
+                    try:
+                        self._journal.finish(turn_key, "불명")
+                    except Exception:
+                        pass
+                try:
+                    outbox.finish(seq, "불명")
+                except Exception:
+                    pass
+                self._publish("발화오류", type(exc).__name__)
+                self._stop.set()
+                break
+
     def _speak_segment(self, text: str, *, depth: int = 0) -> float:
         """실제 OBS의 '이미 송출 중' 상태에서만 동일 PCM을 재생·입 구동."""
         from . import original_plan_frontend as frontend
@@ -221,6 +313,7 @@ class ApprovedLiveVoiceOutput:
 
         obs = OfficialObsWebsocket(self._obs_password, port=self._obs_port)
         original = obs.connect()
+        self._stream_lease.check(obs)
         if not original.streaming:
             raise RuntimeError("현재 OBS가 송출 중이지 않아 음성 방송을 시작하지 않습니다.")
         media_path = obs.read_scene_media_path()
@@ -281,6 +374,7 @@ class ApprovedLiveVoiceOutput:
             wav_path = Path(td) / "current_authorized.wav"
             wav_path.write_bytes(raw)
             try:
+                self._stream_lease.check(obs)
                 latest = obs.status()
                 if (self._stop.is_set() or not latest.streaming
                         or latest.scene != original.scene):
@@ -297,16 +391,19 @@ class ApprovedLiveVoiceOutput:
                         or type(scene_item_id) is not int
                         or not source_is_owned()):
                     raise RuntimeError("OBS 전용 한국어 음성 소스 동일성 확인 실패")
+                self._stream_lease.check(obs)
                 if self._stop.is_set() or not obs.status().streaming:
                     raise RuntimeError("사용자 중지 또는 OBS 송출 종료")
                 # 하나의 WAV로 공식 Cubism 입과 OBS 오디오를 함께 구동.
                 mouth_token = frontend.start_authorized_pcm_live2d_mouth(
                     envelope, operator_approved=True, rights_confirmed=True)
                 client.set_scene_item_enabled(original.scene, scene_item_id, True)
+                self._stream_lease.check(obs)
                 client.trigger_media_input_action(
                     name, "OBS_WEBSOCKET_MEDIA_INPUT_ACTION_RESTART")
                 if self._stop.wait(wav_seconds + 0.2):
                     raise RuntimeError("운영자가 실제 방송 음성 출력을 중지했습니다.")
+                self._stream_lease.check(obs)
                 if not obs.status().streaming:
                     raise RuntimeError("실제 발화 도중 OBS 송출이 종료되었습니다.")
                 return wav_seconds
