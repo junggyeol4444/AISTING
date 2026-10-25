@@ -33,6 +33,7 @@ from .live_pcm_cubism_alignment import (
 from .offline_settings import load_settings
 from .durable_public_chat_queue import DurablePublicChatQueue, PendingChat
 from .live_ai_recovery import run_local_fifo_with_recovery
+from .approved_live_idle_speech import ApprovedLiveIdleSpeech
 
 
 @dataclass(frozen=True)
@@ -83,6 +84,9 @@ class LocalChatTab(ttk.Frame):
         # 사용자가 선택할 때만 같은 공식 WS의 실제 첫 RIFF/WAVE
         # 관찰(최대 3초)을 수행. 빠른 전송 기본 동작은 그대로 둔다.
         self._official_first_wav_receipt = tk.BooleanVar(value=False)
+        self._idle_live_enabled = tk.BooleanVar(value=False)
+        self._idle_live_threshold = tk.StringVar(value="90")
+        self._idle_live_words = tk.StringVar()
         # 운영자 선택 시 로컬 Ollama 생성 진행 중인 일부 답변을
         # 방송·TTS·SQLite 저장 없이 현재 GUI 상태 줄에만 표시.
         self._local_stream_preview = tk.BooleanVar(value=False)
@@ -272,6 +276,18 @@ class LocalChatTab(ttk.Frame):
                  " (기본 꺼짐 · 이전 발화와 구분 불가)",
             variable=self._official_first_wav_receipt,
         ).pack(anchor="w", pady=(1, 1), before=model_row)
+        idle_row = ttk.Frame(self)
+        idle_row.pack(fill="x", before=model_row, pady=(1,1))
+        ttk.Checkbutton(
+            idle_row, text="공식 Live2D 무채팅 자발 발화 별도 승인 (기본 꺼짐)",
+            variable=self._idle_live_enabled).pack(side="left")
+        ttk.Label(idle_row, text="기준(30~3600초)").pack(side="left", padx=(8,0))
+        ttk.Entry(idle_row, textvariable=self._idle_live_threshold,
+                  width=7).pack(side="left", padx=(4,0))
+        ttk.Label(self, text="운영자가 지정한 무채팅 발화 문구 (240자 이내 · 한 구간 한 번)",
+                  wraplength=580).pack(anchor="w", before=model_row)
+        ttk.Entry(self, textvariable=self._idle_live_words,
+                  width=75).pack(fill="x", before=model_row)
         ttk.Label(self, textvariable=self._twitch_status, wraplength=600).pack(
             anchor="w", pady=(2, 5), before=model_row)
         ttk.Label(self, textvariable=self._platform_health_status,
@@ -805,6 +821,38 @@ class LocalChatTab(ttk.Frame):
                 "구별하거나 OBS·시청자 출력을 보장하지 않습니다.",
                 parent=self):
             return
+        idle_policy = None
+        # 예약형 OBS의 이전 일괄 승인은 무채팅 발화 승인을 포함하지 않는다.
+        # 이 기능은 사용자가 채팅 화면에서 직접 연결할 때 별도 승인한다.
+        if self._idle_live_enabled.get() and scheduled_approval is None:
+            if not official:
+                approval_dialog.showwarning(
+                    "공식 방송 AI 필요",
+                    "무채팅 실제 발화는 기존 공식 Live2D·한국어 음성 연결에만 지원합니다.",
+                    parent=self)
+                return
+            try:
+                idle_seconds = int(self._idle_live_threshold.get().strip())
+                idle_words = self._idle_live_words.get().strip()
+                # 아직 외부 발화하지 않는 단계에서 인자 형식만 고정.
+                idle_policy = ApprovedLiveIdleSpeech(
+                    threshold_seconds=idle_seconds, utterance=idle_words,
+                    operator_approved=True)
+            except (ValueError, TypeError) as exc:
+                approval_dialog.showwarning(
+                    "무채팅 발화 설정",
+                    "운영자가 지정한 기준/한 줄 문구가 유효하지 않습니다 (" +
+                    type(exc).__name__ + ")", parent=self)
+                return
+            if not approval_dialog.askyesno(
+                    "실제 자발 발화 별도 최종 승인",
+                    f"실제 채팅이 {idle_seconds}초 동안 없고 AI FIFO·SQLite에 "
+                    "미처리 채팅이 없으면 운영자가 입력한 문구를 "
+                    "기존 공식 Live2D 서버에 한 번 전달합니다. "
+                    "공식 서버가 실제 한국어 음성을 출력할 수 있습니다. "
+                    "다음 채팅이 들어오기 전에는 다시 자발 발화하지 않습니다. "
+                    "이 문구와 방송 중 발화를 직접 승인합니까?", parent=self):
+                return
         choice = self._chat_platform.get()
         types = {"트위치": "twitch", "치지직": "chzzk",
                  "SOOP": "soop", "유튜브": "youtube"}
@@ -983,7 +1031,8 @@ class LocalChatTab(ttk.Frame):
             kwargs={"fast_official_mode": fast_official,
                     "first_wav_receipt_mode": first_wav_receipt,
                     "stream_preview_mode": stream_preview,
-                    "arrival_times": arrival_times},
+                    "arrival_times": arrival_times,
+                    "idle_policy": idle_policy},
             daemon=True,
         ).start()
         self._twitch_start.configure(state="disabled")
@@ -1234,7 +1283,8 @@ class LocalChatTab(ttk.Frame):
                         reply_function=None, fast_official_mode: bool = False,
                         first_wav_receipt_mode: bool = False,
                         stream_preview_mode: bool = False,
-                        arrival_times: queue.SimpleQueue | None = None) -> None:
+                        arrival_times: queue.SimpleQueue | None = None,
+                        idle_policy: ApprovedLiveIdleSpeech | None = None) -> None:
         # Old direct-call regression contracts still use unscoped result
         # events; real UI connections always provide their unique session.
         def report(kind, value):
@@ -1248,9 +1298,50 @@ class LocalChatTab(ttk.Frame):
         local_runner: LocalChatRunner | None = None
         try:
             while True:
-                chat = inbox.get()
+                if idle_policy is not None and official and session is not None:
+                    try:
+                        chat = inbox.get(timeout=0.5)
+                    except queue.Empty:
+                        # 입력 FIFO가 비었더라도 SQLite 복구 대상이 있으면
+                        # 원래 실시간 채팅을 앞지르는 자발 발화를 하지 않는다.
+                        if session._stop.is_set():
+                            break
+                        spool = getattr(self, "_twitch_chat_spool", None)
+                        if spool is None or session is not self._twitch_session:
+                            continue
+                        try:
+                            counts = spool.pending_selected_channels_snapshot(
+                                session._channels)
+                            pending = sum(int(x["미처리"]) for x in counts.values())
+                            speech = idle_policy.next_if_quiet(
+                                pending_count=pending,
+                                sending=not inbox.empty())
+                        except Exception:
+                            # DB 상태를 알 수 없으면 자발 발화만 차단.
+                            continue
+                        if speech is None or session._stop.is_set() or not inbox.empty():
+                            continue
+                        try:
+                            from .original_plan_frontend import send_to_native_live2d_session
+                            accepted = send_to_native_live2d_session(
+                                speech, operator_approved=True)
+                            if accepted is not True:
+                                raise RuntimeError("공식 자발 발화 전송 결과 불명")
+                        except Exception:
+                            report("twitch_idle_speech", (
+                                "전송 불명 · 재발화 없음", idle_policy.attempted))
+                        else:
+                            report("twitch_idle_speech", (
+                                "기존 공식 서버 1회 전달 확인 · 실제 음성/OBS 미실증",
+                                idle_policy.attempted))
+                        continue
+                else:
+                    chat = inbox.get()
                 if chat is None or (session is not None and session._stop.is_set()):
                     break
+                if idle_policy is not None:
+                    # 실제 채팅 우선, 해당 무채팅 구간 다시 처음부터 측정.
+                    idle_policy.note_chat()
                 pending_sequence = None
                 if isinstance(chat, PendingChat):
                     pending_sequence, chat = chat.sequence, chat.message
@@ -2030,6 +2121,13 @@ class LocalChatTab(ttk.Frame):
                         self._twitch_status.set(
                             "공식 Live2D 성공 " + str(self._twitch_replied) +
                             "건 · 미검증/오류 " + str(self._twitch_ai_failures) + "건")
+                    elif kind == "twitch_idle_speech":
+                        description, count = payload
+                        self._append(
+                            f"[공식 AI 무채팅 발화 {count}회차] {description} "
+                            "· 시청자 수신/실제 립싱크 미검증")
+                        self._twitch_status.set(
+                            "공식 무채팅 자발 발화: " + str(description))
                     elif kind == "twitch_ai_incident_error":
                         self._append(
                             "[SQLite 사건 장부 오류] " + str(payload) +
