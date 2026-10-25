@@ -9,11 +9,9 @@
 """
 from __future__ import annotations
 
-import json
-import math
 import sqlite3
 import threading
-from contextlib import closing
+from contextlib import closing, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -77,8 +75,8 @@ class DurablePublicChatQueue:
                 "idx_aisting_pending_chat_server_event "
                 "ON pending_public_chat(platform,channel,event_id) "
                 "WHERE event_id IS NOT NULL")
-
-    from contextlib import contextmanager
+            self._pending = int(db.execute(
+                "SELECT COUNT(*) FROM pending_public_chat").fetchone()[0])
 
     @contextmanager
     def _connection(self):
@@ -125,16 +123,22 @@ class DurablePublicChatQueue:
                 "INSERT OR IGNORE INTO pending_public_chat "
                 "(platform, channel, sender, message, event_id) VALUES(?,?,?,?,?)", fields)
             # 외부 동시 인스턴스가 같은 실제 서버 ID를 막 넣은 경우.
-            return int(cursor.lastrowid) if cursor.rowcount == 1 else None
+            if cursor.rowcount == 1:
+                self._pending += 1
+                return int(cursor.lastrowid)
+            return None
 
     def confirm(self, sequence: int) -> bool:
         """실제 AI 처리 결과가 끝났거나 공식 텍스트 전달이 확인된 것만 제거."""
         if type(sequence) is not int or sequence < 1:
             raise ValueError("미처리 채팅 식별자가 올바르지 않습니다.")
         with self._lock, self._connection() as db:
-            return db.execute(
+            removed = db.execute(
                 "DELETE FROM pending_public_chat WHERE sequence=?", (sequence,)
             ).rowcount == 1
+            if removed:
+                self._pending = max(0, self._pending - 1)
+            return removed
 
     def load_for(self, channels: dict[str, str], *, limit: int = 4096
                  ) -> list[PendingChat]:
@@ -166,6 +170,6 @@ class DurablePublicChatQueue:
         return recovered
 
     def pending_count(self) -> int:
-        with self._lock, self._connection() as db:
-            return int(db.execute(
-                "SELECT COUNT(*) FROM pending_public_chat").fetchone()[0])
+        """GUI 표시에는 DB 파일 잠금/쓰기 없이 이전 확정 값을 사용한다."""
+        with self._lock:
+            return self._pending
