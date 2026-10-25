@@ -38,6 +38,7 @@ class ApprovedLiveSnapshot:
     end_notice: str = "미설정"
     live_chat: str = "미설정"
     journal_error: str = ""
+    pre_notice: str = "미설정"
 
 
 class ApprovedLiveScheduler:
@@ -71,6 +72,9 @@ class ApprovedLiveScheduler:
         clock: Callable[[], float] = time.monotonic,
         occurrence_claim: Callable[[str], bool] | None = None,
         occurrence_event: Callable[[str, str], None] | None = None,
+        on_pre_notice: Callable[[str], bool] | None = None,
+        pre_notice_claim: Callable[[str], bool] | None = None,
+        pre_notice_lead_minutes: int = 0,
     ) -> None:
         if operator_approved is not True or rights_confirmed is not True:
             raise PermissionError("운영자 방송 자동 시작/종료와 한국어 음성 권리 승인이 필요합니다.")
@@ -109,6 +113,21 @@ class ApprovedLiveScheduler:
                 or begin_live_chat is not None and not callable(begin_live_chat)
                 or end_live_chat is not None and not callable(end_live_chat)):
             raise ValueError("실제 채팅 시작/종료 연결이 올바르지 않습니다.")
+        if on_pre_notice is not None:
+            if (notice_approved is not True
+                    or not callable(on_pre_notice)
+                    or not callable(pre_notice_claim)
+                    or type(pre_notice_lead_minutes) is not int
+                    or not 10 <= pre_notice_lead_minutes <= 40):
+                raise PermissionError(
+                    "사전 공지는 별도 승인·10~40분 설정·영구 중복 방지 장부가 필요합니다.")
+        elif pre_notice_claim is not None or pre_notice_lead_minutes != 0:
+            raise ValueError("사전 공지를 사용하지 않으면 예약 설정도 비워야 합니다.")
+        self._on_pre_notice = on_pre_notice
+        self._pre_notice_claim = pre_notice_claim
+        self._pre_notice_lead_minutes = pre_notice_lead_minutes
+        self._pre_notice = "대기" if on_pre_notice is not None else "미설정"
+        self._pre_notice_attempted: set[str] = set()
         self._on_started_notice = on_started_notice
         self._on_finished_notice = on_finished_notice
         self._begin_live_chat = begin_live_chat
@@ -157,7 +176,8 @@ class ApprovedLiveScheduler:
                 self._owns_stream, self._start_confirmed,
                 self._stop_confirmed, self._closing_attempted,
                 self._closing_delivered_candidate, self._start_notice,
-                self._end_notice, self._live_chat, self._journal_error)
+                self._end_notice, self._live_chat, self._journal_error,
+                self._pre_notice)
 
     def _record_event(self, state: str) -> None:
         """영구 상태 기록 실패가 이미 진행 중인 OBS 종료를 막지 않게 한다."""
@@ -172,6 +192,45 @@ class ApprovedLiveScheduler:
     def request_stop(self) -> None:
         """운영자 종료 요청. 소유한 방송만 안전하게 종료하도록 작업자를 깨움."""
         self._stop.set()
+
+    def _maybe_pre_notice(self, now: datetime) -> None:
+        """운영자가 승인한 다음 KST 방송 전에만 디스코드 공지 요청.
+
+        실제 게시보다 먼저 SQLite 유일 슬롯을 커밋한다. 앱 재시작,
+        HTTP 요청 응답 분실, 네트워크 중단 뒤 중복 발송하지 않는다.
+        방송과 공지를 보지 못한 경우에도 발신 성공으로 세지 않는다.
+        """
+        if self._on_pre_notice is None or self._stop.is_set() or self._owns_stream:
+            return
+        if not isinstance(now, datetime) or now.tzinfo is None:
+            raise ValueError("사전 공지 시계에 시간대가 없습니다.")
+        kst = now.astimezone(KST)
+        lead = timedelta(minutes=self._pre_notice_lead_minutes)
+        upcoming = self._draft.upcoming(kst - lead - timedelta(seconds=1), limit=1)
+        if not upcoming:
+            return
+        scheduled = upcoming[0]
+        delta = (scheduled - kst).total_seconds()
+        if not 0 < delta <= self._pre_notice_lead_minutes * 60:
+            return
+        occurrence = scheduled.strftime("%Y-%m-%d %H:%M KST")
+        if occurrence in self._pre_notice_attempted:
+            return
+        self._pre_notice_attempted.add(occurrence)
+        try:
+            if self._pre_notice_claim(occurrence) is not True:
+                self._pre_notice = "기존 실행에서 시도한 슬롯 · 중복 게시 차단"
+                return
+        except Exception:
+            self._pre_notice = "SQLite 사전 공지 장부 기록 실패 · 게시 차단"
+            return
+        try:
+            self._pre_notice = (
+                "서버 204 확인"
+                if self._on_pre_notice(occurrence) is True
+                else "서버 완료 미확인 · 자동 재게시 없음")
+        except Exception:
+            self._pre_notice = "전송 실패 · 자동 재게시 없음"
 
     def _due_occurrence(self, now: datetime) -> str | None:
         if (not isinstance(now, datetime) or now.tzinfo is None
@@ -385,6 +444,7 @@ class ApprovedLiveScheduler:
                 self._stop.set()
             return self.snapshot()
         if self._state == "예약 승인됨":
+            self._maybe_pre_notice(now)
             slot = self._due_occurrence(now)
             if slot is not None:
                 self._start(slot, monotonic_now)
