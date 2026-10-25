@@ -16,6 +16,7 @@ from .offline_settings import data_dir
 _APPLICATION_ID = 0x41534A31  # ASJ1: 독립 소유권
 _TABLE = "approved_live_slot_attempts"
 _EVENTS = "approved_live_slot_events"
+_PRE_NOTICES = "approved_live_pre_notices"
 _EVENT_STATES = frozenset(("송출시작확인", "송출시작실패", "송출종료확인", "송출종료실패"))
 
 
@@ -39,7 +40,7 @@ class ApprovedLiveSlotJournal:
                     "AND name NOT LIKE 'sqlite_%'"
                 ).fetchall()
             }
-            if (tables and (not tables.issubset({_TABLE, _EVENTS})
+            if (tables and (not tables.issubset({_TABLE, _EVENTS, _PRE_NOTICES})
                             or _TABLE not in tables
                             or appid != _APPLICATION_ID)):
                 raise ValueError("다른 프로그램의 SQLite 파일을 변경하지 않습니다.")
@@ -68,6 +69,19 @@ class ApprovedLiveSlotJournal:
                 "PRAGMA table_info(approved_live_slot_events)").fetchall())
             if event_columns != ("event_no", "occurrence", "state", "logged_at"):
                 raise ValueError("기존 방송 결과 장부 구조가 일치하지 않습니다.")
+
+        # 시작 슬롯보다 먼저 승인된 사전 공지를 발송해야 하므로
+        # 별도의 영구 UNIQUE 슬롯 장부를 사용한다. 기존 기록은 보존.
+        with self._open() as db:
+            db.execute(
+                "CREATE TABLE IF NOT EXISTS approved_live_pre_notices ("
+                "occurrence TEXT PRIMARY KEY NOT NULL,"
+                "claimed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
+            )
+            pre_columns = tuple(row[1] for row in db.execute(
+                "PRAGMA table_info(approved_live_pre_notices)").fetchall())
+            if pre_columns != ("occurrence", "claimed_at"):
+                raise ValueError("기존 사전 공지 장부 구조가 일치하지 않습니다.")
 
     def _open(self):
         # 매 호출 후 파일 핸들을 닫고 트랜잭션 원자성을 유지한다.
@@ -112,6 +126,27 @@ class ApprovedLiveSlotJournal:
         with self._open() as db:
             return db.execute(
                 "INSERT OR IGNORE INTO approved_live_slot_attempts "
+                "(occurrence) VALUES (?)", (occurrence,)
+            ).rowcount == 1
+
+    def claim_pre_notice(self, occurrence: str) -> bool:
+        """사전 공지를 같은 KST 시작 슬롯당 하나만 원자적으로 예약.
+
+        HTTP 요청 시작 전에 DB 커밋하여 실패/강제종료 때도 자동 중복
+        발송하지 않는다. 송신 성공 여부는 이 반환값으로 주장할 수 없다.
+        """
+        if type(occurrence) is not str or not occurrence.endswith(" KST"):
+            raise ValueError("한국 시간 사전 공지 슬롯 형식이 올바르지 않습니다.")
+        value = occurrence[:-4]
+        try:
+            parsed = datetime.strptime(value, "%Y-%m-%d %H:%M")
+        except ValueError as exc:
+            raise ValueError("사전 공지 슬롯 시각 형식이 올바르지 않습니다.") from exc
+        if parsed.strftime("%Y-%m-%d %H:%M") != value:
+            raise ValueError("사전 공지 슬롯 표기가 올바르지 않습니다.")
+        with self._open() as db:
+            return db.execute(
+                "INSERT OR IGNORE INTO approved_live_pre_notices "
                 "(occurrence) VALUES (?)", (occurrence,)
             ).rowcount == 1
 
