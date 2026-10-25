@@ -1522,12 +1522,26 @@ class LocalChatTab(ttk.Frame):
         disk_snapshot = (durable.pending_capacity_snapshot()
                          if durable is not None else {})
         disk_counts = disk_snapshot.get("플랫폼별", {})
+        # SQLite 원본·채팅 본문을 읽지 않는 이번 실행의 처리율과
+        # 미처리 최장 시간을 표시한다. 3초 목표 충족을 추정으로 대체하지 않는다.
+        operating = (durable.pending_operating_snapshot()
+                     if durable is not None else {})
+        operating_platforms = operating.get("플랫폼별", {})
         lines = []
         for code, state in snapshot.items():
             block_stats = block_snapshots.get(code, {
                 "건수": 0, "총초": 0.0, "최장초": 0.0, "3초초과": 0})
             wait_stats = wait_snapshots.get(code, {
                 "진행중": 0, "진행최장초": 0.0, "중단": 0, "중단누적초": 0.0})
+            flow = operating_platforms.get(code, {})
+            oldest_age = flow.get("최장미처리초")
+            oldest_label = (
+                "최장 미처리 시간 미측정" if oldest_age is None
+                else f"최장 미처리 {oldest_age:.1f}초")
+            drain = flow.get("추정소진초")
+            drain_label = (
+                "최근 완료율로 소진 추정 불가" if drain is None
+                else f"최근 완료율 기준 소진 추정 {drain:.1f}초(보장 아님)")
             if state["수신기종료"]:
                 phase = "읽기종료"
             elif state["현재공백"]:
@@ -1619,6 +1633,13 @@ class LocalChatTab(ttk.Frame):
                 f" / 3초 초과 {block_stats['3초초과']}건"
                 f" / 현재 수신큐 대기 {wait_stats['진행중']}건"
                 f" / 디스크 미처리 {disk_counts.get(code, 0)}건"
+                f" / {oldest_label}"
+                f" / 이번 실행 접수 {flow.get('최근접수', 0)}건"
+                f" / 완료 {flow.get('최근완료', 0)}건"
+                f" / 접수율 {flow.get('접수초당', 0.0):.2f}건/초"
+                f" / 완료율 {flow.get('완료초당', 0.0):.2f}건/초"
+                f" / 순증 {flow.get('순증초당', 0.0):+.2f}건/초"
+                f" / {drain_label}"
                 f" / 진행 최장 {wait_stats['진행최장초']:.2f}초"
                 f" / 중단 대기 {wait_stats['중단']}건"
                 f" / 중단 누적 {wait_stats['중단누적초']:.2f}초"

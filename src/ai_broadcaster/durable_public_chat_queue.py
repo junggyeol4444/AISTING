@@ -13,6 +13,10 @@ import os
 import sqlite3
 import stat
 import threading
+import time
+import math
+from collections import deque
+from datetime import datetime, timezone
 from contextlib import closing, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -114,6 +118,25 @@ class DurablePublicChatQueue:
                     "SELECT platform, COUNT(*) FROM pending_public_chat "
                     "GROUP BY platform").fetchall()
             }
+            # 원본 DB 열을 바꾸지 않고 이미 기록된 UTC 접수 시각을
+            # 플랫폼별 최장 미처리 채팅의 시작점으로 복구한다.
+            self._oldest_pending = {
+                platform: (int(sequence), str(created_at))
+                for platform, sequence, created_at in db.execute(
+                    "SELECT p.platform,p.sequence,p.created_at "
+                    "FROM pending_public_chat AS p "
+                    "JOIN (SELECT platform,MIN(sequence) AS first_sequence "
+                    "FROM pending_public_chat GROUP BY platform) AS first "
+                    "ON p.platform=first.platform "
+                    "AND p.sequence=first.first_sequence").fetchall()
+            }
+        # AI 완료와 새 채팅의 최근 처리율은 메모리에만 유지한다.
+        # 이전 실행의 측정치를 만들어내지 않고 새 프로세스에서 다시 센다.
+        self._rate_started_at = time.monotonic()
+        self._recent_ingress = {
+            code: deque() for code in ("twitch", "chzzk", "soop", "youtube")}
+        self._recent_confirmed = {
+            code: deque() for code in ("twitch", "chzzk", "soop", "youtube")}
 
     def acquire_exclusive_consumer(self) -> None:
         """같은 미처리 DB를 둘 이상의 실행 창이 동시에 AI 처리하지 못하게 한다.
@@ -206,6 +229,7 @@ class DurablePublicChatQueue:
         fields = self._fields(chat)
         with self._lock:
             inserted = None
+            inserted_created_at = None
             with self._connection() as db:
                 if fields[-1] is not None:
                     completed = db.execute(
@@ -232,12 +256,19 @@ class DurablePublicChatQueue:
                     fields)
                 if cursor.rowcount == 1:
                     inserted = int(cursor.lastrowid)
+                    inserted_created_at = db.execute(
+                        "SELECT created_at FROM pending_public_chat WHERE sequence=?",
+                        (inserted,)).fetchone()[0]
             # COMMIT에 실패하면 메모리 카운터도 성공으로 올리지 않는다.
             if inserted is not None:
                 self._pending += 1
                 platform = fields[0]
                 self._pending_by_platform[platform] = (
                     self._pending_by_platform.get(platform, 0) + 1)
+                self._recent_ingress[platform].append(time.monotonic())
+                if platform not in self._oldest_pending:
+                    self._oldest_pending[platform] = (
+                        inserted, str(inserted_created_at))
             return inserted
 
     def confirm(self, sequence: int) -> bool:
@@ -246,11 +277,15 @@ class DurablePublicChatQueue:
             raise ValueError("미처리 채팅 식별자가 올바르지 않습니다.")
         with self._lock:
             removed = False
+            was_oldest = False
+            next_oldest = None
             with self._connection() as db:
                 row = db.execute(
                     "SELECT platform,channel,event_id FROM pending_public_chat "
                     "WHERE sequence=?", (sequence,)).fetchone()
                 if row is not None:
+                    was_oldest = (
+                        self._oldest_pending.get(row[0], (None,))[0] == sequence)
                     if row[2] is not None:
                         db.execute(
                             "INSERT OR IGNORE INTO confirmed_server_events "
@@ -258,11 +293,23 @@ class DurablePublicChatQueue:
                     removed = db.execute(
                         "DELETE FROM pending_public_chat WHERE sequence=?",
                         (sequence,)).rowcount == 1
+                    if removed and was_oldest:
+                        next_oldest = db.execute(
+                            "SELECT sequence,created_at FROM pending_public_chat "
+                            "WHERE platform=? ORDER BY sequence LIMIT 1",
+                            (row[0],)).fetchone()
             if removed:
                 self._pending = max(0, self._pending - 1)
                 platform = row[0]
                 self._pending_by_platform[platform] = max(
                     0, self._pending_by_platform.get(platform, 0) - 1)
+                self._recent_confirmed[platform].append(time.monotonic())
+                if was_oldest:
+                    if next_oldest is None:
+                        self._oldest_pending.pop(platform, None)
+                    else:
+                        self._oldest_pending[platform] = (
+                            int(next_oldest[0]), str(next_oldest[1]))
             return removed
 
 
@@ -411,4 +458,62 @@ class DurablePublicChatQueue:
                 "보호한도": _MAX_RECORDS,
                 "사용률": self._pending / _MAX_RECORDS,
                 "플랫폼별": dict(self._pending_by_platform),
+            }
+
+    def pending_operating_snapshot(self, *, window_seconds: float = 60.0) -> dict:
+        """기존 원본 채팅을 읽지 않고 4플랫폼 처리율·최장 대기를 관찰한다.
+
+        최근 처리율은 이번 실행에서 실제 SQLite 성공 커밋한 것만 센다.
+        과거 실행의 수신·처리율은 알 수 없으며, 소진 시간은 보장이 아니다.
+        """
+        if (type(window_seconds) not in (int, float)
+                or not math.isfinite(window_seconds)
+                or not 1.0 <= window_seconds <= 3600.0):
+            raise ValueError("채팅 처리율 관측 구간이 올바르지 않습니다.")
+        with self._lock:
+            now = time.monotonic()
+            duration = max(1.0, min(float(window_seconds),
+                                    now - self._rate_started_at))
+            cutoff = now - float(window_seconds)
+            utc_now = datetime.now(timezone.utc)
+            platforms = {}
+            for code in ("twitch", "chzzk", "soop", "youtube"):
+                arrivals = self._recent_ingress[code]
+                confirmed = self._recent_confirmed[code]
+                while arrivals and arrivals[0] < cutoff:
+                    arrivals.popleft()
+                while confirmed and confirmed[0] < cutoff:
+                    confirmed.popleft()
+                ingress_rate = len(arrivals) / duration
+                completed_rate = len(confirmed) / duration
+                oldest = self._oldest_pending.get(code)
+                oldest_age = None
+                if oldest is not None:
+                    try:
+                        recorded = datetime.strptime(
+                            oldest[1], "%Y-%m-%d %H:%M:%S"
+                        ).replace(tzinfo=timezone.utc)
+                        oldest_age = max(
+                            0.0, (utc_now - recorded).total_seconds())
+                    except (TypeError, ValueError, OverflowError):
+                        # 원본 created_at이 잘못됐어도 기존 채팅은 보존.
+                        pass
+                pending = self._pending_by_platform.get(code, 0)
+                platforms[code] = {
+                    "미처리": pending,
+                    "최장미처리초": oldest_age,
+                    "최근접수": len(arrivals),
+                    "최근완료": len(confirmed),
+                    "접수초당": ingress_rate,
+                    "완료초당": completed_rate,
+                    "순증초당": ingress_rate - completed_rate,
+                    "추정소진초": (
+                        pending / completed_rate if completed_rate > 0
+                        else None),
+                }
+            return {
+                "측정창초": duration,
+                "실행중측정": True,
+                "플랫폼별": platforms,
+                "시각기준": "SQLite UTC 접수 시각·운영체제 현재 시각",
             }
