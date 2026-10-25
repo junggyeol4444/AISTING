@@ -11,6 +11,7 @@ from uuid import uuid4
 
 from .chat_pipeline import ChatPipeline
 from .conversation_memory import ConversationMemory, DEFAULT_MEMORY_FILE
+from .long_term_conversation_memory import LongTermConversationMemory
 from .local_llm import LocalModelConfig, LocalOllamaReplyGenerator
 from .operator_settings import load_settings, DEFAULT_FILE
 from .offline_settings import active_persona, load_settings as load_gui_settings
@@ -42,17 +43,19 @@ def run_local_chat(
     sender: str = "운영자",
     use_committed_gui_character: bool = False,
     relevant_memory: bool = False,
+    long_term_memory: bool = False,
 ) -> ChatResult:
     if not isinstance(text, str) or not text.strip() or len(text) > 4000:
         raise ValueError("내용은 공백이 아닌 1~4000글자로 입력해 주세요.")
     if not isinstance(sender, str) or not sender.strip() or len(sender) > 160:
         raise ValueError("채팅 작성자 정보가 올바르지 않습니다.")
-    if type(relevant_memory) is not bool:
-        raise ValueError("과거 관련 기억 선택값이 올바르지 않습니다.")
+    if type(relevant_memory) is not bool or type(long_term_memory) is not bool:
+        raise ValueError("과거 관련 기억/장기 보관 선택값이 올바르지 않습니다.")
     cfg = LocalModelConfig(
         model=model, port=port,
         max_relevant_exchanges=2 if relevant_memory else 0)
-    memory = ConversationMemory(path=memory_path)
+    memory = (LongTermConversationMemory(path=memory_path)
+              if long_term_memory else ConversationMemory(path=memory_path))
     model_settings = load_settings(settings_path)
     if use_committed_gui_character:
         # The real AISTING operator GUI persists the chosen character in
@@ -96,13 +99,15 @@ class LocalChatRunner:
         use_committed_gui_character: bool = True,
         broadcast_facts: str = "",
         relevant_memory: bool = False,
+        long_term_memory: bool = False,
     ) -> None:
-        if type(relevant_memory) is not bool:
-            raise ValueError("과거 관련 기억 선택값이 올바르지 않습니다.")
+        if type(relevant_memory) is not bool or type(long_term_memory) is not bool:
+            raise ValueError("과거 관련 기억/장기 보관 선택값이 올바르지 않습니다.")
         config = LocalModelConfig(
             model=model, port=port,
             max_relevant_exchanges=2 if relevant_memory else 0)
-        self.memory = ConversationMemory(path=memory_path)
+        self.memory = (LongTermConversationMemory(path=memory_path)
+                       if long_term_memory else ConversationMemory(path=memory_path))
         settings = load_settings(settings_path)
         if use_committed_gui_character:
             confirmed = active_persona(load_gui_settings())
