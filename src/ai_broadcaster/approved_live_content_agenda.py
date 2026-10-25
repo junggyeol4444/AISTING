@@ -165,6 +165,7 @@ class ApprovedLiveContentAgenda:
         self, *, occurrence: str, topics: tuple[str, ...],
         interval_seconds: int, operator_approved: bool,
         journal: ApprovedLiveContentJournal,
+        broadcast_alive: Callable[[], bool],
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         if operator_approved is not True:
@@ -174,14 +175,16 @@ class ApprovedLiveContentAgenda:
             raise ValueError("운영자가 지정한 방송 주제가 올바르지 않습니다.")
         if type(interval_seconds) is not int or not 60 <= interval_seconds <= 3600:
             raise ValueError("콘텐츠 진행 간격은 60~3600초입니다.")
-        if not isinstance(journal, ApprovedLiveContentJournal) or not callable(clock):
-            raise ValueError("영구 콘텐츠 장부와 로컬 단조 시계가 필요합니다.")
+        if (not isinstance(journal, ApprovedLiveContentJournal)
+                or not callable(clock) or not callable(broadcast_alive)):
+            raise ValueError("영구 장부·로컬 시계·실제 OBS 방송 상태 연결이 필요합니다.")
         journal._check_occurrence(occurrence)
         self.occurrence = occurrence
         self.topics = topics
         self.interval_seconds = interval_seconds
         self._journal = journal
         self._clock = clock
+        self._broadcast_alive = broadcast_alive
         self._last_activity = self._time()
         self._next = journal.next_sequence(occurrence)
 
@@ -194,6 +197,10 @@ class ApprovedLiveContentAgenda:
     def note_chat(self) -> None:
         self._last_activity = self._time()
 
+    def broadcast_is_active(self) -> bool:
+        """실제 예약이 소유한 OBS 방송이 살아 있는 동안만 발화 가능."""
+        return self._broadcast_alive() is True
+
     def next_if_quiet(
         self, *, pending_count: int, sending: bool = False,
     ) -> ContentTurn | None:
@@ -201,7 +208,8 @@ class ApprovedLiveContentAgenda:
                 or type(sending) is not bool):
             raise ValueError("콘텐츠 진행 전 채팅 FIFO 상태가 올바르지 않습니다.")
         now = self._time()
-        if pending_count or sending or now - self._last_activity < self.interval_seconds:
+        if (pending_count or sending or not self.broadcast_is_active()
+                or now - self._last_activity < self.interval_seconds):
             return None
         sequence = self._next
         topic = self.topics[(sequence - 1) % len(self.topics)]
