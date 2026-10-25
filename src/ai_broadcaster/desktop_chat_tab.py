@@ -87,6 +87,7 @@ class LocalChatTab(ttk.Frame):
         self._idle_live_enabled = tk.BooleanVar(value=False)
         self._idle_live_threshold = tk.StringVar(value="90")
         self._idle_live_words = tk.StringVar()
+        self._broadcast_memory_enabled = tk.BooleanVar(value=False)
         # 운영자 선택 시 로컬 Ollama 생성 진행 중인 일부 답변을
         # 방송·TTS·SQLite 저장 없이 현재 GUI 상태 줄에만 표시.
         self._local_stream_preview = tk.BooleanVar(value=False)
@@ -288,6 +289,11 @@ class LocalChatTab(ttk.Frame):
                   wraplength=580).pack(anchor="w", before=model_row)
         ttk.Entry(self, textvariable=self._idle_live_words,
                   width=75).pack(fill="x", before=model_row)
+        ttk.Checkbutton(
+            self, text="이전 실제 OBS 방송 시작·종료 사실을 내 로컬 AI가 기억"
+                 " (선택 시에만 · 기본 꺼짐 · 다른 캐릭터/채팅 원문 저장 없음)",
+            variable=self._broadcast_memory_enabled,
+        ).pack(anchor="w", before=model_row, pady=(2,1))
         ttk.Label(self, textvariable=self._twitch_status, wraplength=600).pack(
             anchor="w", pady=(2, 5), before=model_row)
         ttk.Label(self, textvariable=self._platform_health_status,
@@ -853,6 +859,24 @@ class LocalChatTab(ttk.Frame):
                     "다음 채팅이 들어오기 전에는 다시 자발 발화하지 않습니다. "
                     "이 문구와 방송 중 발화를 직접 승인합니까?", parent=self):
                 return
+        broadcast_facts = ""
+        if self._broadcast_memory_enabled.get() and scheduled_approval is None:
+            if official:
+                approval_dialog.showwarning(
+                    "실제 방송 기억 지원 범위",
+                    "이전 OBS 사건 기억은 내 로컬 Ollama 답변에만 적용합니다. "
+                    "공식 Live2D 서버의 별도 기억 설정은 변경하지 않습니다.",
+                    parent=self)
+                return
+            try:
+                from .approved_live_memory import approved_live_memory_context
+                broadcast_facts = approved_live_memory_context(limit=5)
+            except (ValueError, OSError, RuntimeError) as exc:
+                approval_dialog.showwarning(
+                    "이전 방송 사건 기억",
+                    "실제 OBS 사건 장부를 안전하게 읽지 못했습니다 ("
+                    + type(exc).__name__ + ")", parent=self)
+                return
         choice = self._chat_platform.get()
         types = {"트위치": "twitch", "치지직": "chzzk",
                  "SOOP": "soop", "유튜브": "youtube"}
@@ -1032,7 +1056,8 @@ class LocalChatTab(ttk.Frame):
                     "first_wav_receipt_mode": first_wav_receipt,
                     "stream_preview_mode": stream_preview,
                     "arrival_times": arrival_times,
-                    "idle_policy": idle_policy},
+                    "idle_policy": idle_policy,
+                    "broadcast_facts": broadcast_facts},
             daemon=True,
         ).start()
         self._twitch_start.configure(state="disabled")
@@ -1284,7 +1309,8 @@ class LocalChatTab(ttk.Frame):
                         first_wav_receipt_mode: bool = False,
                         stream_preview_mode: bool = False,
                         arrival_times: queue.SimpleQueue | None = None,
-                        idle_policy: ApprovedLiveIdleSpeech | None = None) -> None:
+                        idle_policy: ApprovedLiveIdleSpeech | None = None,
+                        broadcast_facts: str = "") -> None:
         # Old direct-call regression contracts still use unscoped result
         # events; real UI connections always provide their unique session.
         def report(kind, value):
@@ -1512,7 +1538,8 @@ class LocalChatTab(ttk.Frame):
                         # 세션과 공유하지 않고 원래 단일 FIFO를 유지한다.
                         if local_runner is None:
                             local_runner = LocalChatRunner(
-                                model, use_committed_gui_character=True)
+                                model, use_committed_gui_character=True,
+                                broadcast_facts=broadcast_facts)
                         if stream_preview_mode:
                             partial_preview = ""
                             received_chars = 0
