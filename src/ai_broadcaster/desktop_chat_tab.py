@@ -22,7 +22,8 @@ from .windows_tts import Voice
 from .avatar_animation import SpeechActivity
 from .twitch_readonly import TwitchReadOnlySession, TwitchReadError
 from .multiplatform_readonly import ChzzkReadOnlySession, SoopReadOnlySession, YouTubeReadOnlySession
-from .multi_platform_session import MultiPlatformReadOnlySession
+from .multi_platform_session import (
+    MultiPlatformReadOnlySession, SQLITE_DEFERRED_CHAT)
 from .live_runtime_metrics import (LiveLatencyMetrics, LiveParseReplyMetrics,
                                    LiveFirstWavLatencyMetrics,
                                    LiveFirstMouthLatencyMetrics)
@@ -975,6 +976,7 @@ class LocalChatTab(ttk.Frame):
                                     # 기억한다. 이전 부팅 monotonic은 재사용 금지.
                                     accepted_at = self._recovery_arrival_times.pop(
                                         pending.sequence, None)
+                                    deferred_this_run = accepted_at is not None
                                     if accepted_at is None:
                                         accepted_at = time.monotonic()
                                     arrival_times.put(accepted_at)
@@ -983,6 +985,9 @@ class LocalChatTab(ttk.Frame):
                                             pending.message, accepted_at,
                                             ai_prequeued=True))))
                                     inbox.put(pending)
+                                    if deferred_this_run:
+                                        session.note_deferred_sqlite_chat_enqueued(
+                                            pending.message.platform)
                                     break
                             session._stop.wait(0.02)
                         if session._stop.is_set():
@@ -1054,7 +1059,9 @@ class LocalChatTab(ttk.Frame):
                             self._recovery_arrival_times[seq] = (
                                 stamped_item.reader_received_at)
                         accepted = True
-                        return True
+                        # 수신기에게는 영속 접수 성공을 알려 커서/서버 ACK를
+                        # 유지하지만 실제 AI FIFO 등록과는 구별 계측한다.
+                        return SQLITE_DEFERRED_CHAT
             while not getattr(self, "_closed", False):
                 if session is None or session._stop.is_set():
                     return False
