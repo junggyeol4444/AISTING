@@ -103,6 +103,10 @@ class LocalChatTab(ttk.Frame):
         self._twitch_ai_inbox: queue.SimpleQueue | None = None
         # 기존 대화/캐릭터 SQLite에 영향을 주지 않는 공개 채팅 미처리 큐.
         self._twitch_chat_spool: DurablePublicChatQueue | None = None
+        # 과거 보류 채팅을 FIFO에 재등록하는 동안에도 실수신 채팅을
+        # 즉시 별도 SQLite에 영속 기록한다. GUI/AI 전송은 복구 순서 뒤.
+        self._recovery_session = None
+        self._recovery_arrival_times: dict[int, float] = {}
         # 실제 수신 콜백의 AI 등록과 Stop 종료 표식을 직렬화한다.
         # tkinter 객체를 잠금 보유 상태에서 직접 조작하지 않는다.
         self._live_ingress_lock = threading.Lock()
@@ -868,6 +872,8 @@ class LocalChatTab(ttk.Frame):
         with self._live_ingress_lock:
             self._ai_arrival_times = arrival_times
             self._twitch_ai_inbox = inbox
+            self._recovery_session = session
+            self._recovery_arrival_times = {}
         # The user's real Windows receiver gets fresh private diagnostics on
         # each connection; no message text or credentials enter this meter.
         started_at = time.monotonic()
@@ -907,7 +913,8 @@ class LocalChatTab(ttk.Frame):
             self._append(
                 "[미처리 채팅 복구] " + str(recovery_snapshot[0])
                 + "건을 백그라운드에서 순서대로 재등록 예정 · "
-                "완료 전 신규 네트워크 수신 대기 · 중복 처리 여부 미검증")
+                "실제 네트워크 수신은 병행하며 신규 메시지는 우선 SQLite 보존 · "
+                "새 메시지의 AI 처리는 복구분 이후 · 무누락 실증 전")
         self._twitch_active_workers.add(session)
         # One worker calls the EXISTING local Ollama conversation in order.
         # No extra model service, intentional delay or platform chat posting.
@@ -936,41 +943,79 @@ class LocalChatTab(ttk.Frame):
 
     def _work_twitch_recover_then_read(
             self, session, spool, recovery_snapshot, inbox, arrival_times) -> None:
-        """과거 전체 채팅을 한정된 FIFO 용량으로 복구한 후 새 수신기를 연다.
+        """과거 보류 FIFO 복구 중에도 실제 4플랫폼 수신을 병행한다.
 
-        4096건 초과로 방송 재연결 자체가 막히던 상태를 피하되,
-        과거 메시지보다 신규 수신을 먼저 처리하지 않는다. 복구가 오래
-        걸리면 신규 채팅 수신도 대기하므로 실시간 무누락 보증은 아니다.
+        콜백은 복구 동안 신규 채팅을 먼저 SQLite 트랜잭션 확정하고
+        AI/GUI에는 전달하지 않는다. 과거 보류분 다음으로 신규 seq를
+        페이지 단위 따라잡은 후 라이브 직행 모드로 원자 전환한다.
+        FIFO에 이미 등록한 과거 seq를 AI로 두 번 보내지 않는다.
         """
+        cursor = 0
         try:
-            for pending in spool.iter_recovery(
-                    session._channels, through_sequence=recovery_snapshot[1]):
-                while not session._stop.is_set():
-                    with self._live_ingress_lock:
-                        if (session is not self._twitch_session
-                                or getattr(self, "_closed", False)):
+            # 기존 네트워크 수신기를 먼저 열어 수천 건 복구 때문에
+            # 수시간 동안 실시간 플랫폼 읽기가 통째로 중단되지 않게 한다.
+            threading.Thread(
+                target=self._work_twitch, args=(session,), daemon=True
+            ).start()
+            while not session._stop.is_set():
+                count, ceiling = spool.recovery_snapshot(session._channels)
+                if ceiling > cursor:
+                    for pending in spool.iter_recovery(
+                            session._channels, through_sequence=ceiling,
+                            after_sequence=cursor):
+                        while not session._stop.is_set():
+                            with self._live_ingress_lock:
+                                if (session is not self._twitch_session
+                                        or getattr(self, "_closed", False)):
+                                    return
+                                if (inbox.qsize() < 4096
+                                        and self._results.qsize() < 4096):
+                                    # 이번 부팅의 신규 수신만 실제 수신 시각을
+                                    # 기억한다. 이전 부팅 monotonic은 재사용 금지.
+                                    accepted_at = self._recovery_arrival_times.pop(
+                                        pending.sequence, None)
+                                    if accepted_at is None:
+                                        accepted_at = time.monotonic()
+                                    arrival_times.put(accepted_at)
+                                    self._results.put(("twitch_scoped", (
+                                        session, "twitch_chat", _ReaderTimestampedChat(
+                                            pending.message, accepted_at,
+                                            ai_prequeued=True))))
+                                    inbox.put(pending)
+                                    break
+                            session._stop.wait(0.02)
+                        if session._stop.is_set():
                             return
-                        if inbox.qsize() < 4096 and self._results.qsize() < 4096:
-                            accepted_at = time.monotonic()
-                            arrival_times.put(accepted_at)
-                            self._results.put(("twitch_scoped", (
-                                session, "twitch_chat", _ReaderTimestampedChat(
-                                    pending.message, accepted_at, ai_prequeued=True))))
-                            inbox.put(pending)
-                            break
-                    session._stop.wait(0.02)
-                if session._stop.is_set():
+                    cursor = ceiling
+                    continue
+                # 마지막 SQLite snapshot+모드 전환을 콜백과 같은 락으로
+                # 직렬화한다. 마지막 seq 확인 직후 도착한 채팅이 유실되거나
+                # 이전 FIFO보다 앞서 처리될 수 있는 경합을 제거한다.
+                with self._live_ingress_lock:
+                    if (session is not self._twitch_session
+                            or session._stop.is_set()
+                            or getattr(self, "_closed", False)):
+                        return
+                    _, final_ceiling = spool.recovery_snapshot(session._channels)
+                    if final_ceiling > cursor:
+                        continue
+                    self._recovery_session = None
+                    self._recovery_arrival_times.clear()
                     return
-            if session._stop.is_set():
-                return
         except Exception as exc:
-            # 원본 DB를 건드리지 않고 사용자에게 기존 오류 경로로 알린다.
+            session.stop()
+            with self._live_ingress_lock:
+                if self._recovery_session is session:
+                    self._recovery_session = None
+                self._recovery_arrival_times.clear()
             self._results.put(("twitch_scoped", (
                 session, "twitch_error", "복구실패_" + type(exc).__name__)))
-            self._results.put(("twitch_scoped", (
-                session, "twitch_finished", session)))
-            return
-        self._work_twitch(session)
+        finally:
+            if session._stop.is_set():
+                with self._live_ingress_lock:
+                    if self._recovery_session is session:
+                        self._recovery_session = None
+                    self._recovery_arrival_times.clear()
 
     def _enqueue_public_event(self, session, kind, item, *, limit: int = 4096) -> bool:
         """Back-pressure on the network reader, never on the Tk GUI thread.
@@ -992,6 +1037,23 @@ class LocalChatTab(ttk.Frame):
         blocked_token = None
         accepted = False
         try:
+            # 오래된 FIFO 복구가 200,000건까지 쌓여도 네트워크
+            # callback 자체를 4,096건 메모리 큐 때문에 중단하지 않는다.
+            # 전체 메시지는 먼저 기존 내구 SQLite에 저장되어야 한다.
+            if kind == "chat" and isinstance(session, MultiPlatformReadOnlySession):
+                with self._live_ingress_lock:
+                    if (getattr(self, "_recovery_session", None) is session
+                            and session is self._twitch_session
+                            and not session._stop.is_set() and not self._closed):
+                        spool = self._twitch_chat_spool
+                        if spool is None:
+                            raise RuntimeError("복구 중 미처리 채팅 DB가 없습니다.")
+                        seq = spool.append(item)
+                        if seq is not None:
+                            self._recovery_arrival_times[seq] = (
+                                stamped_item.reader_received_at)
+                        accepted = True
+                        return True
             while not getattr(self, "_closed", False):
                 if session is None or session._stop.is_set():
                     return False
@@ -1311,6 +1373,9 @@ class LocalChatTab(ttk.Frame):
         for platform_meter in getattr(self, "_platform_live_metrics", {}).values():
             platform_meter.stop(time.monotonic())
         with self._live_ingress_lock:
+            if self._recovery_session is session:
+                self._recovery_session = None
+                self._recovery_arrival_times.clear()
             if self._twitch_ai_inbox is not None:
                 # Stop 뒤 새 채팅이 종료 표식 다음에 등록되지 않도록 한다.
                 self._twitch_ai_inbox.put(None)
