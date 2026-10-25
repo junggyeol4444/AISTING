@@ -11,8 +11,11 @@ from .obs_readonly import get_obs_snapshot, ObsSnapshot, avatar_capture_diagnost
 
 
 class ObsStatusTab(ttk.Frame):
-    def __init__(self, master: tk.Misc) -> None:
+    def __init__(self, master: tk.Misc, *, chat_tab=None) -> None:
         super().__init__(master)
+        self._chat_tab = chat_tab
+        self._owned_chat_session = None
+        self._scheduled_chat_token = None
         self._port=tk.StringVar(value="4455")
         self._password=tk.StringVar()
         self._status=tk.StringVar(value="연결 안 됨 · 버튼을 눌렀을 때만 내 PC의 OBS 상태를 확인합니다.")
@@ -28,6 +31,7 @@ class ObsStatusTab(ttk.Frame):
         self._schedule_minimum = tk.StringVar()
         self._schedule_maximum = tk.StringVar()
         self._schedule_closing = tk.StringVar()
+        self._auto_chat_approved = tk.BooleanVar(value=False)
         self._discord_notice_approved = tk.BooleanVar(value=False)
         self._discord_webhook = tk.StringVar()
         self._discord_start_text = tk.StringVar()
@@ -84,6 +88,9 @@ class ObsStatusTab(ttk.Frame):
         ttk.Entry(self, textvariable=self._schedule_closing, width=64).pack(
             fill="x", pady=(1,4))
         ttk.Checkbutton(
+            self, text="방송 시작 시 기존 4플랫폼 채팅·공식 AI 자동 연결 승인 (기본 해제)",
+            variable=self._auto_chat_approved).pack(anchor="w", pady=(5,0))
+        ttk.Checkbutton(
             self, text="디스코드 시작·종료 공지도 자동 게시 승인 (기본 해제)",
             variable=self._discord_notice_approved).pack(anchor="w", pady=(5,0))
         ttk.Label(
@@ -139,6 +146,23 @@ class ObsStatusTab(ttk.Frame):
             words, operator_approved=True, duration=8)
         return observation.verified_signal is True
 
+    def _request_live_chat_start(self, token: object) -> bool:
+        reply=queue.Queue(maxsize=1)
+        self._events.put(("live_chat_start_request", (token, reply)))
+        try:
+            return reply.get(timeout=15) is True
+        except queue.Empty:
+            return False
+
+    def _request_live_chat_stop(self) -> bool:
+        reply=queue.Queue(maxsize=1)
+        self._events.put(("live_chat_stop_request", (
+            self._owned_chat_session, reply)))
+        try:
+            return reply.get(timeout=15) is True
+        except queue.Empty:
+            return False
+
     def _arm_live_schedule(self) -> None:
         """실제 방송은 사용자가 선택해 명시적으로 승인한 다음에만 허용."""
         if self._approved_scheduler_thread is not None and self._approved_scheduler_thread.is_alive():
@@ -166,6 +190,15 @@ class ObsStatusTab(ttk.Frame):
             closing=self._schedule_closing.get().strip()
             if not self._approved_live_preflight():
                 raise ValueError("기존 공식 Live2D·저장된 캐릭터·한국어 음성이 준비되지 않았습니다.")
+            auto_chat = self._auto_chat_approved.get() is True
+            if auto_chat:
+                source = self._chat_tab
+                if (source is None or source._twitch_session is not None
+                        or source._busy or source._pipeline_busy
+                        or source._tts_probe_busy or source._closed
+                        or source._official_live2d.get() is not True):
+                    raise ValueError("실제 채팅 탭에서 공식 AI와 대기 상태를 확인하세요.")
+            approval_token = object() if auto_chat else None
             discord_enabled = self._discord_notice_approved.get() is True
             on_started_notice = None
             on_finished_notice = None
@@ -194,6 +227,10 @@ class ObsStatusTab(ttk.Frame):
                    "각 1회씩 자동 게시합니다. 실패 시 자동 재게시하지 않습니다. "
                    if discord_enabled else
                    "디스코드 자동 공지는 비활성입니다. ")
+                + ("선택된 기존 4플랫폼 채팅·공식 AI 읽기 전용 수신기도 "
+                   "이 방송 시 자동 연결합니다. 계정 동의나 채팅 발신은 하지 않으며 "
+                   "기존 공식 AI 서버 설정의 권리·외부 접속은 운영자가 확인합니다. "
+                   if auto_chat else "채팅 자동 연결은 비활성입니다. ")
                 + "채팅 발신은 하지 않습니다. 저장된 캐릭터와 한국어 "
                 "음성에 사용 권리가 있고 실제 방송 자동 제어와 선택한 "
                 "공지 전송을 승인합니까?", parent=self):
@@ -206,7 +243,15 @@ class ObsStatusTab(ttk.Frame):
                 deliver_closing=self._approved_live_closing,
                 on_started_notice=on_started_notice,
                 on_finished_notice=on_finished_notice,
-                notice_approved=discord_enabled)
+                notice_approved=discord_enabled,
+                begin_live_chat=(
+                    (lambda token=approval_token: self._request_live_chat_start(token))
+                    if auto_chat else None),
+                end_live_chat=(self._request_live_chat_stop if auto_chat else None),
+                chat_approved=auto_chat)
+            if auto_chat:
+                self._chat_tab._scheduled_chat_permission = approval_token
+                self._scheduled_chat_token = approval_token
         except Exception as exc:
             # OBS credential, endpoint, exception body must not enter the GUI.
             self._live_schedule_status.set(
@@ -233,6 +278,10 @@ class ObsStatusTab(ttk.Frame):
             self._events.put(("live_schedule_done", None))
 
     def _disarm_live_schedule(self) -> None:
+        if self._chat_tab is not None and self._scheduled_chat_token is not None:
+            if self._chat_tab._scheduled_chat_permission is self._scheduled_chat_token:
+                self._chat_tab._scheduled_chat_permission = None
+        self._scheduled_chat_token = None
         runner=self._approved_scheduler
         if runner is not None:
             runner.request_stop()
@@ -281,6 +330,31 @@ class ObsStatusTab(ttk.Frame):
         try:
             while True:
                 kind,item=self._events.get_nowait()
+                if kind=="live_chat_start_request":
+                    token, reply = item
+                    accepted=False
+                    if (self._chat_tab is not None
+                            and self._approved_scheduler is not None
+                            and token is self._scheduled_chat_token):
+                        try:
+                            self._chat_tab._start_twitch(scheduled_approval=token)
+                            self._owned_chat_session = self._chat_tab._twitch_session
+                            accepted=self._owned_chat_session is not None
+                        except Exception:
+                            accepted=False
+                    self._scheduled_chat_token=None
+                    reply.put_nowait(accepted)
+                    continue
+                if kind=="live_chat_stop_request":
+                    session, reply = item
+                    result=False
+                    if (self._chat_tab is not None and session is not None
+                            and self._chat_tab._twitch_session is session):
+                        self._chat_tab._stop_twitch()
+                        result=True
+                    self._owned_chat_session=None
+                    reply.put_nowait(result)
+                    continue
                 if kind=="live_schedule_error":
                     self._live_schedule_status.set(
                         "실제 예약 작업 오류 (" + str(item) +
@@ -296,6 +370,10 @@ class ObsStatusTab(ttk.Frame):
                             " · 디스코드 시작 공지 " + snap.start_notice +
                             " / 종료 공지 " + snap.end_notice)
                     self._approved_scheduler=None
+                    if self._chat_tab is not None and self._scheduled_chat_token is not None:
+                        if self._chat_tab._scheduled_chat_permission is self._scheduled_chat_token:
+                            self._chat_tab._scheduled_chat_permission=None
+                    self._scheduled_chat_token=None
                     continue
                 self._working=False
                 self._button.configure(state="normal")
@@ -332,7 +410,8 @@ class ObsStatusTab(ttk.Frame):
             self._live_schedule_status.set(
                 snap.state + " · " + snap.detail +
                 " · 공지 시작 " + snap.start_notice +
-                " / 종료 " + snap.end_notice)
+                " / 종료 " + snap.end_notice +
+                " · 채팅/AI " + snap.live_chat)
         self.after(150,self._poll)
 
     def destroy(self) -> None:
@@ -340,6 +419,12 @@ class ObsStatusTab(ttk.Frame):
         # daemon=False 작업자가 자신이 실제 시작한 OBS 송출만 종료 시도한다.
         if self._approved_scheduler is not None:
             self._approved_scheduler.request_stop()
+        if self._chat_tab is not None and self._scheduled_chat_token is not None:
+            if self._chat_tab._scheduled_chat_permission is self._scheduled_chat_token:
+                self._chat_tab._scheduled_chat_permission = None
+        if (self._chat_tab is not None and self._owned_chat_session is not None
+                and self._chat_tab._twitch_session is self._owned_chat_session):
+            self._chat_tab._stop_twitch()
         self._password.set("")
         self._discord_webhook.set("")
         self._discord_start_text.set("")
