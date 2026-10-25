@@ -126,6 +126,72 @@ class ConversationMemory:
             ).fetchall()
         return [Exchange(*row) for row in reversed(rows)]
 
+    def relevant(self, query: str, *, limit: int = 2,
+                 exclude_recent: int = 8) -> list[Exchange]:
+        """기존 SQLite의 오래된 대화 중 현재 질문과 관련된 실제 기록만 조회.
+
+        원본 테이블·보존 개수·캐릭터 설정을 변경하지 않는다. 이미 최근
+        문맥에 포함된 대화는 제외해 중복 주입하지 않는다. 별도 모델이나
+        외부 검색/임베딩 서버를 호출하지 않는다. 일치 기록이 없으면
+        과거 사실을 새로 만들지 않고 빈 결과를 반환한다.
+        """
+        import re
+
+        if type(query) is not str or len(query) > 4000:
+            raise ValueError("관련 대화 검색 문구가 잘못되었습니다.")
+        if (type(limit) is not int or not 0 <= limit <= 4
+                or type(exclude_recent) is not int
+                or not 0 <= exclude_recent <= 40):
+            raise ValueError("관련 대화 검색 범위가 잘못되었습니다.")
+        if limit == 0:
+            return []
+        stopwords = {
+            "그리고", "그런데", "그래서", "이거", "저거", "뭐야",
+            "어떻게", "있어", "해줘", "해주세요", "있나요", "할까요",
+            "그거", "제가", "나는", "오늘", "내일", "지금",
+        }
+        words = re.findall(r"[가-힣A-Za-z0-9]{2,}", query.casefold())
+        tokens = sorted({
+            word for word in words if word not in stopwords
+        }, key=lambda value: (-len(value), value))[:8]
+        if not tokens:
+            return []
+        # LIKE 특수문자를 이스케이프하고 반드시 바인딩한다. 기존
+        # 최대 5천 개 기록에 대한 읽기만 수행하며 DB 인덱스/스키마 불변.
+        patterns = ["%" + token.replace("\\", "\\\\").replace(
+            "%", "\\%").replace("_", "\\_") + "%" for token in tokens]
+        predicates = " OR ".join(
+            "(user_text LIKE ? ESCAPE '\\' OR reply LIKE ? ESCAPE '\\')"
+            for _ in patterns)
+        parameters: list[object] = [exclude_recent]
+        for pattern in patterns:
+            parameters.extend((pattern, pattern))
+        parameters.append(512)
+        with self._connection() as db:
+            rows = db.execute(
+                "SELECT id,sender,user_text,reply FROM exchanges "
+                "WHERE id < (SELECT id FROM exchanges ORDER BY id DESC "
+                "LIMIT 1 OFFSET ?) AND (" + predicates + ") "
+                "ORDER BY id DESC LIMIT ?",
+                parameters,
+            ).fetchall()
+        ranked: list[tuple[int, int, Exchange]] = []
+        for row_id, sender, user_text, reply in rows:
+            lower_question = user_text.casefold()
+            lower_reply = reply.casefold()
+            score = sum(
+                (3 if token in lower_question else 0)
+                + (1 if token in lower_reply else 0)
+                for token in tokens)
+            if score:
+                ranked.append((
+                    score, int(row_id),
+                    Exchange(sender[:100], user_text[:700], reply[:700])))
+        ranked.sort(key=lambda item: (-item[0], -item[1]))
+        # 최종 메시지는 실제 과거 시간 순서로 모델에 제공한다.
+        return [item[2] for item in sorted(
+            ranked[:limit], key=lambda item: item[1])]
+
     def count(self) -> int:
         with self._connection() as db:
             return int(db.execute("SELECT COUNT(*) FROM exchanges").fetchone()[0])
