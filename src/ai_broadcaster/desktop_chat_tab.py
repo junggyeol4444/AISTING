@@ -108,6 +108,10 @@ class LocalChatTab(ttk.Frame):
         # 즉시 별도 SQLite에 영속 기록한다. GUI/AI 전송은 복구 순서 뒤.
         self._recovery_session = None
         self._recovery_arrival_times: dict[int, float] = {}
+        # 네트워크 읽기와 AI 큐 등록을 분리해 모델 적체 중에도 모든
+        # 신규 채팅을 SQLite에 먼저 보존한다. 완료/깨움은 세션마다 초기화.
+        self._recovery_wakeup = threading.Event()
+        self._recovery_reader_done = threading.Event()
         # 실제 수신 콜백의 AI 등록과 Stop 종료 표식을 직렬화한다.
         # tkinter 객체를 잠금 보유 상태에서 직접 조작하지 않는다.
         self._live_ingress_lock = threading.Lock()
@@ -878,6 +882,8 @@ class LocalChatTab(ttk.Frame):
             self._twitch_ai_inbox = inbox
             self._recovery_session = session
             self._recovery_arrival_times = {}
+            self._recovery_wakeup.clear()
+            self._recovery_reader_done.clear()
         # The user's real Windows receiver gets fresh private diagnostics on
         # each connection; no message text or credentials enter this meter.
         started_at = time.monotonic()
@@ -947,12 +953,14 @@ class LocalChatTab(ttk.Frame):
 
     def _work_twitch_recover_then_read(
             self, session, spool, recovery_snapshot, inbox, arrival_times) -> None:
-        """과거 보류 FIFO 복구 중에도 실제 4플랫폼 수신을 병행한다.
+        """4플랫폼 수신과 단일 AI FIFO 사이의 지속적인 SQLite 인계 작업자.
 
-        콜백은 복구 동안 신규 채팅을 먼저 SQLite 트랜잭션 확정하고
-        AI/GUI에는 전달하지 않는다. 과거 보류분 다음으로 신규 seq를
-        페이지 단위 따라잡은 후 라이브 직행 모드로 원자 전환한다.
-        FIFO에 이미 등록한 과거 seq를 AI로 두 번 보내지 않는다.
+        재시작 이전 보류 채팅도 새 채팅도 반드시 SQLite에 먼저 커밋한다.
+        AI·GUI 큐가 가득 차더라도 네트워크 수신기를 추론 작업자 속도에
+        묶지 않는다. 별도 작업자가 저장된 전역 sequence 순서로 등록한다.
+        수신기가 정상 종료된 뒤까지 저장된 대기분을 등록한 다음에만 AI
+        작업자 종료 표식을 보내므로, 마지막 페이지가 누락되지 않는다.
+        이 구조는 시청자 1~3초 응답을 보증하지 않는다.
         """
         cursor = 0
         try:
@@ -996,9 +1004,8 @@ class LocalChatTab(ttk.Frame):
                             return
                     cursor = ceiling
                     continue
-                # 마지막 SQLite snapshot+모드 전환을 콜백과 같은 락으로
-                # 직렬화한다. 마지막 seq 확인 직후 도착한 채팅이 유실되거나
-                # 이전 FIFO보다 앞서 처리될 수 있는 경합을 제거한다.
+                # 마지막 SQLite 스냅샷과 wakeup 초기화를 수신 콜백과
+                # 동일한 락으로 직렬화해 새 채팅의 깨움 신호를 잃지 않는다.
                 with self._live_ingress_lock:
                     if (session is not self._twitch_session
                             or session._stop.is_set()
@@ -1007,9 +1014,14 @@ class LocalChatTab(ttk.Frame):
                     _, final_ceiling = spool.recovery_snapshot(session._channels)
                     if final_ceiling > cursor:
                         continue
-                    self._recovery_session = None
-                    self._recovery_arrival_times.clear()
-                    return
+                    if self._recovery_reader_done.is_set():
+                        # 모든 네트워크 수신기가 끝났고 SQLite에서도
+                        # 마지막 seq까지 AI 등록했으므로 정상 종료 가능.
+                        return
+                    self._recovery_wakeup.clear()
+                # 빈 채팅방에서 SQL COUNT를 무한 반복하지 않으면서
+                # 수신 이벤트에는 즉시 반응한다. 최대 0.5초 점검 간격.
+                self._recovery_wakeup.wait(0.5)
         except Exception as exc:
             session.stop()
             with self._live_ingress_lock:
@@ -1019,21 +1031,22 @@ class LocalChatTab(ttk.Frame):
             self._results.put(("twitch_scoped", (
                 session, "twitch_error", "복구실패_" + type(exc).__name__)))
         finally:
-            if session._stop.is_set():
-                with self._live_ingress_lock:
-                    if self._recovery_session is session:
-                        self._recovery_session = None
+            with self._live_ingress_lock:
+                if self._recovery_session is session:
+                    self._recovery_session = None
                     self._recovery_arrival_times.clear()
+            # 일반 reader 종료에서는 위 SQLite 전량 등록 뒤에만
+            # AI 종료 표식을 넣고, Stop에서는 기존 단일 작업자가
+            # 잔여 메시지를 처리하지 않고 종료하도록 한다.
+            inbox.put(None)
 
     def _enqueue_public_event(self, session, kind, item, *, limit: int = 4096) -> bool:
-        """Back-pressure on the network reader, never on the Tk GUI thread.
+        """읽기 전용 실제 채팅을 먼저 내구 DB에 확정하고 FIFO로 인계한다.
 
-        No text/content deduplication and no rejected ordinary viewer chat.
-        Bound both the Tk event backlog AND the serial AI work backlog: the
-        latter can grow without limit if viewers arrive faster than the
-        locally installed model can answer. This is reader-side only and
-        never blocks Tk's event handling. On Stop, wake even a full queue.
-        The single reader preserves incoming event order within each session.
+        실제 멀티플랫폼 수신에서는 AI·Tk 적체 시 네트워크 읽기를
+        붙잡지 않고 SQLite 작업자가 뒤에서 원래 순서대로 넘긴다.
+        서버 이벤트 ID 중복 이외의 메시지는 선별·폐기하지 않는다.
+        DB 보호 한도 도달은 조용한 성공이 아닌 명시적 실패이다.
         """
         if type(limit) is not int or limit < 1:
             raise ValueError("채팅 이벤트 큐 용량 설정 오류")
@@ -1060,6 +1073,9 @@ class LocalChatTab(ttk.Frame):
                         if seq is not None:
                             self._recovery_arrival_times[seq] = (
                                 stamped_item.reader_received_at)
+                            # 복구 완료 이후에도 계속 같은 내구 경로를
+                            # 사용하므로 AI 병목이 소켓 읽기를 중단하지 않는다.
+                            self._recovery_wakeup.set()
                         accepted = True
                         # 수신기에게는 영속 접수 성공을 알려 커서/서버 ACK를
                         # 유지하지만 실제 AI FIFO 등록과는 구별 계측한다.
@@ -1148,7 +1164,12 @@ class LocalChatTab(ttk.Frame):
         except Exception as exc:
             self._results.put(("twitch_scoped", (session, "twitch_error", type(exc).__name__)))
         finally:
+            # GUI의 수신 종료 알림을 AI 완료보다 먼저 FIFO에 보낸다.
             self._results.put(("twitch_scoped", (session, "twitch_finished", session)))
+            with self._live_ingress_lock:
+                if self._recovery_session is session:
+                    self._recovery_reader_done.set()
+                    self._recovery_wakeup.set()
 
     def _work_twitch_ai(self, model: str, inbox: queue.SimpleQueue,
                         official: bool = False, session=None, *,
@@ -1906,7 +1927,11 @@ class LocalChatTab(ttk.Frame):
                         if payload is self._twitch_session:
                             self._twitch_reader_finished = True
                             if self._twitch_ai_inbox is not None:
-                                self._twitch_ai_inbox.put(None)
+                                # 실제 수신의 종료 뒤에도 SQLite→AI 인계할
+                                # 채팅이 남을 수 있다. 멀티플랫폼 작업자의
+                                # 최종 FIFO 등록 전 종료 표식을 넣지 않는다.
+                                if not isinstance(payload, MultiPlatformReadOnlySession):
+                                    self._twitch_ai_inbox.put(None)
                                 self._twitch_ai_inbox = None
                             stopped = getattr(payload, "_stop", None)
                             if stopped is not None and stopped.is_set():
