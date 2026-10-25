@@ -1740,10 +1740,10 @@ class LocalChatTab(ttk.Frame):
                                                 attempt, delay)))
                                 else:
                                     result = _generate_full_reply()
-                    else:
-                        result = reply_function(
-                            model, chat.text, sender=actor,
-                            use_committed_gui_character=True)
+                        else:
+                            result = reply_function(
+                                model, chat.text, sender=actor,
+                                use_committed_gui_character=True)
                 except Exception as exc:
                     attempt_failed = True
                     report("twitch_ai_error", (chat, type(exc).__name__))
