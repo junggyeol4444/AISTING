@@ -953,18 +953,18 @@ class LocalChatTab(ttk.Frame):
                                     self._live_peak_ai_backlog, inbox.qsize() + 1)
                                 self._live_peak_gui_backlog = max(
                                     self._live_peak_gui_backlog, self._results.qsize() + 1)
+                                # 영속 트랜잭션 성공 전에는 GUI·AI 어느 큐에도
+                                # 수신 성공 사건을 넣지 않는다. 저장 실패 시
+                                # 기존 세션의 네트워크 오류·재연결 경로로 전파.
+                                spool = self._twitch_chat_spool
+                                if spool is None:
+                                    raise RuntimeError("미처리 채팅 보존 큐가 없습니다.")
+                                sequence = spool.append(item)
                                 arrivals.put(stamped_item.reader_received_at)
                                 self._results.put(("twitch_scoped", (
                                     session, "twitch_chat", _ReaderTimestampedChat(
                                         item, stamped_item.reader_received_at,
                                         ai_prequeued=True))))
-                                # 실제 AI 수용 직전에 독립 SQLite에 확정.
-                                # 예외가 발생하면 네트워크 콜백 실패로 전파해
-                                # 성공한 수신인 척 버리지 않는다.
-                                spool = self._twitch_chat_spool
-                                if spool is None:
-                                    raise RuntimeError("미처리 채팅 보존 큐가 없습니다.")
-                                sequence = spool.append(item)
                                 inbox.put(PendingChat(sequence, item))
                                 accepted = True
                                 return True
