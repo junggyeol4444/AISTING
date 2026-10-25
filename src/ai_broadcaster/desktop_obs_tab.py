@@ -25,6 +25,12 @@ class ObsStatusTab(ttk.Frame):
         self._events: queue.SimpleQueue[tuple[str,object]]=queue.SimpleQueue()
         self._working=False
         self._vision_busy=False
+        self._game_runner=None
+        self._game_worker=None
+        self._game_title=tk.StringVar()
+        self._game_goal=tk.StringVar()
+        self._game_steps=tk.StringVar(value="10")
+        self._game_status=tk.StringVar(value="게임 자동 조작: 비활성 · 별도 승인 필요")
         self._vision_status=tk.StringVar(
             value="게임 화면 이해: 미실행 · 사용자 승인 전에는 실제 화면 읽지 않음")
         self._approved_scheduler = None
@@ -77,6 +83,28 @@ class ObsStatusTab(ttk.Frame):
         self._vision_button.pack(anchor="w", pady=(1,2))
         ttk.Label(self, textvariable=self._vision_status,
                   wraplength=560).pack(anchor="w", pady=(0,3))
+        ttk.Label(self, text="게임 자율 진행: OBS 실제 화면 → 기존 로컬 AI 판단 → "
+                  "선택한 Windows 게임 창만 조작 (기본 꺼짐)",
+                  wraplength=560).pack(anchor="w", pady=(4,2))
+        ttk.Label(self, text="Windows 게임 창 제목 (정확히 일치)").pack(anchor="w")
+        ttk.Entry(self, textvariable=self._game_title, width=64).pack(fill="x")
+        ttk.Label(self, text="운영자가 지정한 게임 목표").pack(anchor="w")
+        ttk.Entry(self, textvariable=self._game_goal, width=64).pack(fill="x")
+        game_row=ttk.Frame(self)
+        game_row.pack(fill="x", pady=(3,2))
+        ttk.Label(game_row, text="최대 행동 수 (1~100)").pack(side="left")
+        ttk.Entry(game_row, textvariable=self._game_steps, width=7).pack(
+            side="left", padx=(4,8))
+        self._game_start_button=ttk.Button(
+            game_row, text="게임 자동 진행 별도 승인 후 시작",
+            command=self._start_approved_game)
+        self._game_start_button.pack(side="left")
+        self._game_stop_button=ttk.Button(
+            game_row, text="게임 조작 즉시 중지 요청",
+            command=self._stop_approved_game, state="disabled")
+        self._game_stop_button.pack(side="left", padx=(5,0))
+        ttk.Label(self, textvariable=self._game_status, wraplength=560).pack(
+            anchor="w", pady=(1,5))
         ttk.Label(self,text="선택 장면 안의 소스 · OBS에서 설정은 직접 변경").pack(anchor="w",pady=(4,3))
         self._sources=tk.Listbox(self,height=5,activestyle="none",exportselection=False)
         self._sources.pack(fill="both",expand=True)
@@ -197,6 +225,68 @@ class ObsStatusTab(ttk.Frame):
             self._events.put(("game_vision_error", type(exc).__name__))
         finally:
             password=""
+
+    def _start_approved_game(self) -> None:
+        """운영자가 별도 승인한 경우에만 Windows 게임을 직접 조작."""
+        if self._game_runner is not None:
+            return
+        try:
+            from .approved_local_game_control import ApprovedLocalGameAutoplay
+            if self._chat_tab is None:
+                raise ValueError("기존 로컬 AI 탭이 없습니다.")
+            model=self._chat_tab._model_name.get().strip()
+            title=self._game_title.get().strip()
+            goal=self._game_goal.get().strip()
+            steps=int(self._game_steps.get())
+            port=int(self._port.get())
+            password=self._password.get()
+            if not model or not title or not goal or not password:
+                raise ValueError("게임 창 제목·목표·로컬 AI 모델·OBS 암호가 필요합니다.")
+            if not 1 <= steps <= 100:
+                raise ValueError("최대 게임 행동은 1~100회입니다.")
+            if not messagebox.askyesno(
+                "실제 게임 자동 조작 최종 승인",
+                "내 PC의 게임 창 '" + title + "'에 실제 키보드/마우스 입력을 "
+                + str(steps) + "회 이내로 전송합니다. 매 행동 전에 현재 "
+                "OBS 화면을 로컬 Ollama로 분석하며 AI가 행동을 선택합니다. "
+                "포커스가 바뀌거나 중지를 누르면 더 이상 행동하지 않습니다. "
+                "다른 프로그램/채팅/방송 제어는 승인하지 않습니다. "
+                "운영자가 지정한 목표: " + goal + "\n\n"
+                "이 실제 게임 자동 조작을 승인합니까?", parent=self):
+                return
+            runner=ApprovedLocalGameAutoplay(
+                obs_password=password, obs_port=port, model_name=model,
+                game_window_title=title, goal=goal, max_steps=steps,
+                operator_approved=True,
+                on_event=lambda kind, value: self._events.put((
+                    "approved_game_" + kind, value)))
+            self._game_runner=runner
+            self._game_start_button.configure(state="disabled")
+            self._game_stop_button.configure(state="normal")
+            self._game_status.set("게임 자동 진행 승인됨 · 실제 Windows 게임 창 확인 중")
+            self._game_worker=threading.Thread(
+                target=self._work_approved_game, args=(runner,),
+                name="AISTING-운영자승인-게임자동조작", daemon=False)
+            self._game_worker.start()
+        except Exception as exc:
+            self._game_status.set(
+                "게임 자동 진행 미시작 (" + type(exc).__name__
+                + ") · 게임 창/목표/OBS/모델 입력을 확인하세요.")
+
+    def _work_approved_game(self, runner) -> None:
+        try:
+            runner.run()
+        except Exception as exc:
+            self._events.put(("approved_game_error", type(exc).__name__))
+        finally:
+            self._events.put(("approved_game_done", runner))
+
+    def _stop_approved_game(self) -> None:
+        runner=self._game_runner
+        if runner is not None:
+            runner.request_stop()
+            self._game_status.set(
+                "게임 조작 중지 요청됨 · 진행 중 키/마우스 해제 및 작업 종료 대기")
 
     def _show_live_history(self) -> None:
         """로컬 시작/종료 이력만 표시. OBS 연결·송출·파일 삭제 없음."""
@@ -525,6 +615,28 @@ class ObsStatusTab(ttk.Frame):
         try:
             while True:
                 kind,item=self._events.get_nowait()
+                if kind == "approved_game_행동":
+                    self._game_status.set(
+                        f"게임 행동 {item.number}회: {item.result} · "
+                        "다음 화면 재관찰 예정 · 목표 달성 미확인")
+                    continue
+                if kind == "approved_game_종료":
+                    self._game_status.set(
+                        f"게임 자동 진행 {item}개 행동 요청 완료 · "
+                        "실제 게임 목표 달성 여부는 화면으로 별도 확인 필요")
+                    continue
+                if kind == "approved_game_error":
+                    self._game_status.set(
+                        "게임 자동 진행 중단 (" + str(item) +
+                        ") · 실제 게임 창/모델/OBS 상태 확인 필요")
+                    continue
+                if kind == "approved_game_done":
+                    if self._game_runner is item:
+                        self._game_runner=None
+                        self._game_worker=None
+                        self._game_start_button.configure(state="normal")
+                        self._game_stop_button.configure(state="disabled")
+                    continue
                 if kind == "game_vision_ready":
                     self._vision_busy=False
                     self._vision_button.configure(state="normal")
@@ -669,6 +781,9 @@ class ObsStatusTab(ttk.Frame):
         self.after(150,self._poll)
 
     def destroy(self) -> None:
+        # 창 종료 후 실제 게임에 새로운 입력을 전송하지 않는다.
+        if self._game_runner is not None:
+            self._game_runner.request_stop()
         # 사용자 GUI가 종료되면 이후의 방송 예약 시작을 확실히 차단.
         # daemon=False 작업자가 자신이 실제 시작한 OBS 송출만 종료 시도한다.
         if self._approved_scheduler is not None:
