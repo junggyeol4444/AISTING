@@ -32,6 +32,7 @@ from .approved_live_voice_outbox import ApprovedLiveVoiceOutbox
 from .approved_live_voice_stream_lease import ApprovedVoiceStreamLease
 from .approved_live_voice_causal_journal import ApprovedVoiceCausalJournal
 from .approved_live_voice_playback_watch import ApprovedLiveVoicePlaybackWatch
+from .approved_live_voice_prefetch import ApprovedVoiceSegmentPrefetch
 
 
 _MAX_SEGMENT_CHARS = 64
@@ -249,14 +250,8 @@ class ApprovedLiveVoiceOutput:
                 duration = 0.0
                 segments = korean_voice_segments(text)
                 self._publish("발화시작", len(segments))
-                for segment in segments:
-                    if self._stop.is_set():
-                        break
-                    duration += self._speak_segment(
-                        segment, turn_key=turn_key,
-                        part_id=str(completed + 1))
-                    completed += 1
-                    self._publish("구간완료", (completed, len(segments)))
+                completed, duration = self._speak_turn_segments(
+                    segments, turn_key=turn_key)
                 if self._stop.is_set() or completed != len(segments):
                     self._journal.finish(turn_key, "중단")
                     self._publish("발화중단", (completed, len(segments)))
@@ -317,14 +312,8 @@ class ApprovedLiveVoiceOutput:
                 duration = 0.0
                 segments = korean_voice_segments(text)
                 self._publish("발화시작", len(segments))
-                for segment in segments:
-                    if self._stop.is_set():
-                        break
-                    duration += self._speak_segment(
-                        segment, turn_key=turn_key,
-                        part_id=str(completed + 1))
-                    completed += 1
-                    self._publish("구간완료", (completed, len(segments)))
+                completed, duration = self._speak_turn_segments(
+                    segments, turn_key=turn_key)
                 if self._stop.is_set() or completed != len(segments):
                     self._journal.finish(turn_key, "중단")
                     outbox.finish(seq, "중단")
@@ -349,9 +338,51 @@ class ApprovedLiveVoiceOutput:
                 self._stop.set()
                 break
 
+    def _synthesize_segment(self, text: str):
+        """기존 권리 확인 모델만 사용하며 음성·OBS 자동 송출은 하지 않음."""
+        if self._stop.is_set():
+            raise RuntimeError("운영자 중지 후 한국어 음성 합성을 시작하지 않습니다.")
+        actual = synthesize_local_gpt_sovits(
+            self.reference_audio, self.reference_text, text,
+            api_url=self.api_url, operator_approved=True,
+            rights_confirmed=True, play_to_speaker=False,
+            return_audio_bytes=True, timeout=120,
+        )
+        if self._stop.is_set():
+            raise RuntimeError("한국어 음성 합성 중 운영자가 중지했습니다.")
+        return actual
+
+    def _speak_turn_segments(
+        self, segments: tuple[str, ...], *, turn_key: str,
+    ) -> tuple[int, float]:
+        """다음 한 WAV 합성과 현재 WAV 방송을 겹치되 출력은 원래 FIFO."""
+        completed = 0
+        duration = 0.0
+        prefetch = ApprovedVoiceSegmentPrefetch(
+            self._synthesize_segment, self._stop)
+        try:
+            for index, segment in enumerate(segments):
+                if self._stop.is_set():
+                    break
+                prepared = prefetch.take(segment)
+                upcoming = segments[index + 1] if index + 1 < len(segments) else None
+                start_next = (
+                    (lambda next_text=upcoming: prefetch.start_next(next_text))
+                    if upcoming is not None else None)
+                duration += self._speak_segment(
+                    segment, turn_key=turn_key, part_id=str(index + 1),
+                    prepared_audio=prepared, prefetch_next=start_next)
+                completed += 1
+                self._publish("구간완료", (completed, len(segments)))
+        finally:
+            prefetch.close()
+        return completed, duration
+
     def _speak_segment(
         self, text: str, *, depth: int = 0,
         turn_key: str | None = None, part_id: str = "1",
+        prepared_audio: object | None = None,
+        prefetch_next: Callable[[], None] | None = None,
     ) -> float:
         """실제 OBS의 '이미 송출 중' 상태에서만 동일 PCM을 재생·입 구동."""
         from . import original_plan_frontend as frontend
@@ -371,12 +402,8 @@ class ApprovedLiveVoiceOutput:
         if not active_official_window_capture(media_path.capture_sources):
             raise RuntimeError("현재 OBS 장면에 공식 Live2D 활성 창 캡처가 없습니다.")
 
-        actual = synthesize_local_gpt_sovits(
-            self.reference_audio, self.reference_text, text,
-            api_url=self.api_url, operator_approved=True,
-            rights_confirmed=True, play_to_speaker=False,
-            return_audio_bytes=True, timeout=120,
-        )
+        actual = (prepared_audio if prepared_audio is not None
+                  else self._synthesize_segment(text))
         if self._stop.is_set():
             raise RuntimeError("한국어 음성 합성 중 사용자가 중지했습니다.")
         raw = actual.wav_data
@@ -401,7 +428,8 @@ class ApprovedLiveVoiceOutput:
             # 원래 문장의 각 글자를 순서대로 읽고 매번 같은 권리 모델 사용.
             return (self._speak_segment(
                         left, depth=depth + 1, turn_key=turn_key,
-                        part_id=part_id + ".1")
+                        part_id=part_id + ".1",
+                        prefetch_next=prefetch_next)
                     + self._speak_segment(
                         right, depth=depth + 1, turn_key=turn_key,
                         part_id=part_id + ".2"))
@@ -458,6 +486,10 @@ class ApprovedLiveVoiceOutput:
                     part_id=part_id, wav_data=raw,
                     wav_seconds=wav_seconds, obs_scene=original.scene,
                     obs_source_uuid=uuid)
+                # 현재 WAV가 공식 Cubism 입·OBS 소스에 연결된 뒤에만
+                # 다음 한 구간을 선행 합성한다. FIFO 발화는 그대로 유지.
+                if prefetch_next is not None:
+                    prefetch_next()
                 client.set_scene_item_enabled(original.scene, scene_item_id, True)
                 self._stream_lease.check(obs)
                 client.trigger_media_input_action(
