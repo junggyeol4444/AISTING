@@ -900,6 +900,7 @@ class LocalChatTab(ttk.Frame):
                         topics=approved_plan["topics"],
                         interval_seconds=approved_plan["interval_seconds"],
                         journal=ApprovedLiveContentJournal(),
+                        broadcast_alive=approved_plan["broadcast_alive"],
                         operator_approved=True)
                 except (ValueError, TypeError, RuntimeError, OSError) as exc:
                     approval_dialog.showwarning(
@@ -1519,7 +1520,10 @@ class LocalChatTab(ttk.Frame):
                             # DB 상태를 알 수 없으면 자발 발화만 차단.
                             continue
                         if ((speech is None and content_turn is None)
-                                or session._stop.is_set() or not inbox.empty()):
+                                or session._stop.is_set() or not inbox.empty()
+                                or (content_turn is not None and (
+                                    self._twitch_reader_finished
+                                    or not content_agenda.broadcast_is_active()))):
                             # 콘텐츠 발화는 위 장부에 이미 '시도'로 확정됨.
                             # 채팅이 끼어들어 발화를 보류해도 자동 재전송 금지.
                             continue
