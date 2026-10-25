@@ -107,6 +107,9 @@ class LocalChatTab(ttk.Frame):
         # 과거 보류 채팅을 FIFO에 재등록하는 동안에도 실수신 채팅을
         # 즉시 별도 SQLite에 영속 기록한다. GUI/AI 전송은 복구 순서 뒤.
         self._recovery_session = None
+        # 승인형 OBS 일정에 연결하는 자동 채팅은 GUI에서 운영자
+        # 동의 후 발급한 단발성 메모리 토큰을 사용한다. 재시작 저장 없음.
+        self._scheduled_chat_permission: object | None = None
         self._recovery_arrival_times: dict[int, float] = {}
         # 동일 프로세스의 실제 파싱 시각만 별도 보관한다. SQLite의
         # 기존 채팅 본문·스키마를 바꾸지 않고 재시작 뒤 시각은 미확인.
@@ -712,7 +715,35 @@ class LocalChatTab(ttk.Frame):
         else:
             self._results.put(("youtube_oauth_ok", token))
 
-    def _start_twitch(self) -> None:
+    def _start_twitch(self, *, scheduled_approval: object | None = None) -> None:
+        """사용자 버튼 또는 사용자 승인된 같은 방송의 단발성 채팅 연결."""
+        if scheduled_approval is not None:
+            if scheduled_approval is not self._scheduled_chat_permission:
+                raise PermissionError("사전 승인되지 않은 방송의 채팅 자동 시작 차단")
+            self._scheduled_chat_permission = None
+
+            class _NoPrompt:
+                """원격 시각의 무인 실행에서는 Tk 모달 창을 열지 않는다."""
+                def __init__(self, owner):
+                    self._owner = owner
+
+                def showwarning(self, title, message, **_kwargs):
+                    self._owner._twitch_status.set(title + " · 자동 연결 조건 미충족")
+
+                def showerror(self, title, message, **_kwargs):
+                    self._owner._twitch_status.set(title + " · 자동 연결 조건 미충족")
+
+                def showinfo(self, title, message, **_kwargs):
+                    self._owner._twitch_status.set(title + " · 자동 연결 조건 미충족")
+
+                def askyesno(self, title, message, **_kwargs):
+                    # 이 실행은 이미 메인 GUI에서 정확한 주간 일정·
+                    # 공개 채팅/AI 권한까지 사용자 동의를 받은 경우뿐.
+                    return True
+
+            approval_dialog = _NoPrompt(self)
+        else:
+            approval_dialog = messagebox
         # Never interleave automatic platform prompts into a one-shot
         # operator-approved official Live2D/OBS session probe.
         if (self._closed or self._twitch_session is not None
@@ -720,12 +751,12 @@ class LocalChatTab(ttk.Frame):
                 or getattr(self, "_oauth_busy", False)):
             return
         if self._busy:
-            messagebox.showwarning(
+            approval_dialog.showwarning(
                 "수동 AI 작업 중", "진행 중인 수동 AI 질문과 기억 저장이 끝난 뒤 공개 채팅을 연결하세요.",
                 parent=self)
             return
         if getattr(self, "_twitch_active_workers", None):
-            messagebox.showwarning(
+            approval_dialog.showwarning(
                 "이전 AI 작업 종료 대기",
                 "이전 채팅의 AI·기억 저장 작업이 끝난 뒤 새 연결을 시작할 수 있습니다.",
                 parent=self)
@@ -734,7 +765,7 @@ class LocalChatTab(ttk.Frame):
         model = self._model_name.get().strip()
         official = bool(self._official_live2d.get())
         if not official and not model:
-            messagebox.showinfo(
+            approval_dialog.showinfo(
                 "로컬 AI 모델", "먼저 설치한 Ollama 모델 이름을 입력해 주세요.",
                 parent=self)
             return
@@ -757,11 +788,11 @@ class LocalChatTab(ttk.Frame):
                     raise ValueError("저장한 캐릭터와 실행 중인 공식 Live2D 설정이 다릅니다.")
                 require_saved_korean_gpt_sovits(project)
             except (ValueError, OSError, KeyError, RuntimeError) as exc:
-                messagebox.showwarning("공식 AI 연결 준비",
+                approval_dialog.showwarning("공식 AI 연결 준비",
                                        "저장한 캐릭터·음성 설정을 확인하세요 (" +
                                        type(exc).__name__ + ")", parent=self)
                 return
-        if official and not messagebox.askyesno(
+        if official and not approval_dialog.askyesno(
                 "공식 AI·Live2D 채팅 연결 승인",
                 "연결 후 들어오는 모든 플랫폼 채팅을 기존 공식 Live2D 창의 "
                 "Open-LLM-VTuber 서버에 1회씩 전달합니다. 공식 서버 설정에 따라 "
@@ -780,29 +811,29 @@ class LocalChatTab(ttk.Frame):
         try:
             saved_platforms = load_settings()["platforms"]
         except (ValueError, OSError, KeyError, TypeError, RuntimeError) as exc:
-            messagebox.showinfo("플랫폼 설정",
+            approval_dialog.showinfo("플랫폼 설정",
                                 "저장된 플랫폼 설정을 확인하세요 (" + type(exc).__name__ + ")",
                                 parent=self)
             return
         if (not isinstance(saved_platforms, (list, tuple)) or not saved_platforms
                 or any(type(name) is not str for name in saved_platforms)):
-            messagebox.showinfo("플랫폼 설정", "저장된 플랫폼 선택을 확인하세요.", parent=self)
+            approval_dialog.showinfo("플랫폼 설정", "저장된 플랫폼 선택을 확인하세요.", parent=self)
             return
         if (len(set(saved_platforms)) != len(saved_platforms)
                 or any(name not in ("twitch","chzzk","soop","youtube")
                        for name in saved_platforms)):
-            messagebox.showinfo("플랫폼 설정", "저장된 플랫폼 선택을 확인하세요.", parent=self)
+            approval_dialog.showinfo("플랫폼 설정", "저장된 플랫폼 선택을 확인하세요.", parent=self)
             return
         if choice == "전체":
             missing = [name for name in saved_platforms
                        if not self._multi_channels[name].get().strip()]
             if missing:
-                messagebox.showinfo("채널 입력",
+                approval_dialog.showinfo("채널 입력",
                                     "선택한 플랫폼의 채널을 모두 입력하세요: " +
                                     ", ".join(missing), parent=self)
                 return
         elif code not in saved_platforms:
-            messagebox.showinfo("플랫폼 선택",
+            approval_dialog.showinfo("플랫폼 선택",
                                 "방송 설정에서 선택한 플랫폼을 저장해 주세요.", parent=self)
             return
         try:
@@ -844,7 +875,7 @@ class LocalChatTab(ttk.Frame):
                 session = MultiPlatformReadOnlySession(
                     {code: channel}, emit, **single_options)
         except (ValueError, TypeError, OSError, RuntimeError) as exc:
-            messagebox.showinfo("채팅 채널",
+            approval_dialog.showinfo("채팅 채널",
                                 "채널·API 설정을 확인하세요 (" + type(exc).__name__ + ")",
                                 parent=self)
             return
@@ -858,7 +889,7 @@ class LocalChatTab(ttk.Frame):
         except Exception as exc:
             if "durable" in locals():
                 durable.release_exclusive_consumer()
-            messagebox.showerror(
+            approval_dialog.showerror(
                 "채팅 복구 준비 실패",
                 "미처리 채팅 저장소를 열거나 복구할 수 없습니다. "
                 "원본은 변경하지 않았습니다 (" + type(exc).__name__ + ")",
@@ -1449,6 +1480,7 @@ class LocalChatTab(ttk.Frame):
             self._twitch_status.set("운영자가 공개 채팅 연결을 중지했습니다. 남은 AI 작업은 폐기합니다.")
 
     def destroy(self) -> None:
+        self._scheduled_chat_permission = None
         self._closed = True
         if self._pipeline_cancel is not None:
             self._pipeline_cancel.set()
