@@ -112,7 +112,8 @@ class ApprovedLiveVoiceOutbox:
                 "AND name NOT LIKE 'sqlite_%'")}
             if (appid not in (0, _APP_ID)
                     or existed and not tables
-                    or tables and (tables != {_TABLE} or appid != _APP_ID)):
+                    or tables and (not tables.issubset({_TABLE, "approved_live_voice_recovery_audit"})
+                                   or _TABLE not in tables or appid != _APP_ID)):
                 raise ValueError("다른 프로그램의 SQLite 파일은 변경하지 않습니다.")
             db.execute(f"PRAGMA application_id={_APP_ID}")
             db.execute(
@@ -131,6 +132,19 @@ class ApprovedLiveVoiceOutbox:
             db.execute(
                 f"CREATE INDEX IF NOT EXISTS avo_state_count "
                 f"ON {_TABLE}(state)")
+            # 기존 음성 원문·세션을 보존하며 수동 인계의 출처만 별도 기록.
+            db.execute(
+                "CREATE TABLE IF NOT EXISTS approved_live_voice_recovery_audit("
+                "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                "old_session_id TEXT NOT NULL,new_session_id TEXT NOT NULL,"
+                "first_seq INTEGER NOT NULL,last_seq INTEGER NOT NULL,"
+                "moved_count INTEGER NOT NULL,created_at TEXT NOT NULL "
+                "DEFAULT CURRENT_TIMESTAMP)")
+            audit_cols = tuple(row[1] for row in db.execute(
+                "PRAGMA table_info(approved_live_voice_recovery_audit)"))
+            if audit_cols != ("id", "old_session_id", "new_session_id",
+                              "first_seq", "last_seq", "moved_count", "created_at"):
+                raise ValueError("기존 음성 수동 복구 기록 구조가 다릅니다.")
             columns = tuple(r[1] for r in db.execute(
                 f"PRAGMA table_info({_TABLE})"))
             if columns != ("seq", "session_id", "turn_key",
@@ -247,3 +261,70 @@ class ApprovedLiveVoiceOutbox:
                 (session_id,)).fetchall()
         values = dict(rows)
         return int(values.get("대기", 0)), int(values.get("시도", 0))
+
+    def previous_sessions(self, current_session_id: str, *,
+                          limit: int = 30) -> tuple[tuple[str, int, int, str], ...]:
+        """운영자 선택을 위해 과거 세션 ID·대기/시도 건수만 조회한다.
+
+        DPAPI 원문·채팅 본문·권한 정보는 조회/출력하지 않는다.
+        이전 '시도'는 절대 수동 인계 대상이 아니다.
+        """
+        self._validate(current_session_id)
+        if type(limit) is not int or not 1 <= limit <= 100:
+            raise ValueError("이전 음성 방송 조회 한도 오류")
+        with self._connect() as db:
+            rows = db.execute(
+                f"SELECT session_id,"
+                "SUM(CASE WHEN state='대기' THEN 1 ELSE 0 END),"
+                "SUM(CASE WHEN state='시도' THEN 1 ELSE 0 END),"
+                f"MIN(created_at) FROM {_TABLE} "
+                "WHERE session_id<>? AND state IN ('대기','시도') "
+                "GROUP BY session_id ORDER BY MIN(seq) DESC LIMIT ?",
+                (current_session_id, limit)).fetchall()
+        return tuple((str(s), int(p), int(u), str(t))
+                     for s, p, u, t in rows)
+
+    def adopt_previous_pending(
+            self, old_session_id: str, new_session_id: str, *,
+            operator_approved: bool = False,
+            same_broadcast_confirmed: bool = False) -> int:
+        """운영자 두 확인 후 과거 *대기*만 현재 승인 세션에 원자적으로 인계.
+
+        외부에서 동일 OBS 방송 확인 후 호출해야 한다. 이 DB만으로
+        과거 OBS 출력과 현재 출력의 동일성을 증명할 수 없다.
+        이미 합성/OBS 요청 가능성이 있는 '시도'는 절대 이동하지 않는다.
+        기존 현재 세션 대기가 있으면 원래 전역 FIFO를 섞지 않도록 거절.
+        """
+        self._validate(old_session_id)
+        self._validate(new_session_id)
+        if old_session_id == new_session_id:
+            raise ValueError("과거와 현재 방송 세션은 달라야 합니다.")
+        if operator_approved is not True or same_broadcast_confirmed is not True:
+            raise PermissionError("운영자 직접 승인과 동일 방송 확인이 모두 필요합니다.")
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            occupied = db.execute(
+                f"SELECT 1 FROM {_TABLE} WHERE session_id=? "
+                "AND state IN ('대기','시도') LIMIT 1",
+                (new_session_id,)).fetchone()
+            if occupied is not None:
+                raise RuntimeError("현재 방송 음성 대기/시도가 있어 이전 순서 인계 금지")
+            first_last = db.execute(
+                f"SELECT MIN(seq),MAX(seq),COUNT(*) FROM {_TABLE} "
+                "WHERE session_id=? AND state='대기'",
+                (old_session_id,)).fetchone()
+            first, last, count = first_last
+            if not count:
+                return 0
+            updated = db.execute(
+                f"UPDATE {_TABLE} SET session_id=?,updated_at=CURRENT_TIMESTAMP "
+                "WHERE session_id=? AND state='대기'",
+                (new_session_id, old_session_id))
+            if updated.rowcount != count:
+                raise RuntimeError("과거 발화 인계 도중 대기열 소유권 변경")
+            db.execute(
+                "INSERT INTO approved_live_voice_recovery_audit("
+                "old_session_id,new_session_id,first_seq,last_seq,moved_count)"
+                " VALUES(?,?,?,?,?)",
+                (old_session_id, new_session_id, int(first), int(last), int(count)))
+            return int(count)
