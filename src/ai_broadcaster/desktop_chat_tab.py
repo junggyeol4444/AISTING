@@ -34,6 +34,7 @@ from .offline_settings import load_settings
 from .durable_public_chat_queue import DurablePublicChatQueue, PendingChat
 from .live_ai_recovery import run_local_fifo_with_recovery
 from .approved_live_idle_speech import ApprovedLiveIdleSpeech
+from .approved_live_voice_output import ApprovedLiveVoiceOutput
 
 
 @dataclass(frozen=True)
@@ -88,6 +89,10 @@ class LocalChatTab(ttk.Frame):
         self._idle_live_threshold = tk.StringVar(value="90")
         self._idle_live_words = tk.StringVar()
         self._broadcast_memory_enabled = tk.BooleanVar(value=False)
+        self._approved_live_voice_enabled = tk.BooleanVar(value=False)
+        self._approved_live_voice_output: ApprovedLiveVoiceOutput | None = None
+        self._approved_live_voice_status = tk.StringVar(
+            value="실시간 GPT-SoVITS→공식 Cubism→OBS 발화: 비활성 · 기본 꺼짐")
         # 운영자 선택 시 로컬 Ollama 생성 진행 중인 일부 답변을
         # 방송·TTS·SQLite 저장 없이 현재 GUI 상태 줄에만 표시.
         self._local_stream_preview = tk.BooleanVar(value=False)
@@ -289,6 +294,13 @@ class LocalChatTab(ttk.Frame):
                   wraplength=580).pack(anchor="w", before=model_row)
         ttk.Entry(self, textvariable=self._idle_live_words,
                   width=75).pack(fill="x", before=model_row)
+        ttk.Checkbutton(
+            self, text="방송 중 로컬 AI 실제 한국어 음성→공식 Live2D 입→OBS 송출"
+                 " 별도 승인 (기본 꺼짐)",
+            variable=self._approved_live_voice_enabled,
+        ).pack(anchor="w", before=model_row, pady=(3,1))
+        ttk.Label(self, textvariable=self._approved_live_voice_status,
+                  wraplength=600).pack(anchor="w", before=model_row)
         ttk.Checkbutton(
             self, text="이전 실제 OBS 방송 시작·종료 사실을 내 로컬 AI가 기억"
                  " (선택 시에만 · 기본 꺼짐 · 다른 캐릭터/채팅 원문 저장 없음)",
@@ -877,6 +889,62 @@ class LocalChatTab(ttk.Frame):
                     "실제 OBS 사건 장부를 안전하게 읽지 못했습니다 ("
                     + type(exc).__name__ + ")", parent=self)
                 return
+        live_voice_options = None
+        if self._approved_live_voice_enabled.get() and scheduled_approval is None:
+            if official:
+                approval_dialog.showwarning(
+                    "공식 음성 중복 차단",
+                    "공식 Live2D 서버가 이미 음성을 소유합니다. "
+                    "별도 GPT-SoVITS WAV 실방송 경로는 로컬 Ollama 채팅 모드에서만 사용하세요.",
+                    parent=self)
+                return
+            if self._auto_voice.get():
+                approval_dialog.showwarning(
+                    "중복 음성 출력 차단",
+                    "방송용 실제 한국어 음성을 활성화하려면 Windows 기본 음성 자동 읽기를 "
+                    "먼저 해제하세요. 두 음성이 동시에 나오지 않도록 합니다.", parent=self)
+                return
+            try:
+                from .official_tts_readiness import read_saved_korean_gpt_sovits_config
+                from . import original_plan_frontend as frontend
+                from .offline_settings import active_persona, settings_file
+                from .original_plan_studio import inspect_saved_persona_alignment
+                project = frontend._native_viewer_project
+                if (project is None or frontend._native_viewer is None
+                        or frontend._native_viewer.poll() is not None
+                        or frontend._native_bridge is None):
+                    raise ValueError("공식 Windows Live2D 창이 열려 있지 않습니다.")
+                saved = settings_file()
+                if (not saved.is_file() or saved.is_symlink()
+                        or saved.parent.is_symlink()
+                        or not inspect_saved_persona_alignment(
+                            project, active_persona(load_settings(saved)))):
+                    raise ValueError("저장된 캐릭터와 공식 Live2D 설정이 다릅니다.")
+                api_url, reference, reference_text = (
+                    read_saved_korean_gpt_sovits_config(project))
+                password = self._pipeline_obs_password.get()
+                if not password:
+                    raise ValueError("현재 채팅 탭의 OBS 암호를 먼저 입력해야 합니다.")
+                live_voice_options = dict(
+                    reference_audio=reference, reference_text=reference_text,
+                    api_url=api_url, obs_password=password, obs_port=4455,
+                    operator_approved=True, rights_confirmed=True)
+            except (ValueError, RuntimeError, OSError, KeyError) as exc:
+                approval_dialog.showwarning(
+                    "실방송 한국어 음성 준비",
+                    "기존 공식 Live2D·저장 캐릭터·참조 음성 권리·OBS 암호를 확인하세요 ("
+                    + type(exc).__name__ + ")", parent=self)
+                return
+            if not approval_dialog.askyesno(
+                "실방송 한국어 GPT-SoVITS·Cubism·OBS 최종 승인",
+                "선택한 실제 4플랫폼 채팅의 로컬 Ollama 답변을 한국어 "
+                "GPT-SoVITS로 합성하고, 지금 이미 방송 중인 OBS 장면에 "
+                "현재 발화 전용 음성 소스를 만들어 송출합니다. "
+                "같은 WAV로 공식 Windows Live2D Cubism 입을 구동합니다. "
+                "기존 소스·장면이나 송출 시작/종료는 건드리지 않습니다. "
+                "실제 음성 사용 권리·시청자에게 들릴 수 있는 발화·"
+                "임시 음성 소스 생성을 모두 승인합니까?", parent=self):
+                return
         choice = self._chat_platform.get()
         types = {"트위치": "twitch", "치지직": "chzzk",
                  "SOOP": "soop", "유튜브": "youtube"}
@@ -975,6 +1043,25 @@ class LocalChatTab(ttk.Frame):
                 + str(len(prior_ai_incidents))
                 + "개 사건 기록 있음 · 해당 채팅의 성공/송출 미확인 · "
                 "원본 SQLite 보존 상태 확인 필요")
+        if live_voice_options is not None:
+            try:
+                live_voice = ApprovedLiveVoiceOutput(
+                    **live_voice_options,
+                    on_event=lambda kind, value: self._results.put((
+                        "approved_live_voice_event", (session, kind, value))))
+                live_voice.start()
+            except Exception as exc:
+                durable.release_exclusive_consumer()
+                approval_dialog.showwarning(
+                    "방송용 실제 한국어 음성",
+                    "음성 작업자를 시작하지 못해 채팅 연결도 시작하지 않습니다 ("
+                    + type(exc).__name__ + ")", parent=self)
+                return
+            self._approved_live_voice_output = live_voice
+            self._approved_live_voice_status.set(
+                "실제 한국어 방송 발화 FIFO 시작 · 기존 OBS 방송 중에만 음성 전송")
+        else:
+            self._approved_live_voice_output = None
         self._twitch_chat_spool = durable
         self._twitch_session = session
         self._platform_health_updated_at = 0.0
@@ -1633,6 +1720,12 @@ class LocalChatTab(ttk.Frame):
         if session is None:
             return
         session.stop()
+        live_voice = self._approved_live_voice_output
+        self._approved_live_voice_output = None
+        if live_voice is not None:
+            live_voice.stop()
+            self._approved_live_voice_status.set(
+                "사용자 중지 · 음성 작업자 종료 요청 · OBS 방송 자체는 변경하지 않음")
         meter = getattr(self, "_live_latency_metrics", None)
         if meter is not None:
             meter.stop(time.monotonic())
@@ -1671,6 +1764,10 @@ class LocalChatTab(ttk.Frame):
         if self._pipeline_cancel is not None:
             self._pipeline_cancel.set()
         self._queued_voice.clear()
+        live_voice = self._approved_live_voice_output
+        if live_voice is not None:
+            live_voice.stop()
+            self._approved_live_voice_output = None
         self._pipeline_obs_password.set("")
         # YouTube API key is memory-only, and must not survive GUI shutdown.
         self._youtube_api_key.set("")
@@ -1914,6 +2011,24 @@ class LocalChatTab(ttk.Frame):
                             "소유 Google 읽기 인증 실패 (" + str(payload)
                             + ") · 계정/클라이언트/브라우저 설정 확인")
                     continue
+                if kind == "approved_live_voice_event":
+                    source, event, value = payload
+                    if source is self._twitch_session:
+                        if event == "발화완료":
+                            self._approved_live_voice_status.set(
+                                f"실제 음성·Cubism·OBS 발화 구간 {value.segments_completed}개 "
+                                "재생 요청 완료 · 시청자 수신 미확인")
+                        elif event == "발화오류":
+                            self._approved_live_voice_status.set(
+                                "실방송 음성 연결 중단 (" + str(value) +
+                                ") · 자동 중복 발화 금지 · 채팅 텍스트 처리 유지")
+                        elif event == "발화시작":
+                            self._approved_live_voice_status.set(
+                                f"실제 한국어 음성 {value}개 구간 합성·송출 진행")
+                        elif event == "발화중단":
+                            self._approved_live_voice_status.set(
+                                "실제 방송 음성 일부 미완료 · 이중 발화 재시도하지 않음")
+                    continue
                 if kind == "twitch_ai_worker_exited":
                     # Always consume the lifecycle marker, even from a
                     # stopped session. Scoped chat data is still discarded.
@@ -2021,9 +2136,22 @@ class LocalChatTab(ttk.Frame):
                         self._memory_count.set(
                             f"저장된 대화: {result.remembered_count}개")
                         self._refresh_voice_buttons()
-                        selected = self._tts_voices.get(self._voice_name.get())
-                        if should_auto_read(self._auto_voice.get(), selected, result.reply):
-                            self._queue_voice_reply(result.reply, selected)
+                        live_voice = self._approved_live_voice_output
+                        if live_voice is not None:
+                            try:
+                                count = live_voice.enqueue(result.reply)
+                            except (ValueError, RuntimeError) as exc:
+                                self._approved_live_voice_status.set(
+                                    "실제 한국어 음성 전송 불가 (" + type(exc).__name__
+                                    + ") · 원문 AI 텍스트 유지")
+                            else:
+                                self._approved_live_voice_status.set(
+                                    f"실제 한국어 발화 FIFO {count}번 등록 "
+                                    f"· 대기 {live_voice.pending}건")
+                        else:
+                            selected = self._tts_voices.get(self._voice_name.get())
+                            if should_auto_read(self._auto_voice.get(), selected, result.reply):
+                                self._queue_voice_reply(result.reply, selected)
                         self._twitch_status.set(
                             "실제 채팅 " + str(self._twitch_received)
                             + "건 · AI 응답 " + str(self._twitch_replied)
