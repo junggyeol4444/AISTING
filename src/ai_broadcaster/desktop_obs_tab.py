@@ -41,6 +41,9 @@ class ObsStatusTab(ttk.Frame):
         self._schedule_maximum = tk.StringVar()
         self._schedule_closing = tk.StringVar()
         self._auto_chat_approved = tk.BooleanVar(value=False)
+        self._auto_content_approved = tk.BooleanVar(value=False)
+        self._auto_content_interval = tk.StringVar(value="300")
+        self._approved_content_settings = None
         self._discord_notice_approved = tk.BooleanVar(value=False)
         self._discord_webhook = tk.StringVar()
         self._discord_start_text = tk.StringVar()
@@ -143,6 +146,23 @@ class ObsStatusTab(ttk.Frame):
         ttk.Checkbutton(
             self, text="방송 시작 시 기존 4플랫폼 채팅·공식 AI 자동 연결 승인 (기본 해제)",
             variable=self._auto_chat_approved).pack(anchor="w", pady=(5,0))
+        ttk.Checkbutton(
+            self, text="승인한 방송 주제로 무채팅 중 자율 콘텐츠 진행 "
+                 "(공식 AI·채팅 자동 연결 필수 · 기본 해제)",
+            variable=self._auto_content_approved).pack(anchor="w", pady=(4,0))
+        content_row = ttk.Frame(self)
+        content_row.pack(fill="x", pady=(2,0))
+        ttk.Label(content_row, text="콘텐츠 간격(초, 60~3600)").pack(side="left")
+        ttk.Entry(content_row, textvariable=self._auto_content_interval,
+                  width=8).pack(side="left", padx=(5,0))
+        ttk.Label(self, text="운영자가 승인할 방송 주제 (줄마다 1개, 1~30개):").pack(
+            anchor="w", pady=(3,0))
+        self._auto_content_topics = tk.Text(self, height=3, wrap="word")
+        self._auto_content_topics.pack(fill="x", pady=(1,2))
+        ttk.Label(self, text="시청자 채팅과 SQLite 미처리 채팅이 우선이며 "
+                  "주제별 질문을 공식 AI에 전달합니다. "
+                  "방송·시청자 수신과 실제 콘텐츠 품질은 별도 확인 대상입니다.",
+                  wraplength=560).pack(anchor="w", pady=(1,3))
         ttk.Checkbutton(
             self, text="디스코드 시작·종료 공지도 자동 게시 승인 (기본 해제)",
             variable=self._discord_notice_approved).pack(anchor="w", pady=(5,0))
@@ -551,6 +571,18 @@ class ObsStatusTab(ttk.Frame):
             if not self._approved_live_preflight():
                 raise ValueError("기존 공식 Live2D·저장된 캐릭터·한국어 음성이 준비되지 않았습니다.")
             auto_chat = self._auto_chat_approved.get() is True
+            content_enabled = self._auto_content_approved.get() is True
+            content_settings = None
+            if content_enabled:
+                if not auto_chat:
+                    raise ValueError("주제 자동 진행에는 기존 4플랫폼 공식 AI 채팅 자동 연결이 필요합니다.")
+                from .approved_live_content_agenda import parse_approved_topics
+                topics = parse_approved_topics(
+                    self._auto_content_topics.get("1.0", "end-1c"))
+                interval_seconds = int(self._auto_content_interval.get().strip())
+                if not 60 <= interval_seconds <= 3600:
+                    raise ValueError("자율 콘텐츠 간격은 60~3600초입니다.")
+                content_settings = (topics, interval_seconds)
             if auto_chat:
                 source = self._chat_tab
                 if (source is None or source._twitch_session is not None
@@ -605,6 +637,13 @@ class ObsStatusTab(ttk.Frame):
                 + (f"방송 {pre_lead}분 전에 내가 작성한 사전 공지 1회 게시를 "
                    "추가 승인합니다. 재시작해도 같은 방송 공지를 재게시하지 않습니다. "
                    if pre_enabled else "사전 공지는 게시하지 않습니다. ")
+                + ("운영자가 입력한 방송 주제를 승인된 공식 AI에 "
+                   f"{content_settings[1]}초 간격으로 전달합니다. "
+                   "시청자 채팅과 SQLite 미처리 작업이 우선이고 "
+                   "콘텐츠 질문은 영구 장부에 먼저 기록하며 "
+                   "전송 불명 시 중복 재발화하지 않습니다. "
+                   if content_settings is not None else
+                   "자율 콘텐츠 진행은 비활성입니다. ")
                 + ("선택된 기존 4플랫폼 채팅·공식 AI 읽기 전용 수신기도 "
                    "이 방송 시 자동 연결합니다. 계정 동의나 채팅 발신은 하지 않으며 "
                    "기존 공식 AI 서버 설정의 권리·외부 접속은 운영자가 확인합니다. "
@@ -637,6 +676,7 @@ class ObsStatusTab(ttk.Frame):
                 on_pre_notice=pre_callback,
                 pre_notice_claim=(journal.claim_pre_notice if pre_enabled else None),
                 pre_notice_lead_minutes=pre_lead)
+            self._approved_content_settings = content_settings
             if auto_chat:
                 self._chat_tab._scheduled_chat_permission = approval_token
                 self._scheduled_chat_token = approval_token
@@ -671,6 +711,9 @@ class ObsStatusTab(ttk.Frame):
             if self._chat_tab._scheduled_chat_permission is self._scheduled_chat_token:
                 self._chat_tab._scheduled_chat_permission = None
         self._scheduled_chat_token = None
+        self._approved_content_settings = None
+        if self._chat_tab is not None:
+            self._chat_tab._scheduled_content_plan = None
         runner=self._approved_scheduler
         if runner is not None:
             runner.request_stop()
@@ -833,11 +876,26 @@ class ObsStatusTab(ttk.Frame):
                             # 다음 방송에서도 1회 사용 권한을 다시 발급.
                             # 다른 세션이나 수동 시작은 이 토큰을 받지 못함.
                             self._chat_tab._scheduled_chat_permission = token
+                            content_settings = self._approved_content_settings
+                            if content_settings is not None:
+                                snapshot = self._approved_scheduler.snapshot()
+                                if not snapshot.occurrence:
+                                    raise RuntimeError("승인된 방송 일정 슬롯을 확인할 수 없습니다.")
+                                self._chat_tab._scheduled_content_plan = {
+                                    "token": token,
+                                    "occurrence": snapshot.occurrence,
+                                    "topics": content_settings[0],
+                                    "interval_seconds": content_settings[1],
+                                }
+                            else:
+                                self._chat_tab._scheduled_content_plan = None
                             self._chat_tab._start_twitch(scheduled_approval=token)
                             self._owned_chat_session = self._chat_tab._twitch_session
                             accepted=self._owned_chat_session is not None
                         except Exception:
                             accepted=False
+                    if not accepted and self._chat_tab is not None:
+                        self._chat_tab._scheduled_content_plan = None
                     reply.put_nowait(accepted)
                     continue
                 if kind=="live_chat_stop_request":
@@ -848,6 +906,8 @@ class ObsStatusTab(ttk.Frame):
                         self._chat_tab._stop_twitch()
                         result=True
                     self._owned_chat_session=None
+                    if self._chat_tab is not None:
+                        self._chat_tab._scheduled_content_plan = None
                     reply.put_nowait(result)
                     continue
                 if kind=="live_schedule_error":
@@ -869,6 +929,9 @@ class ObsStatusTab(ttk.Frame):
                         if self._chat_tab._scheduled_chat_permission is self._scheduled_chat_token:
                             self._chat_tab._scheduled_chat_permission=None
                     self._scheduled_chat_token=None
+                    self._approved_content_settings=None
+                    if self._chat_tab is not None:
+                        self._chat_tab._scheduled_content_plan=None
                     continue
                 self._working=False
                 self._button.configure(state="normal")
