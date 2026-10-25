@@ -31,6 +31,7 @@ class OrderedParallelLocalAI:
         settings_path: Path = DEFAULT_FILE,
         memory_path: Path = DEFAULT_MEMORY_FILE,
         broadcast_facts: str = "",
+        relevant_memory: bool = False,
     ) -> None:
         if type(max_workers) is not int or not 1 <= max_workers <= 4:
             raise ValueError("로컬 AI 동시 추론 개수는 1~4여야 합니다.")
@@ -38,7 +39,10 @@ class OrderedParallelLocalAI:
                 not max_workers <= max_prefetch <= 512):
             raise ValueError("로컬 AI 선행 추론 창은 동시 작업자 이상·512건 이하여야 합니다.")
         self._prefetch_limit = max_prefetch
-        self._config = LocalModelConfig(model=model)
+        if type(relevant_memory) is not bool:
+            raise ValueError("과거 관련 기억 선택값이 올바르지 않습니다.")
+        self._config = LocalModelConfig(
+            model=model, max_relevant_exchanges=2 if relevant_memory else 0)
         self._memory = ConversationMemory(path=memory_path)
         settings = load_settings(settings_path)
         confirmed = active_persona(load_gui_settings())
