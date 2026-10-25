@@ -18,6 +18,10 @@ from .twitch_readonly import TwitchChatLine, TwitchReadOnlySession, TwitchServer
 
 SUPPORTED = ("twitch", "chzzk", "soop", "youtube")
 
+# 공개 수신기에서는 전달 성공(true)이지만 아직 AI FIFO에 들어간 것은
+# 아니고, 원본 SQLite에만 확정된 신규 채팅을 구분하기 위한 결과 표식.
+SQLITE_DEFERRED_CHAT = object()
+
 
 class MultiPlatformReadOnlySession:
     """Run selected read-only transports concurrently, preserving each FIFO."""
@@ -54,6 +58,8 @@ class MultiPlatformReadOnlySession:
         # 실제 서버 게시 건수나 시청자 수를 추정하지 않는다.
         self._callback_chat_count = {code: 0 for code in channels}
         self._forwarded_chat_count = {code: 0 for code in channels}
+        self._sqlite_deferred_count = {code: 0 for code in channels}
+        self._sqlite_deferred_enqueued_count = {code: 0 for code in channels}
         self._callback_error_count = {code: 0 for code in channels}
         self._callback_locks = {code: threading.Lock() for code in channels}
         self._callback_emit_total_seconds = {code: 0.0 for code in channels}
@@ -204,6 +210,8 @@ class MultiPlatformReadOnlySession:
                                     self._callback_aborted_count[code] += 1
                                 else:
                                     self._forwarded_chat_count[code] += 1
+                                    if accepted is SQLITE_DEFERRED_CHAT:
+                                        self._sqlite_deferred_count[code] += 1
                                     parsed_at = item.parsed_at_monotonic
                                     if (type(parsed_at) in (int, float)
                                             and math.isfinite(parsed_at)
@@ -367,6 +375,21 @@ class MultiPlatformReadOnlySession:
                 reader._prejoin_resume = self._prejoin_resume_states[code]
             self._readers[code] = reader
 
+    def note_deferred_sqlite_chat_enqueued(self, platform: str) -> None:
+        """같은 실행 중 SQLite에만 저장됐던 채팅의 AI FIFO 등록 실측.
+
+        이미 과거 실행에서 남아 있던 기록과 현재 새로 수신한 기록을
+        구별하기 위한 숫자 기록만 하며 채팅 본문/신원은 보관하지 않는다.
+        """
+        if platform not in self._sqlite_deferred_count:
+            raise ValueError("복구된 채팅의 플랫폼 종류 오류")
+        with self._emit_lock:
+            if (self._sqlite_deferred_enqueued_count[platform]
+                    >= self._sqlite_deferred_count[platform]):
+                # 실제 콜백의 계측보다 먼저 재등록됐다고 가정하지 않는다.
+                return
+            self._sqlite_deferred_enqueued_count[platform] += 1
+
     def _emit_status_safely(self, code: str, kind: str, detail: str) -> bool:
         """상태 알림 GUI 예외가 공개 채팅 수신/재연결 작업을 끝내지 않게 한다.
 
@@ -438,6 +461,11 @@ class MultiPlatformReadOnlySession:
                     ),
                     "콜백수신": self._callback_chat_count[code],
                     "콜백전달완료": self._forwarded_chat_count[code],
+                    "SQLite우선보존": self._sqlite_deferred_count[code],
+                    "SQLite보존후AI재등록": self._sqlite_deferred_enqueued_count[code],
+                    "SQLite보존AI대기": max(
+                        0, self._sqlite_deferred_count[code]
+                        - self._sqlite_deferred_enqueued_count[code]),
                     "콜백전달오류": self._callback_error_count[code],
                     "콜백전달중단": self._callback_aborted_count[code],
                     "중지후채팅거절": self._post_stop_rejected_chat_count[code],
