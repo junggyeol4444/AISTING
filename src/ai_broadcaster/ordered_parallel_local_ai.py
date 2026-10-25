@@ -15,6 +15,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from .conversation_memory import ConversationMemory, DEFAULT_MEMORY_FILE
+from .long_term_conversation_memory import LongTermConversationMemory
 from .desktop_chat import ChatResult
 from .local_llm import LocalModelConfig, LocalOllamaReplyGenerator
 from .operator_settings import load_settings, DEFAULT_FILE
@@ -32,6 +33,7 @@ class OrderedParallelLocalAI:
         memory_path: Path = DEFAULT_MEMORY_FILE,
         broadcast_facts: str = "",
         relevant_memory: bool = False,
+        long_term_memory: bool = False,
     ) -> None:
         if type(max_workers) is not int or not 1 <= max_workers <= 4:
             raise ValueError("로컬 AI 동시 추론 개수는 1~4여야 합니다.")
@@ -39,11 +41,12 @@ class OrderedParallelLocalAI:
                 not max_workers <= max_prefetch <= 512):
             raise ValueError("로컬 AI 선행 추론 창은 동시 작업자 이상·512건 이하여야 합니다.")
         self._prefetch_limit = max_prefetch
-        if type(relevant_memory) is not bool:
-            raise ValueError("과거 관련 기억 선택값이 올바르지 않습니다.")
+        if type(relevant_memory) is not bool or type(long_term_memory) is not bool:
+            raise ValueError("과거 관련 기억/장기 보관 선택값이 올바르지 않습니다.")
         self._config = LocalModelConfig(
             model=model, max_relevant_exchanges=2 if relevant_memory else 0)
-        self._memory = ConversationMemory(path=memory_path)
+        self._memory = (LongTermConversationMemory(path=memory_path)
+                        if long_term_memory else ConversationMemory(path=memory_path))
         settings = load_settings(settings_path)
         confirmed = active_persona(load_gui_settings())
         settings["persona"]["name"] = confirmed["name"]
