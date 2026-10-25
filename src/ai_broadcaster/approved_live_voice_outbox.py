@@ -125,6 +125,12 @@ class ApprovedLiveVoiceOutbox:
                 "state TEXT NOT NULL DEFAULT '대기',"
                 "created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,"
                 "updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")
+            db.execute(
+                f"CREATE INDEX IF NOT EXISTS avo_session_fifo "
+                f"ON {_TABLE}(session_id,state,seq)")
+            db.execute(
+                f"CREATE INDEX IF NOT EXISTS avo_state_count "
+                f"ON {_TABLE}(state)")
             columns = tuple(r[1] for r in db.execute(
                 f"PRAGMA table_info({_TABLE})"))
             if columns != ("seq", "session_id", "turn_key",
