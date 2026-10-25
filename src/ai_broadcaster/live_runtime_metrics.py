@@ -261,3 +261,103 @@ class LiveFirstWavLatencyMetrics:
             "전송부터WAV후보p95초": _p95([v[1] for v in self._samples]),
             "최장후보초": self.longest_seconds,
         }
+
+
+class LiveFirstMouthLatencyMetrics:
+    """실제 공식 Cubism 첫 입 움직임 후보까지의 로컬 단계 지연.
+
+    플랫폼 채팅 파싱→공식 단일 질문 요청→Cubism RMS·입 움직임 표본만 측정한다.
+    첫 WAV→입 표본은 같은 공식 관찰 안의 순서 후보로만 간주한다.
+    공식 서버 응답과 원본 채팅의 명시적 ID가 없으므로 인과성·실제 출력,
+    OBS 인코딩·시청자 수신 지연을 입증하지 않는다.
+    본문·닉네임·음성·인증 정보나 표본별 개인 식별자는 저장하지 않는다.
+    """
+
+    def __init__(self, *, capacity: int = 512):
+        if type(capacity) is not int or not 1 <= capacity <= 10000:
+            raise ValueError("첫 Cubism 입 표본 저장 한도가 올바르지 않습니다.")
+        self._samples: deque[tuple[float, float, float]] = deque(maxlen=capacity)
+        self._wav_to_mouth_samples: deque[float] = deque(maxlen=capacity)
+        self.attempts = 0
+        self.mouth_candidates = 0
+        self.mouth_not_observed = 0
+        self.request_errors = 0
+        self.missing_parse_time = 0
+        self.invalid = 0
+        self.wav_mouth_candidates = 0
+        self.wav_mouth_missing = 0
+        self.wav_mouth_invalid = 0
+        self.over_three_seconds = 0
+        self.longest_seconds = 0.0
+
+    def error(self) -> None:
+        """기존 공식 질문 또는 입 관찰 예외를 미관측과 구분한다."""
+        self.attempts += 1
+        self.request_errors += 1
+
+    def observe(self, parsed_at, accepted_at, request_started_at,
+                observed_finished_at, first_mouth_at, verified_mouth,
+                wav_received_at=None) -> bool:
+        """실제 동일 프로세스 monotonic 시각만 접수.
+
+        WAV 시각이 없어도 입 후보는 따로 집계하되 WAV→입 동일성
+        근거로 세지 않는다. WAV가 입보다 늦거나 현재 관찰 밖이면
+        오류 통계로 남기고 WAV→입 후보 계산에서 제외한다.
+        """
+        self.attempts += 1
+        if type(verified_mouth) is not bool:
+            self.invalid += 1
+            return False
+        if not verified_mouth:
+            self.mouth_not_observed += 1
+            return False
+        if parsed_at is None:
+            self.missing_parse_time += 1
+            return False
+        stamps = (parsed_at, accepted_at, request_started_at,
+                  observed_finished_at, first_mouth_at)
+        if any(type(v) not in (int, float) or not isfinite(v)
+               for v in stamps):
+            self.invalid += 1
+            return False
+        parsed, accepted, started, finished, first = map(float, stamps)
+        if not (0 < parsed <= accepted <= started <= first <= finished):
+            self.invalid += 1
+            return False
+        request_wait = started - parsed
+        first_mouth_wait = first - started
+        total = first - parsed
+        self.mouth_candidates += 1
+        self.over_three_seconds += int(total > 3.0)
+        self.longest_seconds = max(self.longest_seconds, total)
+        self._samples.append((request_wait, first_mouth_wait, total))
+        if wav_received_at is None or wav_received_at == 0:
+            self.wav_mouth_missing += 1
+        elif (type(wav_received_at) not in (int, float)
+              or not isfinite(wav_received_at)
+              or not started <= wav_received_at <= first):
+            self.wav_mouth_invalid += 1
+        else:
+            self.wav_mouth_candidates += 1
+            self._wav_to_mouth_samples.append(first - float(wav_received_at))
+        return True
+
+    def snapshot(self) -> dict[str, int | float | None]:
+        return {
+            "관찰시도": self.attempts,
+            "입표본후보": self.mouth_candidates,
+            "입미관측": self.mouth_not_observed,
+            "공식관찰오류": self.request_errors,
+            "파싱시각누락": self.missing_parse_time,
+            "시각오류": self.invalid,
+            "3초초과후보": self.over_three_seconds,
+            "최근표본": len(self._samples),
+            "파싱부터입후보p95초": _p95([v[2] for v in self._samples]),
+            "파싱부터전송대기p95초": _p95([v[0] for v in self._samples]),
+            "전송부터입후보p95초": _p95([v[1] for v in self._samples]),
+            "최장후보초": self.longest_seconds,
+            "WAV입시각후보": self.wav_mouth_candidates,
+            "WAV시각누락": self.wav_mouth_missing,
+            "WAV시각오류": self.wav_mouth_invalid,
+            "WAV부터입후보p95초": _p95(self._wav_to_mouth_samples),
+        }
