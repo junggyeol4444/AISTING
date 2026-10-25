@@ -20,6 +20,7 @@ _PRE_NOTICES = "approved_live_pre_notices"
 _EVENT_STATES = frozenset((
     "송출시작확인", "송출시작실패", "송출종료확인", "송출종료실패",
     "OBS재연결감지", "OBS혼잡지속", "OBS프레임정체", "OBS전송프레임누락",
+    "OBS송출예기치않은중단", "OBS장면변경감지", "OBS상태관측실패",
 ))
 
 
