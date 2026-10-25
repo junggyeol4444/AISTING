@@ -283,7 +283,10 @@ class ApprovedLiveScheduler:
                 except Exception:
                     self._start_notice = "전송 실패 · 자동 재발신 없음"
         except Exception as exc:
-            self._record_event("송출시작실패")
+            # 송출 시작을 실제 확인한 뒤 채팅 연결이 실패한 경우에는
+            # 이미 기록한 시작 성공·소유 방송 종료 결과를 보존한다.
+            if not self._start_confirmed:
+                self._record_event("송출시작실패")
             # A failed request might have reached OBS before a connection
             # dropped: never blindly stop or claim ownership of that stream.
             self._set("시작 확인 실패", type(exc).__name__ +
