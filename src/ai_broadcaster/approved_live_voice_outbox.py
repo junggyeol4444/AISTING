@@ -222,6 +222,15 @@ class ApprovedLiveVoiceOutbox:
                 "WHERE session_id=? AND state='대기'",
                 (session_id,)).fetchone()[0])
 
+    def unresolved_totals(self) -> tuple[int, int]:
+        """현재 사용자 모든 방송 세션의 미발화/불명 시도 수만 반환."""
+        with self._connect() as db:
+            rows = db.execute(
+                f"SELECT state,COUNT(*) FROM {_TABLE} "
+                "WHERE state IN ('대기','시도') GROUP BY state").fetchall()
+        values = dict(rows)
+        return int(values.get("대기", 0)), int(values.get("시도", 0))
+
     def previous_unresolved(self, session_id: str) -> tuple[int, int]:
         """과거 방송 대기/불명 건수만 조회. 자동 재전송하지 않는다."""
         self._validate(session_id)
