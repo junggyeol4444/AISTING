@@ -73,6 +73,19 @@ class MultiPlatformReadOnlySession:
         }
         self._parse_to_accept_max_seconds = {code: 0.0 for code in channels}
         self._parse_to_accept_over_three = {code: 0 for code in channels}
+        # 파싱→콜백 진입과 콜백 진입→FIFO 수용을 별도로 측정하여
+        # 수신기 보류·재연결 병목과 GUI/AI 수용 병목을 구분한다.
+        # 둘 다 실제 수용된 사건만 표본이며 E2E/모델 지연은 아니다.
+        self._parse_to_callback_samples = {
+            code: deque(maxlen=512) for code in channels
+        }
+        self._parse_to_callback_max_seconds = {code: 0.0 for code in channels}
+        self._parse_to_callback_over_three = {code: 0 for code in channels}
+        self._callback_to_accept_samples = {
+            code: deque(maxlen=512) for code in channels
+        }
+        self._callback_to_accept_max_seconds = {code: 0.0 for code in channels}
+        self._callback_to_accept_over_three = {code: 0 for code in channels}
         self._parse_timestamp_missing_count = {code: 0 for code in channels}
         self._callback_aborted_count = {code: 0 for code in channels}
         # 실제 콜백에서 이미 수용한 서버 ID를 다시 받은 경우와
@@ -195,8 +208,24 @@ class MultiPlatformReadOnlySession:
                                     if (type(parsed_at) in (int, float)
                                             and math.isfinite(parsed_at)
                                             and 0 < parsed_at <= started):
-                                        parse_to_accept = max(
-                                            0.0, time.monotonic() - parsed_at)
+                                        accepted_at = time.monotonic()
+                                        parse_to_callback = max(0.0, started - parsed_at)
+                                        callback_to_accept = max(0.0, accepted_at - started)
+                                        parse_to_accept = max(0.0, accepted_at - parsed_at)
+                                        self._parse_to_callback_samples[code].append(
+                                            parse_to_callback)
+                                        self._parse_to_callback_max_seconds[code] = max(
+                                            self._parse_to_callback_max_seconds[code],
+                                            parse_to_callback)
+                                        self._parse_to_callback_over_three[code] += int(
+                                            parse_to_callback > 3.0)
+                                        self._callback_to_accept_samples[code].append(
+                                            callback_to_accept)
+                                        self._callback_to_accept_max_seconds[code] = max(
+                                            self._callback_to_accept_max_seconds[code],
+                                            callback_to_accept)
+                                        self._callback_to_accept_over_three[code] += int(
+                                            callback_to_accept > 3.0)
                                         self._parse_to_accept_samples[code].append(
                                             parse_to_accept)
                                         self._parse_to_accept_max_seconds[code] = max(
@@ -463,6 +492,26 @@ class MultiPlatformReadOnlySession:
                         ], 6) if self._callback_emit_samples[code] else None
                     ),
                     "콜백소요3초초과": self._callback_emit_over_three_seconds[code],
+                    # 파싱 시각과 실제 FIFO 수용 시각의 동일 사건 분해.
+                    # 콜백 이전 보류와 콜백 내부 대기를 섞지 않는다.
+                    "파싱후콜백최근표본": len(self._parse_to_callback_samples[code]),
+                    "파싱후콜백최근p95초": (
+                        round(sorted(self._parse_to_callback_samples[code])[
+                            math.ceil(len(self._parse_to_callback_samples[code]) * 0.95) - 1
+                        ], 6) if self._parse_to_callback_samples[code] else None
+                    ),
+                    "파싱후콜백최장초": round(
+                        self._parse_to_callback_max_seconds[code], 6),
+                    "파싱후콜백3초초과": self._parse_to_callback_over_three[code],
+                    "콜백진입후수용최근표본": len(self._callback_to_accept_samples[code]),
+                    "콜백진입후수용최근p95초": (
+                        round(sorted(self._callback_to_accept_samples[code])[
+                            math.ceil(len(self._callback_to_accept_samples[code]) * 0.95) - 1
+                        ], 6) if self._callback_to_accept_samples[code] else None
+                    ),
+                    "콜백진입후수용최장초": round(
+                        self._callback_to_accept_max_seconds[code], 6),
+                    "콜백진입후수용3초초과": self._callback_to_accept_over_three[code],
                     "파싱후수용최근표본": len(self._parse_to_accept_samples[code]),
                     "파싱후수용최근p95초": (
                         round(sorted(self._parse_to_accept_samples[code])[
