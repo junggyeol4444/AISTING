@@ -17,11 +17,13 @@ import os
 import threading
 import time
 from ctypes import wintypes
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Callable
 from uuid import uuid4
 
 from .approved_local_game_vision import observe_game_scene_with_local_vision
+from .approved_game_goal_journal import ApprovedGameGoalJournal
+from .game_goal_evidence import assess_game_goal_from_two_observations
 from .local_llm import LocalModelConfig, LocalOllamaReplyGenerator
 from .offline_settings import active_persona, load_settings as load_gui_settings
 from .operator_settings import load_settings as load_operator_settings
@@ -261,6 +263,7 @@ class ApprovedLocalGameAutoplay:
         game_window_title: str, goal: str, max_steps: int,
         operator_approved: bool = False,
         on_event: Callable[[str, object], None] | None = None,
+        resume_run_id: str | None = None,
     ) -> None:
         if operator_approved is not True:
             raise PermissionError("게임 자동 조작 별도 승인이 필요합니다.")
@@ -278,6 +281,7 @@ class ApprovedLocalGameAutoplay:
         self._goal = goal.strip()
         self._max_steps = max_steps
         self._events = on_event
+        self._resume_run_id = resume_run_id
         self._stop = threading.Event()
 
     def request_stop(self) -> None:
@@ -288,7 +292,7 @@ class ApprovedLocalGameAutoplay:
             self._events(kind, payload)
 
     def run(self) -> int:
-        """승인 후 호출자 소유 작업자 스레드에서만 실행."""
+        """기존 승인된 게임을 진행하고 새 목표 장부에 각 입력을 사전 기록."""
         if self._stop.is_set():
             return 0
         window = WindowsApprovedGameWindow(
@@ -312,35 +316,142 @@ class ApprovedLocalGameAutoplay:
             "키 허용: w,a,s,d,e,q,r,f,space,enter,escape,up,down,left,right. "
             "키 누르는 시간 50~500ms. 절대 설명/마크다운/명령어를 덧붙이지 마세요."
         )
+        journal = ApprovedGameGoalJournal()
+        run = journal.begin(
+            game_title=self._title, goal=self._goal, model=self._model,
+            max_steps=self._max_steps, parent_run_id=self._resume_run_id,
+            operator_approved=True)
+        self._notify("기록시작", run)
         completed = 0
-        for index in range(1, self._max_steps + 1):
-            if self._stop.is_set():
-                break
-            window._ensure_focus()
-            observed = observe_game_scene_with_local_vision(
-                self._obs_password, self._obs_port, self._model,
-                operator_approved=True,
-                question="실제 게임 장면의 현재 상태와 목표 달성 여부를 보이는 사실만 한국어로 설명해.",
-            )
-            if self._stop.is_set():
-                break
-            prompt = (
-                f"운영자 지정 목표: {self._goal}\n"
-                f"현재 OBS 장면: {observed.scene}\n"
-                f"현재 관찰: {observed.description[:2500]}\n"
-                "다음 한 번의 게임 행동 JSON만 출력하세요. "
-                "목표 달성이 실제 확인되지 않으면 성공이라고 단정하지 마세요."
-            )
-            answer = generator.generate(ChatMessage(
-                str(uuid4()), "실제 게임 화면", prompt))
-            action = parse_game_action(answer)
-            if self._stop.is_set():
-                break
-            result = window.execute(action, self._stop)
-            completed += 1
-            self._notify("행동", GameStep(
-                index, observed.description[:800], action, result))
-            if action.action == "stop":
-                break
-        self._notify("종료", completed)
-        return completed
+        reason = "횟수종료"
+        previous_observation = None
+        last_observation = None
+        # 이전 실행의 기록은 새 승인에서 문맥으로만 읽는다.
+        # 과거의 입력시도 기록은 실행 성공 여부가 불명확하므로 재생 금지.
+        prior = (
+            journal.history(self._resume_run_id, limit=10)
+            if self._resume_run_id else ())
+        prior_context = "\\n".join(
+            f"{e.step_no}회 {e.phase}: {e.detail[:120]}"
+            for e in prior)[:900]
+        try:
+            for index in range(1, self._max_steps + 1):
+                if self._stop.is_set():
+                    reason = "운영자중지"
+                    break
+                window._ensure_focus()
+                observed = observe_game_scene_with_local_vision(
+                    self._obs_password, self._obs_port, self._model,
+                    operator_approved=True,
+                    question="실제 게임 장면의 현재 상태와 목표 달성 여부를 보이는 사실만 한국어로 설명해.",
+                )
+                if self._stop.is_set():
+                    reason = "운영자중지"
+                    break
+                if last_observation is not None:
+                    journal.record(
+                        run.run_id, index - 1, "후속관찰",
+                        observed.description[:1200])
+                previous_observation = last_observation
+                last_observation = observed.description
+                journal.record(
+                    run.run_id, index, "관찰",
+                    observed.description[:1200])
+                history = journal.history(run.run_id, limit=8)
+                context = "\\n".join(
+                    f"{e.step_no}회 {e.phase}: {e.detail[:130]}"
+                    for e in history)[:950]
+                prompt = (
+                    f"운영자 지정 목표: {self._goal}\\n"
+                    f"현재 OBS 장면: {observed.scene}\\n"
+                    f"현재 관찰: {observed.description[:2500]}\\n"
+                    f"같은 승인 게임의 직전 행동/관찰 기록: {context}\\n"
+                    f"이전 승인 회차의 기록(재실행 금지): {prior_context}\\n"
+                    "현재 실제 화면과 기록을 보고 다음 한 번의 게임 행동 JSON만 출력하세요. "
+                    "목표 달성이 실제 확인되지 않으면 성공이라고 단정하지 마세요."
+                )
+                answer = generator.generate(ChatMessage(
+                    str(uuid4()), "실제 게임 화면", prompt))
+                action = parse_game_action(answer)
+                if self._stop.is_set():
+                    reason = "운영자중지"
+                    break
+                serialized = json.dumps(
+                    asdict(action), ensure_ascii=False, separators=(",", ":"))
+                journal.record(run.run_id, index, "행동계획", serialized)
+                # 실제 SendInput 이전에 입력 가능성을 영구 기록한다.
+                # 강제 종료 뒤 이 행동을 다시 보내지 않는다.
+                journal.record(run.run_id, index, "입력시도", serialized)
+                result = window.execute(action, self._stop)
+                journal.record(run.run_id, index, "입력반환", result)
+                completed += 1
+                self._notify("행동", GameStep(
+                    index, observed.description[:800], action, result))
+                if action.action == "stop":
+                    reason = "AI종료"
+                    break
+                if self._stop.is_set():
+                    reason = "운영자중지"
+                    break
+
+            # 마지막 입력도 후속 화면을 읽어 결과 근거를 남긴다.
+            # AI stop은 입력이 아닌 종료 요청이므로 현재 프레임이 마지막 근거.
+            if completed and not self._stop.is_set():
+                window._ensure_focus()
+                after = observe_game_scene_with_local_vision(
+                    self._obs_password, self._obs_port, self._model,
+                    operator_approved=True,
+                    question="마지막 게임 행동 이후 화면에 실제로 표시된 결과만 한국어로 설명해.")
+                journal.record(
+                    run.run_id, completed, "후속관찰",
+                    after.description[:1200])
+                if last_observation is not None:
+                    try:
+                        evidence = assess_game_goal_from_two_observations(
+                            goal=self._goal, before=last_observation,
+                            after=after.description, model=self._model)
+                        journal.record(
+                            run.run_id, completed, "목표판정",
+                            json.dumps(asdict(evidence), ensure_ascii=False)[:2000])
+                        self._notify("목표판정", evidence)
+                        if evidence.status == "달성후보":
+                            reason = "목표후보"
+                    except (ValueError, RuntimeError, OSError) as exc:
+                        journal.record(
+                            run.run_id, completed, "목표판정",
+                            "불확실 · 로컬 목표 판정 불가 (" +
+                            type(exc).__name__ + ")")
+                        self._notify("목표판정불가", type(exc).__name__)
+            elif completed and reason == "AI종료" and previous_observation:
+                # AI의 'stop'은 목표 달성 증명이 아니다. 이전과 현재의
+                # 두 실제 화면 관찰로만 보수적인 후보 판정을 요청한다.
+                try:
+                    evidence = assess_game_goal_from_two_observations(
+                        goal=self._goal, before=previous_observation,
+                        after=last_observation, model=self._model)
+                    journal.record(
+                        run.run_id, completed, "목표판정",
+                        json.dumps(asdict(evidence), ensure_ascii=False)[:2000])
+                    self._notify("목표판정", evidence)
+                    if evidence.status == "달성후보":
+                        reason = "목표후보"
+                except (ValueError, RuntimeError, OSError) as exc:
+                    journal.record(
+                        run.run_id, completed, "목표판정",
+                        "불확실 · 로컬 목표 판정 불가 (" +
+                        type(exc).__name__ + ")")
+                    self._notify("목표판정불가", type(exc).__name__)
+            if self._stop.is_set() and reason != "AI종료":
+                reason = "운영자중지"
+            journal.finish(run.run_id, reason)
+            self._notify("종료", completed)
+            self._notify("기록종료", (run.run_id, reason))
+            return completed
+        except Exception:
+            # 실제 게임 조작 도중 중단/실패해도 과거 입력시도는 보존.
+            # 재시작 후에는 사용자에게 새 승인 없이 입력 재생하지 않음.
+            try:
+                journal.finish(run.run_id, "실행실패")
+            except Exception:
+                pass
+            raise
