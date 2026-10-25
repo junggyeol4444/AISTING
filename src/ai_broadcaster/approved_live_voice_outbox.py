@@ -14,6 +14,7 @@ import hashlib
 import re
 import sqlite3
 import sys
+from contextlib import contextmanager
 from pathlib import Path
 
 from .offline_settings import data_dir
@@ -131,11 +132,19 @@ class ApprovedLiveVoiceOutbox:
                            "created_at", "updated_at"):
                 raise ValueError("기존 음성 영구 대기함 구조가 다릅니다.")
 
+    @contextmanager
     def _connect(self):
         db = sqlite3.connect(self.path, timeout=10)
-        db.execute("PRAGMA busy_timeout=10000")
-        db.execute("PRAGMA synchronous=FULL")
-        return db
+        try:
+            db.execute("PRAGMA busy_timeout=10000")
+            db.execute("PRAGMA synchronous=FULL")
+            yield db
+            db.commit()
+        except BaseException:
+            db.rollback()
+            raise
+        finally:
+            db.close()
 
     @staticmethod
     def _validate(session_id: str, turn_key: str | None = None) -> None:
