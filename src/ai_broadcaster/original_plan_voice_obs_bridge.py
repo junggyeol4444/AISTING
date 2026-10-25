@@ -66,6 +66,11 @@ class RealVoiceObsResult:
     obs_program_frame_observed: bool = False
     obs_program_capture_candidate: bool = False
     same_wav_cubism_obs_candidate: bool = False
+    # 서로 다른 OS/브라우저 단조시계를 대입하지 않고
+    # 실제 IPC 시작 전후 시각 범위와 WebView 상대 시간을 사용한 구간 후보.
+    cubism_obs_time_overlap_candidate: bool = False
+    cubism_first_mouth_seconds: float | None = None
+    cubism_last_mouth_seconds: float | None = None
 
 
 def verify_gpt_sovits_to_obs(
@@ -171,6 +176,8 @@ def verify_gpt_sovits_to_obs(
     owned_scene_item_id = None
     mouth_token = None
     mouth_summary = None
+    mouth_start_call_begin_at = None
+    mouth_start_call_end_at = None
     program_frame_observed = False
 
     def confirm_owned_input():
@@ -240,6 +247,7 @@ def verify_gpt_sovits_to_obs(
 
             def start_exact_created_media_after_meter_subscription():
                 nonlocal restart_requested_at, restart_returned_at, mouth_token
+                nonlocal mouth_start_call_begin_at, mouth_start_call_end_at
                 # The only mutable target is the unique temporary source we
                 # created for THIS licensed utterance, never an existing
                 # recording/stream or the user's named OBS media input.
@@ -252,8 +260,10 @@ def verify_gpt_sovits_to_obs(
                 if couple_live2d:
                     # OBS 구독 준비 뒤 동일 실제 WAV를 공식 Cubism 입에
                     # 공급한다. 권리 있는 실제 PCM에서 나온 50ms RMS만 사용.
+                    mouth_start_call_begin_at = time.monotonic()
                     mouth_token = frontend.start_authorized_pcm_live2d_mouth(
                         envelope, operator_approved=True, rights_confirmed=True)
+                    mouth_start_call_end_at = time.monotonic()
                     # 이번에 생성한 비활성 임시 항목만 활성화한다.
                     # 사용자 기존 장면이나 소스의 on/off는 변경하지 않는다.
                     client.set_scene_item_enabled(
@@ -327,6 +337,37 @@ def verify_gpt_sovits_to_obs(
                 getattr(meters, "selected_all_meter_level_samples", ()),
                 restart_requested_at if valid_restart_times else None,
             )
+            mouth_first = (
+                mouth_summary.get("mouthFirstMs") if mouth_summary else None)
+            mouth_last = (
+                mouth_summary.get("mouthLastMs") if mouth_summary else None)
+            # 실제 JS 상대시간은 WebView와 Python의 단조시계 기준이
+            # 다르므로 관찰 시작 IPC의 두 실제 Python 시각으로 범위를 만든다.
+            # 이 시간 범위와 OBS 미터가 가까워도 송출 인과관계 확정은 아님.
+            valid_mouth_clock = (
+                type(mouth_start_call_begin_at) in (int, float)
+                and type(mouth_start_call_end_at) in (int, float)
+                and type(mouth_first) in (int, float)
+                and type(mouth_last) in (int, float)
+                and math.isfinite(mouth_first) and math.isfinite(mouth_last)
+                and 0 <= mouth_first <= mouth_last <= wav_duration * 1000 + 1000
+                and mouth_start_call_begin_at <= mouth_start_call_end_at
+            )
+            mouth_obs_overlap = bool(
+                valid_mouth_clock and any(
+                    mouth_start_call_begin_at + mouth_first / 1000 - 0.5
+                    <= moment <=
+                    mouth_start_call_end_at + mouth_last / 1000 + 0.5
+                    for moment in during_wav
+                ))
+            cubism_driver_valid = bool(
+                mouth_summary and mouth_summary.get("reason")
+                in ("끝", "종료요청")
+                and mouth_summary.get("positiveCalls", 0) > 0
+                and mouth_summary.get("calls", 0) >= 3
+                and mouth_summary.get("samples", 0) >= 3
+                and mouth_summary.get("changes", 0) >= 1
+                and (mouth_summary.get("mouthRange") or 0) > 0.02)
             result = RealVoiceObsResult(
                 sample_rate=utterance.sample_rate,
                 channels=utterance.channels,
@@ -378,24 +419,22 @@ def verify_gpt_sovits_to_obs(
                     mouth_summary.get("changes", 0) if mouth_summary else 0),
                 cubism_mouth_range=(
                     mouth_summary.get("mouthRange") if mouth_summary else None),
-                cubism_wav_mouth_candidate=bool(
-                    mouth_summary and mouth_summary.get("positiveCalls", 0) > 0
-                    and mouth_summary.get("calls", 0) >= 3
-                    and mouth_summary.get("samples", 0) >= 3
-                    and mouth_summary.get("changes", 0) >= 1
-                    and (mouth_summary.get("mouthRange") or 0) > 0.02),
+                cubism_wav_mouth_candidate=cubism_driver_valid,
                 obs_program_frame_observed=program_frame_observed,
                 obs_program_capture_candidate=obs_capture_candidate,
                 same_wav_cubism_obs_candidate=bool(
                     couple_live2d and obs_capture_candidate
                     and program_frame_observed and meters.usable_output_candidate
-                    and mouth_summary and mouth_summary.get("positiveCalls", 0) > 0
-                    and mouth_summary.get("calls", 0) >= 3
-                    and mouth_summary.get("samples", 0) >= 3
-                    and mouth_summary.get("changes", 0) >= 1
-                    and (mouth_summary.get("mouthRange") or 0) > 0.02
+                    and cubism_driver_valid and mouth_obs_overlap
                     and during_wav and similarity is not None and similarity >= 0.8
                     and mapped_count >= 8),
+                cubism_obs_time_overlap_candidate=mouth_obs_overlap,
+                cubism_first_mouth_seconds=(
+                    round(mouth_first / 1000, 6)
+                    if valid_mouth_clock else None),
+                cubism_last_mouth_seconds=(
+                    round(mouth_last / 1000, 6)
+                    if valid_mouth_clock else None),
             )
             if not result.actual_signal:
                 raise RuntimeError("OBS가 GPT-SoVITS 실제 WAV 입력 신호를 확인하지 못했습니다.")
