@@ -297,6 +297,10 @@ class LocalChatTab(ttk.Frame):
             pipeline, text="실제 GPT-SoVITS 음성 → OBS 입력 검사",
             command=self._start_real_tts_obs_probe)
         self._tts_obs_button.pack(side="left", padx=(8, 0), pady=(5, 0))
+        self._tts_cubism_obs_button = ttk.Button(
+            pipeline, text="같은 한국어 WAV → 공식 Live2D 입 → OBS 동시 확인",
+            command=self._start_real_tts_cubism_obs_probe)
+        self._tts_cubism_obs_button.pack(side="left", padx=(8, 0), pady=(5, 0))
         ttk.Label(pipeline, textvariable=self._tts_probe_status,
                   wraplength=580).pack(anchor="w")
         ttk.Label(pipeline, textvariable=self._pipeline_status,
@@ -406,6 +410,8 @@ class LocalChatTab(ttk.Frame):
         self._tts_probe_button.configure(state="disabled")
         if getattr(self, "_tts_obs_button", None) is not None:
             self._tts_obs_button.configure(state="disabled")
+        if getattr(self, "_tts_cubism_obs_button", None) is not None:
+            self._tts_cubism_obs_button.configure(state="disabled")
         self._pipeline_button.configure(state="disabled")
         self._send.configure(state="disabled")
         self._tts_probe_status.set("승인받은 로컬 GPT-SoVITS 실제 합성 중…")
@@ -425,7 +431,11 @@ class LocalChatTab(ttk.Frame):
         else:
             self._results.put(("tts_probe_ok", actual))
 
-    def _start_real_tts_obs_probe(self) -> None:
+    def _start_real_tts_cubism_obs_probe(self) -> None:
+        """같은 실제 WAV를 공식 Cubism RMS와 OBS 임시 미디어 입력에 함께 연결."""
+        self._start_real_tts_obs_probe(couple_live2d=True)
+
+    def _start_real_tts_obs_probe(self, *, couple_live2d: bool = False) -> None:
         """Actually synthesize authorized Korean GPT-SoVITS -> OBS one-shot WAV.
 
         Only the bridge's newly created, temporary OFFLINE audio source is
@@ -459,40 +469,72 @@ class LocalChatTab(ttk.Frame):
                 "한국어 음성 설정·참조 음성을 확인하세요 ("
                 + type(exc).__name__ + ")")
             return
+        if couple_live2d:
+            try:
+                from .offline_settings import settings_file, active_persona
+                from .original_plan_studio import inspect_saved_persona_alignment
+                from . import original_plan_frontend as frontend
+                saved = settings_file()
+                if (not saved.is_file() or saved.is_symlink()
+                        or saved.parent.is_symlink()
+                        or not inspect_saved_persona_alignment(
+                            project, active_persona(load_settings(saved)))):
+                    raise ValueError("기존 캐릭터·공식 Live2D 모델 불일치")
+                if (frontend._native_viewer is None
+                        or frontend._native_viewer.poll() is not None
+                        or frontend._native_bridge is None):
+                    raise ValueError("실행 중인 실제 공식 Live2D 창 없음")
+            except Exception as exc:
+                self._tts_probe_status.set(
+                    "실제 Cubism 연동 전 캐릭터·공식 Live2D 창 확인 필요 ("
+                    + type(exc).__name__ + ")")
+                return
         if not messagebox.askyesno(
-            "실제 한국어 GPT-SoVITS → OBS 임시 입력 검사",
+            "실제 한국어 WAV → 공식 Live2D 입 → OBS 연결 검사"
+            if couple_live2d else "실제 한국어 GPT-SoVITS → OBS 임시 입력 검사",
             "실제 로컬 GPT-SoVITS 모델과 사용 권리가 확인된 참조 음성으로 "
             "한국어 문장 한 건을 합성합니다. 현재 OBS가 방송/녹화 중이 "
             "아닌 것을 확인한 뒤, OBS 현재 장면에 임시 음성 소스를 만들고 "
             "실제 오디오 미터 신호를 확인한 후 소스를 제거합니다. "
             "임시 WAV 파일도 삭제하며 기존 OBS 소스는 변경하지 않습니다. "
-            "실제 음성 합성·임시 OBS 입력 생성과 사용 권리를 이번 1회에 "
-            "승인합니까? Live2D 입 움직임과 최종 시청자 송출은 별도 실증입니다.",
+            "이번 1회 실제 한국어 음성의 사용 권리와 임시 OBS 입력 생성을 "
+            "승인합니까? "
+            + ("같은 실제 WAV의 PCM 음량으로 기존 공식 Cubism 입 구동 함수를 "
+               "실행 시간 동안만 연결하고, 실제 입 파라미터와 OBS 미터를 "
+               "동시에 관찰한 후 원본 함수를 복원합니다. 방송·녹화·채팅 발신은 "
+               "하지 않으며 시청자 출력은 별도 실증입니다."
+               if couple_live2d else
+               "Live2D 입 움직임과 시청자 송출은 별도 실증입니다."),
             parent=self):
             self._tts_probe_status.set("미승인 · GPT-SoVITS/OBS 요청 없음")
             return
         self._tts_probe_busy = True
         self._tts_probe_button.configure(state="disabled")
         self._tts_obs_button.configure(state="disabled")
+        self._tts_cubism_obs_button.configure(state="disabled")
         self._pipeline_button.configure(state="disabled")
         self._send.configure(state="disabled")
         self._tts_probe_status.set(
+            "권리 승인된 한국어 WAV·공식 Cubism 실제 입·OBS 미터 관찰 중…"
+            if couple_live2d else
             "승인된 실제 GPT-SoVITS 합성·OBS 임시 음성 미터 확인 중…")
         threading.Thread(
             target=self._work_real_tts_obs_probe,
-            args=(reference, reference_text, text, api_url, password),
+            args=(reference, reference_text, text, api_url, password,
+                  couple_live2d),
             daemon=True).start()
 
     def _work_real_tts_obs_probe(
         self, reference, reference_text: str, text: str,
-        api_url: str, obs_password: str,
+        api_url: str, obs_password: str, couple_live2d: bool = False,
     ) -> None:
         try:
             from .original_plan_voice_obs_bridge import verify_gpt_sovits_to_obs
             result = verify_gpt_sovits_to_obs(
                 reference, reference_text, text,
                 api_url=api_url, obs_password=obs_password,
-                operator_approved=True, rights_confirmed=True)
+                operator_approved=True, rights_confirmed=True,
+                couple_live2d=couple_live2d)
         except Exception as exc:
             # No model URL, local audio path, password or raw exception message.
             self._results.put(("tts_obs_error", type(exc).__name__))
@@ -1830,6 +1872,8 @@ class LocalChatTab(ttk.Frame):
                     self._tts_probe_button.configure(state="normal")
                     if getattr(self, "_tts_obs_button", None) is not None:
                         self._tts_obs_button.configure(state="normal")
+                    if getattr(self, "_tts_cubism_obs_button", None) is not None:
+                        self._tts_cubism_obs_button.configure(state="normal")
                     if not self._pipeline_busy:
                         self._pipeline_button.configure(state="normal")
                     if not self._busy and not self._pipeline_busy:
@@ -1891,7 +1935,17 @@ class LocalChatTab(ttk.Frame):
                                    if payload.tts_done_to_first_meter_seconds is not None
                                    else " / 합성 완료→OBS 첫 미터 미측정")
                                 + " · 각 단계 실제 로컬 시간이며 시청자 E2E 아님"
-                                + " · 파형 동일성·Live2D·시청자 송출은 별도 검사")
+                                + (" · 실제 원본 PCM 기반 Cubism 입 파라미터 관측 "
+                                   + str(payload.cubism_actual_mouth_samples)
+                                   + "표본·변화 "
+                                   + str(payload.cubism_actual_mouth_changes)
+                                   + "건 / 실제 WAV·Cubism·OBS 입력 경로 "
+                                   + ("연동 후보" if payload.same_wav_cubism_obs_candidate
+                                      else "미충족")
+                                   + " · OBS 실제 프로그램 영상 1프레임만 확인"
+                                   + " · 동일 발화 시청자 출력·인코딩은 미검증"
+                                   if payload.actual_pcm_cubism_requested else
+                                   " · Live2D·시청자 송출은 별도 검사"))
                         else:
                             self._tts_probe_status.set(
                                 "음성/OBS 실증 미충족 · 유효한 미터 신호 없음")
