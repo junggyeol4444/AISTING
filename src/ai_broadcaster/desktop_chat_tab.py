@@ -970,7 +970,7 @@ class LocalChatTab(ttk.Frame):
                 target=self._work_twitch, args=(session,), daemon=True
             ).start()
             while not session._stop.is_set():
-                count, ceiling = spool.recovery_snapshot(session._channels)
+                ceiling = spool.recovery_ceiling(session._channels)
                 if ceiling > cursor:
                     for pending in spool.iter_recovery(
                             session._channels, through_sequence=ceiling,
@@ -1011,7 +1011,7 @@ class LocalChatTab(ttk.Frame):
                             or session._stop.is_set()
                             or getattr(self, "_closed", False)):
                         return
-                    _, final_ceiling = spool.recovery_snapshot(session._channels)
+                    final_ceiling = spool.recovery_ceiling(session._channels)
                     if final_ceiling > cursor:
                         continue
                     if self._recovery_reader_done.is_set():
