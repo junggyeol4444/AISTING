@@ -8,7 +8,6 @@ OBS 제어·방송·공지·채팅 발신은 이 모듈에서 전혀 수행하�
 from __future__ import annotations
 
 import sqlite3
-from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 
@@ -16,6 +15,8 @@ from .offline_settings import data_dir
 
 _APPLICATION_ID = 0x41534A31  # ASJ1: 독립 소유권
 _TABLE = "approved_live_slot_attempts"
+_EVENTS = "approved_live_slot_events"
+_EVENT_STATES = frozenset(("송출시작확인", "송출시작실패", "송출종료확인", "송출종료실패"))
 
 
 class ApprovedLiveSlotJournal:
@@ -38,7 +39,9 @@ class ApprovedLiveSlotJournal:
                     "AND name NOT LIKE 'sqlite_%'"
                 ).fetchall()
             }
-            if (tables and (tables != {_TABLE} or appid != _APPLICATION_ID)):
+            if (tables and (not tables.issubset({_TABLE, _EVENTS})
+                            or _TABLE not in tables
+                            or appid != _APPLICATION_ID)):
                 raise ValueError("다른 프로그램의 SQLite 파일을 변경하지 않습니다.")
             if existed and not tables:
                 raise ValueError("소유권이 불명확한 기존 SQLite 파일을 변경하지 않습니다.")
@@ -54,6 +57,17 @@ class ApprovedLiveSlotJournal:
                 "PRAGMA table_info(approved_live_slot_attempts)").fetchall())
             if columns != ("occurrence", "claimed_at"):
                 raise ValueError("기존 방송 시작 장부 구조가 일치하지 않습니다.")
+            # 기존 시작 슬롯을 손대지 않고 사건을 append-only 기록.
+            db.execute(
+                "CREATE TABLE IF NOT EXISTS approved_live_slot_events ("
+                "event_no INTEGER PRIMARY KEY AUTOINCREMENT,"
+                "occurrence TEXT NOT NULL, state TEXT NOT NULL,"
+                "logged_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
+            )
+            event_columns = tuple(row[1] for row in db.execute(
+                "PRAGMA table_info(approved_live_slot_events)").fetchall())
+            if event_columns != ("event_no", "occurrence", "state", "logged_at"):
+                raise ValueError("기존 방송 결과 장부 구조가 일치하지 않습니다.")
 
     def _open(self):
         # 매 호출 후 파일 핸들을 닫고 트랜잭션 원자성을 유지한다.
@@ -100,3 +114,47 @@ class ApprovedLiveSlotJournal:
                 "INSERT OR IGNORE INTO approved_live_slot_attempts "
                 "(occurrence) VALUES (?)", (occurrence,)
             ).rowcount == 1
+
+    def record_event(self, occurrence: str, state: str) -> None:
+        """OBS가 실제 확인한 시작/종료 결과만 기존 슬롯에 누적 기록.
+
+        이벤트 기록 실패는 호출자에게 예외로 전달한다. 방송 제어와
+        원본 캐릭터/채팅 SQLite는 이 장부가 직접 변경하지 않는다.
+        """
+        if type(state) is not str or state not in _EVENT_STATES:
+            raise ValueError("기록할 방송 상태가 올바르지 않습니다.")
+        if type(occurrence) is not str or not occurrence.endswith(" KST"):
+            raise ValueError("기록할 방송 슬롯이 올바르지 않습니다.")
+        with self._open() as db:
+            result = db.execute(
+                "INSERT INTO approved_live_slot_events(occurrence,state) "
+                "SELECT occurrence, ? FROM approved_live_slot_attempts "
+                "WHERE occurrence=?", (state, occurrence))
+            if result.rowcount != 1:
+                raise ValueError("확정된 방송 시작 슬롯이 없어 결과를 기록하지 않습니다.")
+
+    def recent_events(self, *, limit: int = 20) -> tuple[tuple[str, str, str], ...]:
+        """로컬 OBS 시작·종료 결과를 읽기 전용으로 반환.
+
+        채팅/시청자/인증정보를 저장하지 않으며 최근 사건만 표시한다.
+        '시작 확인' 뒤 '종료 확인'이 없으면 송출 중이라는 증거가 아니라
+        운영자가 OBS 실제 상태를 확인해야 하는 미종결 기록이다.
+        """
+        if type(limit) is not int or not 1 <= limit <= 100:
+            raise ValueError("방송 기록 조회 개수는 1~100이어야 합니다.")
+        with self._open() as db:
+            rows = db.execute(
+                "SELECT occurrence,state,logged_at FROM "
+                "approved_live_slot_events ORDER BY event_no DESC LIMIT ?",
+                (limit,)).fetchall()
+        return tuple((str(a), str(b), str(c)) for a,b,c in rows)
+
+    def recent_claims(self, *, limit: int = 20) -> tuple[tuple[str, str], ...]:
+        """종료 이벤트가 없는 강제 종료 슬롯도 조회할 수 있는 원본 시도 장부."""
+        if type(limit) is not int or not 1 <= limit <= 100:
+            raise ValueError("방송 시작 시도 조회 개수는 1~100이어야 합니다.")
+        with self._open() as db:
+            rows = db.execute(
+                "SELECT occurrence,claimed_at FROM approved_live_slot_attempts "
+                "ORDER BY occurrence DESC LIMIT ?", (limit,)).fetchall()
+        return tuple((str(a), str(b)) for a,b in rows)
