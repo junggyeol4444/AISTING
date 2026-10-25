@@ -18,6 +18,8 @@ from urllib.parse import parse_qs, urlencode, urlsplit
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 
+from .youtube_page_checkpoint import YouTubePageCheckpoint
+
 
 @dataclass(frozen=True)
 class PlatformChat:
@@ -537,7 +539,17 @@ class YouTubeChatResumeState:
     네트워크 공백 중 도착한 모든 채팅을 복구했다고 주장하지 않는다.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, cursor_journal: YouTubePageCheckpoint | None = None,
+                 selected_channel: str = "") -> None:
+        if cursor_journal is not None and (
+                not isinstance(cursor_journal, YouTubePageCheckpoint)
+                or type(selected_channel) is not str
+                or not selected_channel.strip()):
+            raise ValueError("유튜브 영구 커서 소유 채널이 올바르지 않습니다.")
+        self._cursor_journal = cursor_journal
+        self._selected_channel = selected_channel
+        self._loaded_checkpoint = False
+        self.terminal_completed = False
         self.live_chat_id: str | None = None
         self.next_page_token = ""
         self.recent_message_ids: deque[str] = deque()
@@ -546,7 +558,7 @@ class YouTubeChatResumeState:
         self.completed_pages = 0
         # 현재 API 페이지의 파싱 완료 채팅을 콜백 수용 전 메모리에 보관한다.
         # 페이지 중간 실패 뒤 새 수신기가 다시 API를 호출하기 전에
-        # 남은 사건을 이어서 전달한다. 본문/토큰은 파일에 저장하지 않는다.
+        # 남은 사건을 이어서 전달한다. 본문/인증 토큰은 저장하지 않는다.
         self.pending_page_chats: deque[PlatformChat] = deque()
         self.pending_page_active = False
         self.pending_page_next_token: str | None = None
@@ -591,6 +603,13 @@ class YouTubeChatResumeState:
                 "재연결된 YouTube 채팅방이 바뀌었습니다. "
                 "이전 메시지 위치를 다른 방송에 적용하지 않습니다."
             )
+        if not self._loaded_checkpoint and self._cursor_journal is not None:
+            saved = self._cursor_journal.load(self._selected_channel, live_chat_id)
+            if saved is not None:
+                self.next_page_token = saved.next_page_token
+                self.completed_pages = saved.completed_pages
+                self.terminal_completed = saved.ended
+            self._loaded_checkpoint = True
         self.live_chat_id = live_chat_id
         return self.next_page_token
 
@@ -610,8 +629,18 @@ class YouTubeChatResumeState:
         if next_page_token is not None and (
                 not isinstance(next_page_token, str) or len(next_page_token) > 2048):
             raise ValueError("유튜브 채팅 페이지 토큰 오류")
+        if self._cursor_journal is not None:
+            if self.live_chat_id is None or not self.pending_page_active:
+                raise RuntimeError("유튜브 실제 채팅방·미확정 페이지가 없습니다.")
+            if self.pending_page_chats:
+                raise RuntimeError("유튜브 페이지에 SQLite 미수용 채팅이 남았습니다.")
+            # 영구 커서 쓰기가 실패하면 메모리 위치도 앞당기지 않는다.
+            self._cursor_journal.commit_completed_page(
+                self._selected_channel, self.live_chat_id,
+                next_page_token, ended=self.pending_page_ended)
         self.next_page_token = next_page_token or ""
         self.completed_pages += 1
+        self.terminal_completed = self.pending_page_ended
 
 
 class YouTubeReadOnlySession(ReadOnlySession):
@@ -746,6 +775,12 @@ class YouTubeReadOnlySession(ReadOnlySession):
         # 넘긴 이벤트 ID만 재전송하지 않는다. 본문 중복은 보존한다.
         resume = self._resume_state
         cursor = resume.bind_chat(live_chat_id)
+        if resume.terminal_completed:
+            # 이전 실행에서 종료 페이지까지 SQLite에 수용된 방송을
+            # 새 시작 페이지로 재조회해 중복 전달하지 않는다.
+            self._terminal_chat_end = True
+            self.emit("stopped", self.channel)
+            return
         first = True
         seen_message_ids = resume.seen_message_ids
         # Some broken API/proxy responses can alternate A->B->A forever.
