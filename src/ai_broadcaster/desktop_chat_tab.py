@@ -1254,7 +1254,10 @@ class LocalChatTab(ttk.Frame):
                                         or getattr(self, "_closed", False)):
                                     return
                                 if (inbox.qsize() < 4096
-                                        and self._results.qsize() < 4096):
+                                        and self._results.qsize() < 4096
+                                        and (self._twitch_parallel_ai is None
+                                             or self._twitch_parallel_ai.can_submit(
+                                                 pending.sequence))):
                                     # 이번 부팅의 신규 수신만 실제 수신 시각을
                                     # 기억한다. 이전 부팅 monotonic은 재사용 금지.
                                     accepted_at = self._recovery_arrival_times.pop(
@@ -1384,7 +1387,9 @@ class LocalChatTab(ttk.Frame):
                 # discard its data: pause reading until the serial AI worker
                 # actually drains committed work.
                 ai_backlog = pending_ai.qsize() if pending_ai is not None else 0
-                if self._results.qsize() < limit and ai_backlog < limit:
+                if (self._results.qsize() < limit and ai_backlog < limit
+                        and (kind != "chat" or self._twitch_parallel_ai is None
+                             or self._twitch_parallel_ai.can_submit())):
                     if kind == "chat" and isinstance(session, MultiPlatformReadOnlySession):
                         # 실제 네트워크 수신은 Tk 화면 출력보다 먼저 로컬 AI
                         # FIFO에 들어간다. Tk의 128건/주기 표시 지연이 추론
@@ -1398,7 +1403,9 @@ class LocalChatTab(ttk.Frame):
                             arrivals = self._ai_arrival_times
                             if inbox is None or arrivals is None:
                                 return False
-                            if self._results.qsize() < limit and inbox.qsize() < limit:
+                            if (self._results.qsize() < limit and inbox.qsize() < limit
+                                    and (self._twitch_parallel_ai is None
+                                         or self._twitch_parallel_ai.can_submit())):
                                 if blocked_since is not None:
                                     waited = max(0.0, time.monotonic() - blocked_since)
                                     self._live_queue_block_events += 1
@@ -2098,7 +2105,9 @@ class LocalChatTab(ttk.Frame):
             + "\n".join(lines)
             + f"\nGUI 이벤트 대기 {self._results.qsize()}건"
             + f" / 로컬 AI FIFO 대기 {pending}건"
-            + (f" / 선행 AI 아직 확정 안 된 채팅 {self._twitch_parallel_ai.pending}건"
+            + (f" / 선행 AI {self._twitch_parallel_ai.pending}/"
+               f"{self._twitch_parallel_ai.prefetch_limit}건"
+               " · 초과분은 원본 SQLite에 대기"
                if self._twitch_parallel_ai is not None else "")
             + (" / 디스크 미처리 채팅 "
                + (str(durable_count) + "건" if durable_count is not None
