@@ -4167,3 +4167,32 @@ F) 원본 100단계 roadmap.json status는 completed=9, pending=91이며 **코�
 - 아직 남은 것: 남은 생산용 방송·공지/장기 무인 운영 코드와 승인 경계 완성 여부 검토·개발, 실제 음성/입/OBS 같은 발화 인코더 실증 및 물리적 시청자 E2E, 4플랫폼 실제 수백 명 무누락·24시간 장기 재연결, 실제 FIFO p95 수천 초 AI 추론 및 음성/영상 1~3초 병목 개발과 실측, 전수 회귀·Windows GUI/EXE 검증→오류 수정→전체 재검증. 인가받지 않은 자산/계정은 임의 사용하지 않는다.
 - 진행 중 멈춘 것: 최신 소스 코딩·테스트 코드 작성 후 전수 검증 단계 시작 전. 자동 CI 구버전 cancelled와 최신 queued 상태. 전체 개발 완료 선언 금지.
 - 다음 실행은 반드시 현재 main HEAD/신규 CI 재조회. 이 문서 1~184절 및 다음 대화 전체 원문·과거 모든 appendices·원본 기획/로드맵을 삭제/요약 대체하지 않고 **AISTING 미완료 기능 전체 개발부터 지속**한다. 전체 개발 후 전수 검증→수정→전체 재검증. 문서 추가로 HEAD는 변경되므로 다음 실행 때 재조회한다.
+
+
+## 185. 2026-10-25 — OBS 공식 Live2D 영상 관측 병행 개발 및 4플랫폼 SQLite 장시간 수신 비용 개선
+
+### 사용자 지시 원문과 순서
+- 직전 사용자 명령 원문: "개발 하라고 그리고 main에 올리고".
+- 기존 지시의 우선순위: AISTING 기존 소스의 전체 잔여 기능 개발 먼저 → 전체 회귀·Windows 10/11 네이티브 EXE/GUI·OBS·GPT-SoVITS·Live2D·4플랫폼 통합검사 → 오류 수정 → 전체 재검증.
+- 시작 main HEAD a11c5a2205d06d90e6a3c4343184810e47bae156을 실제 GitHub에서 다시 확인. docs/ORIGINAL_PLAN.txt, docs/ROADMAP_100.md, config/roadmap.json, docs/AISTING_HOURLY_FULL_HANDOFF.md, docs/AISTING_NEXT_CONVERSATION_HANDOFF.md 및 기존 관련 소스 원문을 이전 개발 인수인계 기준으로 보존하고, 기존 1~184절·모든 과거 부록을 삭제/요약 대체하지 않는다. 이 회차 모든 과거 부록을 하나씩 다시 읽었다고 주장하지 않는다.
+- 기존 main에 연속 내용 업데이트만 수행. 새 브랜치/force push/롤백/전면 재개발, 타 프로젝트·Drive·예약 변경, 캐릭터/사용자 설정/원본 대화 기억 SQLite 변경, OAuth 대리인증·실계정 방송/녹화/채팅 발신·권리 없는 음성/모델 훈련, 사용자 미승인 96토큰/keep_alive 설정 변경을 하지 않는다.
+
+### 이번 개발 소스 실제 main 반영
+1. src/ai_broadcaster/obs_live2d_frame_link.py에 기존 active_official_window_capture와 program_motion_near_audio를 그대로 유지하고 OfficialProgramFrameSampler를 추가했다. 이미 실행 중인 실제 OBS WebSocket의 독립 읽기 전용 연결에서 현재 프로그램 장면/송출/녹화 상태 및 공식 Live2D 네이티브 창 제목과 연결된 실제 활성 window_capture 경로를 확인한다. WAV 시작 전 실제 OBS PNG 프레임 기준 해시와 WAV 중 0.35초 간격으로 최대 32개 후속 프레임의 실제 단조시각·프로그램 장면·SHA-256만 메모리에 기록하며 PNG 원본/사생활 화면은 저장하지 않는다. 관측 종료 시 캡처 대상이 바뀌지 않았는지 다시 검사하고 동작 완료/실패 시 전용 연결 종료를 시도한다. PNG 해시 변화는 Cubism 입 픽셀의 증명이나 인코더/시청자 실제 출력 증거가 아니다.
+2. src/ai_broadcaster/original_plan_voice_obs_bridge.py 기존 GPT-SoVITS WAV→공식 Cubism→OBS 미터 동시 검사 경로에 이 독립 프레임 관찰자를 연결했다. 승인받은 기존 같은 WAV 재생 전에 기준 프레임 관찰을 준비하고, 임시 OBS WAV 실제 재생 시작 전후에 화면 관찰을 병행한다. 기존 단일 OBS WebSocket으로 동기적으로 2번만 화면을 읽던 경로를 독립 영상 연결로 대체하여 오디오 이벤트 콜백 관찰을 동기 이미지 요청 때문에 차단하지 않도록 개발했다. Cubism 원래 getRms 복원과 OBS 고유 임시 소스 삭제 경로를 보존하고 영상 관찰자 종료를 별도 finally에서 보장하도록 개발했다. 프로그램 영상 변화 후보와 실제 WAV 입력 미터/실제 입 변화 관측을 혼동하지 않는다.
+3. src/ai_broadcaster/obs_live2d_frame_link.py의 program_motion_near_audio는 다중 프레임 샘플러의 마지막 실제 WAV 관측 프레임을 사용하게 변경했다. 기준 프레임 이후 실제 OBS PNG 해시 변화가 실제 오디오 미터 시각 ±0.6초 범위에 있는지 기존 규칙에 따라 후보로만 표시한다.
+4. src/ai_broadcaster/desktop_chat_tab.py의 명시 승인 문구에 OBS 실제 프로그램 영상 시작 전·재생 중 최대 33프레임 읽기, 이미지 원본 저장 금지·해시만 메모리 보관, 공식 창 캡처 전후 확인을 명시했다. 방송/녹화/채팅 발신·기존 OBS 소스 변경은 여전히 하지 않으며 운영자가 실제 권리 음성·프로그램 영상 관찰을 선택했을 때만 실행된다.
+5. src/ai_broadcaster/durable_public_chat_queue.py는 기존 미처리 채팅 행·ID/카운트/명령을 보존하면서 (platform,channel,sequence) 복합 인덱스를 추가해 4플랫폼 선택 채널의 복구 페이지와 snapshot 조회를 개발상 개선했다. 수백 명/24시간 동시 수신 시 매 append마다 기존 SQLite pending 전체 COUNT(*)를 재실행하는 대신 단독 DB 소비자 잠금과 기존 RLock 아래 성공 커밋 시 이미 갱신되던 self._pending 카운트를 이용해 보호 한도를 확인한다. 최종 DB commit 전에 카운트를 성공으로 올리지 않으며 저장 실패면 중단하고 원본 행을 지우지 않는다. 사용자 대화 기억·캐릭터·설정 파일은 수정하지 않는다.
+6. tests/test_aisting_official_obs_frame_sampler_186.py 5개 실제 방송 없는 계약검사 코드를 신규 작성했다. 공식 창 캡처 판별·다른 창 거부·실제 관찰시각 없는 영상 거부·OBS 관찰자 해시/순서/종료·오디오 시각 가까운 마지막 영상 프레임 후보를 검증하도록 구성했다. 별도 가상 OBS 인터페이스는 계약 테스트 용도이며 실제 OBS/실계정/권리 음성/수백 명/24시간 검증과 구별된다. 이번 회차에는 이 검사나 전체 회귀를 실행하지 않았으므로 성공 단정 금지.
+
+### GitHub main 변경 기록 및 상태
+- 시작 HEAD: a11c5a2205d06d90e6a3c4343184810e47bae156.
+- 순차 실제 코드/검사 반영: 246bc241218c1a7fddeda45316c04b2fa5c78238 (OBS 독립 관찰자), d4ffa3ee221d2372d014f8a7823257fd85ee8467 (WAV/Cubism/OBS 연결), 07cd6e9d223e18bc8187d209892d815f0a79e666 (마지막 프레임 후보 포함), d18b299b276f2b7ee70ae835ef657a674eaed029 (GUI 승인 문구), 345bf9e3a0bc552515fcb5ceb9b5ac1159288924 (SQLite 복합 인덱스·매 건 COUNT 제거), 96f92dc5c380552f1fa473734df04497b4e8234f (5개 개발 계약검사), fbf306c418ad608a83dce25e917968cc70183168 (OBS 전용 연결 정리).
+- 마지막 조회된 신규 자동 CI: validation 40171227129, Windows EXE 40171227075 모두 queued. 구버전 345bf9e3 기준 Real 500 Chat 40171113703 queued, validation 40171113728/Windows 40171113716은 cancelled. 자동 취소 CI를 성공으로 취급하지 않는다. 인수인계 문서 커밋 이후 main HEAD는 달라지므로 다음 실행에서 다시 HEAD/CI 확인할 것.
+
+### 실제 한 것 / 안 한 것 / 남은 것 / 진행 중 멈춘 것
+- 한 것: 기존 코드에 OBS 실제 공식 Live2D 창 경로 검증과 WAV 중 독립 다중 프레임 관측·오디오 미터 겹침 후보 연결, 기존 네이티브 GUI의 정확한 관찰 승인 표기, SQLite 선택 채널·순번 복구 인덱스와 per-message 전체 COUNT 성능 병목 제거, 총 5개 추가 계약검사 코드 작성. 원본 소스, 설정, 캐릭터, 대화 기억, 모든 과거 인수인계 내용 보존.
+- 안 한 것: 새 계약검사 실행/통과, 전체 회귀·Windows EXE/실기기 GUI 버튼 동작, 실제 권리 한국어 GPT-SoVITS WAV→공식 Cubism 입→OBS 프로그램 영상/음성의 단일 발화 실측, OBS 인코더·시청자 수신 확인, 4플랫폼 수백 실제 시청자·24시간 재연결·1~3초 E2E 달성, 강제 송출/녹화·무단 인증/학습/채팅 발신. 이 회차의 신규 CI도 성공 판정 전이다.
+- 남은 것: 사용자 1~3초 실제 끝단 지연을 보장할 수 있도록 순차 FIFO에 쌓이는 모델 추론 병목(실측 구 500건 전체 p95 2979.984초/대기 p95 2973.875초, 500건 모두 3초 초과)의 코드 개선과 실측; 권리 있는 실제 음성·입·OBS 인코더 동일 발화 증명; 실제 4플랫폼 장시간 수백 명 무누락 및 24시간 재연결 검증; 전체 생산용 자율 방송 요구 기능의 남은 소스 검토·개발. 이전 177절 회귀 36 failures/33 errors, Windows cancelled 기록은 미해결이며 가상 테스트를 실사용으로 표시하면 안 된다.
+- 진행 중 멈춘 것: 이번 추가 코드 누적 반영/개발 계약검사 작성 완료 단계이며, 사용자 지정 "전체 개발 먼저 → 전체 검증 → 수정 → 전체 재검증" 순서상 전체 기능 개발 완료 전이므로 전체 검증·오류 수정 단계 시작하지 않음.
+- 다음: 실제 현재 GitHub main HEAD와 해당 HEAD CI 최종 상태 다시 조회. 기존 docs/AISTING_HOURLY_FULL_HANDOFF.md 1~185절 전체, docs/AISTING_NEXT_CONVERSATION_HANDOFF.md 전체, 모든 hourly-handoff-appendices 원문 및 원래 기획/로드맵/설정/기존 소스 파일을 보존하면서 AISTING의 남은 핵심 기능 개발 우선 지속. 타 프로젝트·예약·Drive·브랜치·설정/사용자 자산 무단 변경 금지.
