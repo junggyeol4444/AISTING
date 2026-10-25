@@ -34,6 +34,8 @@ class ApprovedLiveSnapshot:
     stop_confirmed: bool
     closing_attempted: bool
     closing_delivered_candidate: bool
+    start_notice: str = "미설정"
+    end_notice: str = "미설정"
 
 
 class ApprovedLiveScheduler:
@@ -57,6 +59,9 @@ class ApprovedLiveScheduler:
         rights_confirmed: bool = False,
         media_preflight: Callable[[], bool],
         deliver_closing: Callable[[str], bool],
+        on_started_notice: Callable[[str], bool] | None = None,
+        on_finished_notice: Callable[[str], bool] | None = None,
+        notice_approved: bool = False,
         client_factory: Callable[..., OfficialObsWebsocket] = OfficialObsWebsocket,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
@@ -84,6 +89,14 @@ class ApprovedLiveScheduler:
         if not all(callable(fn) for fn in
                    (media_preflight, deliver_closing, client_factory, clock)):
             raise ValueError("실제 방송 동작/시계 연결 함수가 필요합니다.")
+        if ((on_started_notice is not None or on_finished_notice is not None)
+                and notice_approved is not True):
+            raise PermissionError("디스코드 외부 공지 자동 게시 별도 승인이 필요합니다.")
+        if (on_started_notice is not None and not callable(on_started_notice)
+                or on_finished_notice is not None and not callable(on_finished_notice)):
+            raise ValueError("실제 공지 전송 함수가 올바르지 않습니다.")
+        self._on_started_notice = on_started_notice
+        self._on_finished_notice = on_finished_notice
         self._draft = draft
         self._rules = rules
         self._password = obs_password
@@ -107,6 +120,8 @@ class ApprovedLiveScheduler:
         self._stop_confirmed = False
         self._closing_attempted = False
         self._closing_delivered_candidate = False
+        self._start_notice = "대기" if on_started_notice is not None else "미설정"
+        self._end_notice = "대기" if on_finished_notice is not None else "미설정"
         self._client = None
         self._running = False
 
@@ -116,7 +131,8 @@ class ApprovedLiveScheduler:
                 self._state, self._detail, self._occurrence,
                 self._owns_stream, self._start_confirmed,
                 self._stop_confirmed, self._closing_attempted,
-                self._closing_delivered_candidate)
+                self._closing_delivered_candidate, self._start_notice,
+                self._end_notice)
 
     def request_stop(self) -> None:
         """운영자 종료 요청. 소유한 방송만 안전하게 종료하도록 작업자를 깨움."""
@@ -179,6 +195,15 @@ class ApprovedLiveScheduler:
             self._start_confirmed = True
             self._started_at = now
             self._set("실제 방송 중", "방송 송출 상태를 확인했습니다. 시청자 수신은 별도 실증입니다.")
+            if self._on_started_notice is not None:
+                # OBS가 실제 시작됐다는 확인 뒤에만 '시작 공지' 전송.
+                # 실패 시 자동 중복 게시/방송 종료 없음. 상태는 별도 보존.
+                try:
+                    self._start_notice = (
+                        "서버 204 확인" if self._on_started_notice(occurrence) is True
+                        else "서버 완료 미확인")
+                except Exception:
+                    self._start_notice = "전송 실패 · 자동 재발신 없음"
         except Exception as exc:
             # A failed request might have reached OBS before a connection
             # dropped: never blindly stop or claim ownership of that stream.
@@ -212,7 +237,16 @@ class ApprovedLiveScheduler:
                     raise RuntimeError("OBS 방송 종료 상태가 확인되지 않았습니다.")
             self._stop_confirmed = True
             self._owns_stream = False
-            self._set("실제 방송 종료", "OBS 종료 확인 · 외부 플랫폼 수신/공지 게시는 별도 확인")
+            self._set("실제 방송 종료", "OBS 종료 확인 · 외부 플랫폼 수신은 별도 확인")
+            if self._on_finished_notice is not None:
+                # 원래 내가 시작한 OBS 방송 종료가 확인된 뒤에만 게시.
+                try:
+                    self._end_notice = (
+                        "서버 204 확인"
+                        if self._on_finished_notice(self._occurrence) is True
+                        else "서버 완료 미확인")
+                except Exception:
+                    self._end_notice = "전송 실패 · 자동 재발신 없음"
         except Exception as exc:
             self._set("종료 확인 실패", type(exc).__name__ +
                       " · 자동 완료 기록 금지 · OBS 현재 방송 상태 수동 확인 필요")
