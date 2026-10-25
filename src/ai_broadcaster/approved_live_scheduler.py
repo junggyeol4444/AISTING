@@ -36,6 +36,7 @@ class ApprovedLiveSnapshot:
     closing_delivered_candidate: bool
     start_notice: str = "미설정"
     end_notice: str = "미설정"
+    live_chat: str = "미설정"
 
 
 class ApprovedLiveScheduler:
@@ -62,6 +63,9 @@ class ApprovedLiveScheduler:
         on_started_notice: Callable[[str], bool] | None = None,
         on_finished_notice: Callable[[str], bool] | None = None,
         notice_approved: bool = False,
+        begin_live_chat: Callable[[], bool] | None = None,
+        end_live_chat: Callable[[], bool] | None = None,
+        chat_approved: bool = False,
         client_factory: Callable[..., OfficialObsWebsocket] = OfficialObsWebsocket,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
@@ -95,8 +99,19 @@ class ApprovedLiveScheduler:
         if (on_started_notice is not None and not callable(on_started_notice)
                 or on_finished_notice is not None and not callable(on_finished_notice)):
             raise ValueError("실제 공지 전송 함수가 올바르지 않습니다.")
+        if ((begin_live_chat is not None or end_live_chat is not None)
+                and chat_approved is not True):
+            raise PermissionError("실제 4플랫폼 공개 채팅 AI 자동 연결 별도 승인이 필요합니다.")
+        if ((begin_live_chat is None) != (end_live_chat is None)
+                or begin_live_chat is not None and not callable(begin_live_chat)
+                or end_live_chat is not None and not callable(end_live_chat)):
+            raise ValueError("실제 채팅 시작/종료 연결이 올바르지 않습니다.")
         self._on_started_notice = on_started_notice
         self._on_finished_notice = on_finished_notice
+        self._begin_live_chat = begin_live_chat
+        self._end_live_chat = end_live_chat
+        self._chat_started = False
+        self._live_chat = "대기" if begin_live_chat is not None else "미설정"
         self._draft = draft
         self._rules = rules
         self._password = obs_password
@@ -132,7 +147,7 @@ class ApprovedLiveScheduler:
                 self._owns_stream, self._start_confirmed,
                 self._stop_confirmed, self._closing_attempted,
                 self._closing_delivered_candidate, self._start_notice,
-                self._end_notice)
+                self._end_notice, self._live_chat)
 
     def request_stop(self) -> None:
         """운영자 종료 요청. 소유한 방송만 안전하게 종료하도록 작업자를 깨움."""
@@ -195,6 +210,18 @@ class ApprovedLiveScheduler:
             self._start_confirmed = True
             self._started_at = now
             self._set("실제 방송 중", "방송 송출 상태를 확인했습니다. 시청자 수신은 별도 실증입니다.")
+            if self._begin_live_chat is not None:
+                # OBS 실제 송출 확인 뒤, 사용자가 별도로 승인한 기존
+                # 4플랫폼 공개 채팅/공식 AI 세션을 GUI에서 시작 요청한다.
+                try:
+                    if self._begin_live_chat() is not True:
+                        raise RuntimeError("자동 실제 채팅 시작 상태 미확인")
+                    self._chat_started = True
+                    self._live_chat = "연결 요청 접수 · 서버 입장 미검증"
+                except Exception:
+                    self._live_chat = "실제 채팅 준비 실패 · OBS 종료 요청"
+                    self._finish_owned(normal_maximum=False)
+                    raise RuntimeError("실제 채팅 연결 실패 · 임의로 무음 방송 유지 금지") from None
             if self._on_started_notice is not None:
                 # OBS가 실제 시작됐다는 확인 뒤에만 '시작 공지' 전송.
                 # 실패 시 자동 중복 게시/방송 종료 없음. 상태는 별도 보존.
@@ -222,6 +249,16 @@ class ApprovedLiveScheduler:
                     self._deliver_closing(self._closing_text) is True)
             except Exception:
                 self._closing_delivered_candidate = False
+        # 자동 공개 채팅을 실제 이 방송에서 시작한 경우만 Stop한다.
+        # 실패하더라도 OBS 실제 종료를 건너뛰지 않는다.
+        if self._chat_started and self._end_live_chat is not None:
+            try:
+                self._live_chat = (
+                    "수신 종료 요청" if self._end_live_chat() is True
+                    else "수신 종료 확인 실패 · 별도 확인 필요")
+            except Exception:
+                self._live_chat = "수신 종료 오류 · 별도 확인 필요"
+            self._chat_started = False
         # Never keep streaming forever after a requested Stop or maximum time,
         # even if the closing voice failed; but never touch a stream we didn't own.
         try:
