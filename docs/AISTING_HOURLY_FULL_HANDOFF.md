@@ -4423,3 +4423,14 @@ F) 원본 100단계 roadmap.json status는 completed=9, pending=91이며 **코�
 - **남은 개발**: 기존 실모델 단일 FIFO 500건 대기 수천 초 병목과 1~3초 실제 시청자 E2E, 권리 있는 한국어 GPT-SoVITS WAV→공식 Cubism 입→OBS 동일 발화 실제 영상/음성 인과성, 수백 명 4플랫폼 무누락/24시간 운영 및 게임 자율 행위·공식 네이버 카페 게시 등 원본 계획의 남은 실사용 코드. 이번 개발은 **운용 가시성 개선이지 병목 해소 완료가 아니다**.
 - **진행 중**: 전체 개발 미완료. 다음 실행은 이 대화·기존 예약을 유지하고 최신 main HEAD/CI와 원본 전체 인수인계를 재조회한 뒤 기존 소스 개발부터 계속한다. 개발 전부 완료 후에만 통합검증→일괄 수정→전체 재검증.
 
+
+# AISTING 192절 — 2026-10-25 19:30 KST OBS 실측 품질 및 방송 슬롯별 영구 위험 사건 개발
+
+- 사용자 지시: 이 AISTING 대화와 기존 매시간 예약 유지. 원본 보존. 기존 main에서 **개발 전체 완료 → 통합검증 → 일괄 수정 → 재검증** 순서. 새 브랜치·다른 저장소·Drive·다른 예약 변경 없음.
+- 시작 main HEAD `08b21b20115a466fc62c04e9f15546546bb02d35`. 기존 전체 인수인계 2개, 원본 기획/로드맵/JSON, 과거 부록 118개 조회. 이번 수정 대상 실제 소스와 연결 코드 확인. 저장소 모든 파일을 읽었다는 주장은 하지 않음.
+- **실제 개발**: `obs_stream_health.py`에 실제 OBS 연속 전송 프레임 카운터의 60초 누락률·실제 분모, 지속 혼잡·출력 프레임 정체·재연결 관측 및 기존 GUI 상태 문구 확장. `approved_live_slot_journal.py`에 새 OBS 위험/송출 이탈 사건 허용. `approved_live_scheduler.py`에 승인된 방송 슬롯별 실제 위험 최초 1회 SQLite append-only 영구 기록과 예기치 않은 송출 종료/장면 이탈/관측 실패 기록 추가. 기존 사용자 DB·캐릭터·설정·장면 변경 및 무단 송출 없음.
+- 실제 소스 커밋: `1b0a011026dd4a8c852399300aadc8f6b6b6b9cc`, `6a98866519591ff68df1f50f80144ccb03190706`, `16247cd3b6eb6d949960222960ddc71e6a723420`, `c40426b96c1eb9a4fd30ea5ae2c86882bc241467`, `1ae7aa6e4818508b1abbeff6adae0f14d7eac233`. 소스 HEAD 마지막 확인 `1ae7aa6e4818508b1abbeff6adae0f14d7eac233`; 문서 커밋 뒤 HEAD는 다시 확인.
+- 자동 CI 조회 당시 Windows EXE `40185343225` queued, REAL 500 Chat `40185343223` queued, validation `40185343227` queued. 수동 단위/전체 회귀·Windows 10/11 실제 EXE/GUI·OBS·권리 WAV·Cubism·4플랫폼 실계정·24시간/수백 명·시청자 1~3초 **NOT_RUN/미실증**.
+- 과거 실모델 500건 `39720448468` 500/500 모두 3초 초과, FIFO p95 2973.875초 / 전체 p95 2979.984초 실패. 과거 36 failures/33 errors, Windows `39722213656` cancelled 보존.
+- **완료**: 기존 코드 3개 파일의 OBS 실제 운영 위험 관측·영구 기록 개발. **미완료**: 실모델 FIFO 1~3초, GPT-SoVITS→공식 Cubism→OBS 같은 발화·시청자 인과관계, 실제 수백 명/24시간 4플랫폼 무누락, Windows 전체 검증, 원본 나머지 기능. **진행 중**: 개발 단계. 다음 매시간 실행도 이 대화·main에서 미완료 실제 소스 개발부터 계속.
+- 상세 원문 부록: `docs/hourly-handoff-appendices/AISTING_20261025_192_OBS_LIVE_QUALITY_PERSISTENT_EVENTS_DEVELOPMENT.md`.
