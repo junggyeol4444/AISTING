@@ -4434,3 +4434,16 @@ F) 원본 100단계 roadmap.json status는 completed=9, pending=91이며 **코�
 - 과거 실모델 500건 `39720448468` 500/500 모두 3초 초과, FIFO p95 2973.875초 / 전체 p95 2979.984초 실패. 과거 36 failures/33 errors, Windows `39722213656` cancelled 보존.
 - **완료**: 기존 코드 3개 파일의 OBS 실제 운영 위험 관측·영구 기록 개발. **미완료**: 실모델 FIFO 1~3초, GPT-SoVITS→공식 Cubism→OBS 같은 발화·시청자 인과관계, 실제 수백 명/24시간 4플랫폼 무누락, Windows 전체 검증, 원본 나머지 기능. **진행 중**: 개발 단계. 다음 매시간 실행도 이 대화·main에서 미완료 실제 소스 개발부터 계속.
 - 상세 원문 부록: `docs/hourly-handoff-appendices/AISTING_20261025_192_OBS_LIVE_QUALITY_PERSISTENT_EVENTS_DEVELOPMENT.md`.
+
+
+## 193. 2026-10-25 20:32 KST — 선택 방송 채널별 SQLite 실제 적체·한도 예상·Windows GUI 누적 개발
+
+- **사용자 최신 지시**: 기존 AISTING 대화·매시간 예약 유지, 오직 junggyeol4444/AISTING 기존 main에 실제 누적 소스 반영. 다른 프로젝트·예약·브랜치·Drive·계정·캐릭터·기존 설정·SQLite 채팅 데이터·기획 원문 수정/삭제 금지. 전체 개발 먼저, 그다음 통합검증, 일괄 수정, 전체 재검증.
+- **확인**: 시작 main HEAD `8a04a2029d9a1fdf30b1cdbcd4d0ba52c581ba61`. 기존 전체 인수인계 문서 두 개의 원문, 원본 기획, 100단계 로드맵, JSON, 97/185/187/192절 주요 부록 및 이번 변경 관련 실제 소스를 조회했다. 전체 과거 부록 원문을 전부 읽었다고 주장하지 않는다.
+- **실제 누적 소스 개발**: `src/ai_broadcaster/durable_public_chat_queue.py`에서 SQLite 기존 미처리 원본 행을 변경하지 않고 선택 방송의 (플랫폼,채널)별 미처리 건수·최초 순번·최장 미처리 시간을 부팅 시 복원하고 append/confirm 성공 커밋에 맞춰 갱신하는 메모리 스냅샷을 추가. 이전 플랫폼 전체 적체와 다른 채널의 보류 메시지를 혼동하지 않도록 했다. 최근 60초 접수·완료 순증과 10초 이상 표본을 이용한 **보호한도 도달 예상 시간(비보증)**도 추가했다.
+- **실제 GUI 개발**: `src/ai_broadcaster/desktop_chat_tab.py`에서 현재 선택 채널의 SQLite 미처리 건수·최장 대기를 플랫폼 전체 미처리 건수와 구별해 표시. 전체 SQLite 보호한도 예상 시간 및 10분 이내 도달 위험 경고를 기존 Windows 상태 화면에 추가. 다른 채널의 기존 보류 채팅은 그대로 보존하며 자동 폐기·발신·송출 없음.
+- **실제 main 반영 소스 커밋**: `29d3fee339f3bd814a8e873af030e6d836e3984e` (정상 fast-forward, 기존 2개 소스 변경). 이번 문서 추가 뒤 최종 HEAD는 별도 재조회.
+- **최신 소스 커밋 기준 자동 CI 조회 당시**: REAL 500 Chat `40189429218` queued, validation `40189429217` queued, Windows EXE `40189429243` queued. 통과 주장 금지. 이번 수동 검사·전체 회귀·실제 Windows 10/11 네이티브 EXE GUI·권리 WAV·Cubism·OBS·실계정 4플랫폼·24시간/수백 명·시청자 1~3초: **NOT_RUN / 미실증**.
+- **과거 실패 보존**: 실모델 500건 CI `39720448468`은 500/500 모두 3초 초과, FIFO p95 2973.875초/전체 p95 2979.984초 실패. 이전 전체 회귀 36 failures/33 errors 및 Windows `39722213656` 취소도 성공으로 변경하지 않음.
+- **완료**: 선택 방송 채널별 실제 SQLite 미처리 상태·보호한도 예상 및 기존 GUI 연결 소스 개발과 main 반영. **미완료**: 모든 원본 기능 개발, 1~3초 병목, 동일 발화 GPT-SoVITS→공식 Cubism→OBS 실제 출력, 4플랫폼 수백 명 무누락·24시간 안정화, 실장비 통합검증·일괄 수정·재검증. **진행 중**: 개발 단계. 다음 실행은 최신 main을 확인하고 실제 미완료 소스 개발부터 계속.
+- **별도 원문 부록**: `docs/hourly-handoff-appendices/AISTING_20261025_193_SELECTED_CHANNEL_SQLITE_BACKLOG_CAPACITY_DEVELOPMENT.md`.
