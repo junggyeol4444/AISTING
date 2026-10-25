@@ -26,6 +26,7 @@ from .original_plan_obs import OfficialObsWebsocket
 from .original_plan_tts import synthesize_local_gpt_sovits
 from .same_wav_cubism_driver import authorized_pcm_envelope
 from .obs_live2d_frame_link import active_official_window_capture
+from .approved_live_voice_journal import ApprovedLiveVoiceJournal, voice_turn_key
 
 
 _MAX_SEGMENT_CHARS = 64
@@ -83,6 +84,7 @@ class ApprovedLiveVoiceOutput:
         operator_approved: bool = False,
         rights_confirmed: bool = False,
         on_event: Callable[[str, object], None] | None = None,
+        journal: ApprovedLiveVoiceJournal | None = None,
     ) -> None:
         if operator_approved is not True or rights_confirmed is not True:
             raise PermissionError("기존 OBS 방송 중 음성 사용과 실제 권리 별도 승인이 필요합니다.")
@@ -102,8 +104,12 @@ class ApprovedLiveVoiceOutput:
         self._obs_password = obs_password
         self._obs_port = obs_port
         self._on_event = on_event
+        if journal is not None and not isinstance(journal, ApprovedLiveVoiceJournal):
+            raise TypeError("실제 음성 영구 장부가 올바르지 않습니다.")
+        self._journal = journal if journal is not None else ApprovedLiveVoiceJournal()
         self._stop = threading.Event()
-        self._inbox: queue.Queue[str] = queue.Queue(maxsize=_MAX_SPEECH_QUEUE)
+        self._inbox: queue.Queue[tuple[str, str]] = queue.Queue(
+            maxsize=_MAX_SPEECH_QUEUE)
         self._worker: threading.Thread | None = None
         self._submitted = 0
         self._finished = 0
@@ -117,7 +123,10 @@ class ApprovedLiveVoiceOutput:
             target=self._run, name="AISTING-approved-live-voice", daemon=True)
         self._worker.start()
 
-    def enqueue(self, reply: str) -> int:
+    def enqueue(
+        self, reply: str, *, platform: str = "twitch",
+        channel: str = "직접선택", event_id: str | None = None,
+    ) -> int:
         """완성된 기존 AI 답변 한 건을 원순서 그대로 추가한다.
 
         초과 시 답변을 성공으로 위장하거나 기존 대기열을 버리지 않는다.
@@ -126,8 +135,12 @@ class ApprovedLiveVoiceOutput:
         if self._worker is None or self._stop.is_set():
             raise RuntimeError("실제 방송용 음성 연결이 실행 중이지 않습니다.")
         korean_voice_segments(reply)
+        # 실제 서버 이벤트 ID가 없는 서로 다른 메시지는 절대 본문으로
+        # 합치지 않는다. 원문은 메모리 FIFO에만 두고 DB에는 SHA만 기록.
+        turn_key = voice_turn_key(
+            platform, channel, event_id, nonce=secrets.token_hex(16))
         try:
-            self._inbox.put_nowait(reply)
+            self._inbox.put_nowait((turn_key, reply))
         except queue.Full as exc:
             raise RuntimeError(
                 "실제 방송 음성 대기열 512건 초과 · 임의 발화 삭제 없음 · "
@@ -150,10 +163,17 @@ class ApprovedLiveVoiceOutput:
     def _run(self) -> None:
         while not self._stop.is_set():
             try:
-                text = self._inbox.get(timeout=0.2)
+                turn_key, text = self._inbox.get(timeout=0.2)
             except queue.Empty:
                 continue
+            claimed = False
             try:
+                # 실제 GPT-SoVITS 합성·Cubism·OBS 입력 전에 SQLite에
+                # 발화 시도를 커밋. 응답 유실/재시작 후 자동 이중발화 금지.
+                if not self._journal.claim(turn_key, text):
+                    self._publish("발화중복차단", turn_key[:12])
+                    continue
+                claimed = True
                 completed = 0
                 duration = 0.0
                 segments = korean_voice_segments(text)
@@ -165,12 +185,22 @@ class ApprovedLiveVoiceOutput:
                     completed += 1
                     self._publish("구간완료", (completed, len(segments)))
                 if self._stop.is_set() or completed != len(segments):
+                    self._journal.finish(turn_key, "중단")
                     self._publish("발화중단", (completed, len(segments)))
                     break
+                # 이 완료는 실제 OBS 재생 요청 경로의 반환이며,
+                # 플랫폼 최종 시청자 음성 수신을 증명하지 않는다.
+                self._journal.finish(turn_key, "재생요청완료")
                 self._finished += 1
                 self._publish("발화완료", ApprovedVoiceTurn(
                     completed, len(segments), duration, True, True))
             except Exception as exc:
+                if claimed:
+                    try:
+                        self._journal.finish(turn_key, "불명")
+                    except Exception:
+                        # 기존 시도 행은 삭제하지 않으며 자동 재전송도 없음.
+                        pass
                 # 이미 Cubism·OBS에 일부 소리가 나갔을 수 있으므로
                 # 불확실한 문장을 자동 재전송해 두 번 읽지 않는다.
                 self._publish("발화오류", type(exc).__name__)
