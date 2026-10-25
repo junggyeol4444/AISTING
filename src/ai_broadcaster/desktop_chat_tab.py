@@ -38,6 +38,7 @@ from .approved_live_content_agenda import (
     ApprovedLiveContentAgenda, ApprovedLiveContentJournal)
 from .approved_live_voice_output import ApprovedLiveVoiceOutput
 from .ordered_parallel_local_ai import OrderedParallelLocalAI
+from .youtube_page_checkpoint import YouTubePageCheckpoint
 
 
 @dataclass(frozen=True)
@@ -1037,6 +1038,10 @@ class LocalChatTab(ttk.Frame):
                 multi_options = {
                     "youtube_api_key": self._youtube_api_key.get(),
                     "youtube_oauth_token": self._youtube_oauth_token.get()}
+                if "youtube" in saved_platforms:
+                    # 사용자 선택 실제 방송의 YouTube API 페이지가 기존
+                    # 채팅 SQLite에 전량 수용된 후만 재시작 커서를 기록한다.
+                    multi_options["youtube_cursor_journal"] = YouTubePageCheckpoint()
                 if twitch_token is not None and twitch_token.get():
                     multi_options["twitch_oauth_token"] = twitch_token.get()
                     multi_options["twitch_oauth_login"] = (
@@ -1059,6 +1064,7 @@ class LocalChatTab(ttk.Frame):
                     single_options["youtube_api_key"] = self._youtube_api_key.get()
                     single_options["youtube_oauth_token"] = (
                         self._youtube_oauth_token.get())
+                    single_options["youtube_cursor_journal"] = YouTubePageCheckpoint()
                 session = MultiPlatformReadOnlySession(
                     {code: channel}, emit, **single_options)
         except (ValueError, TypeError, OSError, RuntimeError) as exc:
