@@ -153,6 +153,7 @@ class OfficialProgramFrameSampler:
         import time
         from .original_plan_obs import OfficialObsWebsocket
 
+        obs = None
         try:
             obs = OfficialObsWebsocket(self._password, port=self._port)
             start = obs.connect()
@@ -191,7 +192,16 @@ class OfficialProgramFrameSampler:
             final_media = obs.read_scene_media_path()
             self._capture_after = final_media.capture_sources
         except Exception as exc:
-            # Never log raw OBS tokens, pixels, addresses, credentials.
+            # OBS 토큰/영상/접속 문자열은 오류 본문에 넣지 않는다.
             self._error = type(exc).__name__
         finally:
+            if obs is not None:
+                client = getattr(obs, "_client", None)
+                disconnect = getattr(client, "disconnect", None)
+                if callable(disconnect):
+                    try:
+                        disconnect()
+                    except Exception:
+                        # 출력·기존 OBS 연결을 종료하는 명령은 전송하지 않는다.
+                        pass
             self._ready.set()
