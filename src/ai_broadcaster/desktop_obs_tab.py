@@ -36,6 +36,10 @@ class ObsStatusTab(ttk.Frame):
         self._discord_webhook = tk.StringVar()
         self._discord_start_text = tk.StringVar()
         self._discord_end_text = tk.StringVar()
+        self._notice_ai_busy = False
+        self._notice_ai_status = tk.StringVar(
+            value="로컬 공지 AI 미실행 · 생성된 공지는 자동 게시하지 않습니다.")
+        self._notice_topic = tk.StringVar()
         ttk.Label(self,text="OBS Studio 로컬 연결 확인 (읽기 전용)",
                   font=("Malgun Gothic",12,"bold")).pack(anchor="w",pady=(4,10))
         ttk.Label(self,text="OBS가 PC에 이미 설치돼 있어야 해요. 연결 확인만 하며 방송을 시작하거나 설정을 변경하지 않습니다.",
@@ -102,6 +106,14 @@ class ObsStatusTab(ttk.Frame):
         ttk.Entry(self, textvariable=self._discord_start_text).pack(fill="x")
         ttk.Label(self, text="방송 종료 공지(직접 지정, 자동 생성 아님)").pack(anchor="w")
         ttk.Entry(self, textvariable=self._discord_end_text).pack(fill="x", pady=(0,4))
+        ttk.Label(self, text="AI 공지 문구 생성용 방송 주제 (운영자 입력)").pack(anchor="w")
+        ttk.Entry(self, textvariable=self._notice_topic).pack(fill="x")
+        self._notice_ai_button = ttk.Button(
+            self, text="현재 로컬 AI로 시작·종료 공지 2개 작성 (검토만)",
+            command=self._compose_local_notice_ai)
+        self._notice_ai_button.pack(anchor="w", pady=(3,1))
+        ttk.Label(self, textvariable=self._notice_ai_status, wraplength=560).pack(
+            anchor="w", pady=(0,4))
         actions=ttk.Frame(self)
         actions.pack(fill="x", pady=(5,4))
         self._live_arm_button=ttk.Button(
@@ -156,6 +168,51 @@ class ObsStatusTab(ttk.Frame):
                 "로컬 방송 시작 장부를 확인할 수 없습니다. OBS 실제 상태를 직접 확인하세요.",
                 parent=self)
 
+    def _compose_local_notice_ai(self) -> None:
+        """운영자가 현재 선택한 로컬 AI로 검토용 공지만 작성한다."""
+        if self._notice_ai_busy or self._approved_scheduler is not None:
+            return
+        try:
+            from .offline_broadcast_schedule import KST, load_schedule, schedule_path
+            from datetime import datetime
+            draft = load_schedule(schedule_path())
+            if draft is None or not draft.slots:
+                raise ValueError("먼저 운영자 KST 주간 방송 일정을 저장해야 합니다.")
+            if self._chat_tab is None:
+                raise ValueError("기존 로컬 AI 대화 탭이 없습니다.")
+            model = self._chat_tab._model_name.get().strip()
+            topic = self._notice_topic.get().strip()
+            closing = self._schedule_closing.get().strip()
+            if not model:
+                raise ValueError("기존 로컬 AI 탭에서 사용할 모델을 선택하세요.")
+            if not closing:
+                raise ValueError("종료 인사를 직접 지정하세요.")
+            upcoming = draft.upcoming(datetime.now(KST), limit=1)
+            if not upcoming:
+                raise ValueError("예정된 KST 방송 일정이 없습니다.")
+            self._notice_ai_busy = True
+            self._notice_ai_button.configure(state="disabled")
+            self._notice_ai_status.set(
+                "기존 로컬 Ollama에서 2건 생성 중 · 외부 공지/방송은 시작하지 않음")
+            threading.Thread(
+                target=self._work_local_notice_ai,
+                args=(model, upcoming[0], topic, closing),
+                name="AISTING-로컬공지AI", daemon=True).start()
+        except Exception as exc:
+            self._notice_ai_status.set(
+                "로컬 AI 공지 생성 미시작 · " + type(exc).__name__ +
+                " · 일정/모델/종료 인사를 확인하세요.")
+
+    def _work_local_notice_ai(self, model, when, topic, closing) -> None:
+        try:
+            from .approved_local_notice_ai import generate_approved_notice_drafts
+            texts = generate_approved_notice_drafts(
+                model, scheduled_at=when, topic=topic, end_message=closing)
+            self._events.put(("notice_ai_ready", texts))
+        except Exception as exc:
+            # Ollama 응답 본문 또는 토큰·계정 내용을 GUI/로그에 노출하지 않는다.
+            self._events.put(("notice_ai_error", type(exc).__name__))
+
     def _approved_live_preflight(self) -> bool:
         """실제 방송 제어 직전 원래 사용자가 저장한 캐릭터·한국어 음성 점검."""
         from .offline_settings import settings_file, load_settings, active_persona
@@ -204,6 +261,10 @@ class ObsStatusTab(ttk.Frame):
 
     def _arm_live_schedule(self) -> None:
         """실제 방송은 사용자가 선택해 명시적으로 승인한 다음에만 허용."""
+        if self._notice_ai_busy:
+            self._live_schedule_status.set(
+                "AI 공지 생성 중 · 작성 완료 후 문구를 검토하고 승인하세요.")
+            return
         if self._approved_scheduler_thread is not None and self._approved_scheduler_thread.is_alive():
             messagebox.showwarning("방송 예약 중", "기존 방송 예약 작업을 먼저 종료하세요.", parent=self)
             return
@@ -376,6 +437,29 @@ class ObsStatusTab(ttk.Frame):
         try:
             while True:
                 kind,item=self._events.get_nowait()
+                if kind == "notice_ai_ready":
+                    self._notice_ai_busy = False
+                    self._notice_ai_button.configure(state="normal")
+                    # 예약 승인 이후 늦게 도착한 AI 문구를 승인된 공지로
+                    # 몰래 바꾸지 않는다. 모든 작성 결과는 검토용이다.
+                    if self._approved_scheduler is not None:
+                        self._notice_ai_status.set(
+                            "방송 승인 이후 결과 도착 · 승인된 공지 변경 차단")
+                    else:
+                        start_notice, end_notice = item
+                        self._discord_start_text.set(start_notice)
+                        self._discord_end_text.set(end_notice)
+                        self._notice_ai_status.set(
+                            "로컬 AI 공지 2건 작성됨 · 내용 직접 검토 필요 · "
+                            "자동 게시 없음 · 실제 발신은 별도 체크/확인 필요")
+                    continue
+                if kind == "notice_ai_error":
+                    self._notice_ai_busy = False
+                    self._notice_ai_button.configure(state="normal")
+                    self._notice_ai_status.set(
+                        "로컬 공지 작성 미완료 (" + str(item) +
+                        ") · 기존 공지 문구 변경 없음")
+                    continue
                 if kind=="live_chat_start_request":
                     token, reply = item
                     accepted=False
