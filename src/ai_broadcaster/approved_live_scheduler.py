@@ -171,6 +171,7 @@ class ApprovedLiveScheduler:
         self._client = None
         self._health_monitor = ObsStreamHealthMonitor()
         self._last_health_observation: float | None = None
+        self._health_event_recorded: set[str] = set()
         self._running = False
 
     def snapshot(self) -> ApprovedLiveSnapshot:
@@ -302,6 +303,7 @@ class ApprovedLiveScheduler:
         self._live_chat = "대기" if self._begin_live_chat else "미설정"
         self._health_monitor = ObsStreamHealthMonitor()
         self._last_health_observation = None
+        self._health_event_recorded.clear()
         self._set("방송 시작 준비", "OBS 현재 장면·녹화·공식 Live2D·실제 음성 구성을 확인합니다.")
         try:
             if self._media_preflight() is not True:
@@ -448,9 +450,16 @@ class ApprovedLiveScheduler:
                     # 관찰 오류만으로 사용자 방송을 임의 종료하지 않는다.
                     if (self._last_health_observation is None or
                             monotonic_now - self._last_health_observation >= 5.0):
-                        self._health_monitor.observe(
+                        observed = self._health_monitor.observe(
                             self._client, monotonic_now=monotonic_now)
                         self._last_health_observation = monotonic_now
+                        # 기존 승인형 방송 슬롯에서 실제 OBS가 보고한 위험만
+                        # 최초 1회 기존 SQLite 사건 장부에 기록한다.
+                        # 경고 관측만으로 방송/녹화/장면을 임의 변경하지 않는다.
+                        for warning in observed.warning_codes:
+                            if warning not in self._health_event_recorded:
+                                self._health_event_recorded.add(warning)
+                                self._record_event(warning)
                     if monotonic_now - self._started_at >= self._rules.maximum_minutes * 60:
                         self._finish_owned(normal_maximum=True)
             except Exception as exc:
