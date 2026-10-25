@@ -37,6 +37,7 @@ class ApprovedLiveSnapshot:
     start_notice: str = "미설정"
     end_notice: str = "미설정"
     live_chat: str = "미설정"
+    journal_error: str = ""
 
 
 class ApprovedLiveScheduler:
@@ -69,6 +70,7 @@ class ApprovedLiveScheduler:
         client_factory: Callable[..., OfficialObsWebsocket] = OfficialObsWebsocket,
         clock: Callable[[], float] = time.monotonic,
         occurrence_claim: Callable[[str], bool] | None = None,
+        occurrence_event: Callable[[str, str], None] | None = None,
     ) -> None:
         if operator_approved is not True or rights_confirmed is not True:
             raise PermissionError("운영자 방송 자동 시작/종료와 한국어 음성 권리 승인이 필요합니다.")
@@ -126,6 +128,10 @@ class ApprovedLiveScheduler:
         if occurrence_claim is not None and not callable(occurrence_claim):
             raise ValueError("방송 슬롯 영구 장부 연결 함수가 올바르지 않습니다.")
         self._occurrence_claim = occurrence_claim
+        if occurrence_event is not None and not callable(occurrence_event):
+            raise ValueError("방송 결과 영구 장부 연결 함수가 올바르지 않습니다.")
+        self._occurrence_event = occurrence_event
+        self._journal_error = ""
         self._lock = threading.RLock()
         self._stop = threading.Event()
         self._used: set[str] = set()
@@ -151,7 +157,17 @@ class ApprovedLiveScheduler:
                 self._owns_stream, self._start_confirmed,
                 self._stop_confirmed, self._closing_attempted,
                 self._closing_delivered_candidate, self._start_notice,
-                self._end_notice, self._live_chat)
+                self._end_notice, self._live_chat, self._journal_error)
+
+    def _record_event(self, state: str) -> None:
+        """영구 상태 기록 실패가 이미 진행 중인 OBS 종료를 막지 않게 한다."""
+        if self._occurrence_event is None or self._occurrence is None:
+            return
+        try:
+            self._occurrence_event(self._occurrence, state)
+        except Exception:
+            self._journal_error = (
+                "방송 시작/종료 결과의 영구 기록 실패 · 실제 OBS 상태 수동 확인 필요")
 
     def request_stop(self) -> None:
         """운영자 종료 요청. 소유한 방송만 안전하게 종료하도록 작업자를 깨움."""
@@ -210,6 +226,7 @@ class ApprovedLiveScheduler:
                 return
         self._used.add(occurrence)
         self._occurrence = occurrence
+        self._journal_error = ""
         # 다음 주간 슬롯의 결과는 이전 방송과 분리하고
         # 성공·실패 기록을 이번 슬롯의 관측값으로 새로 시작한다.
         self._start_confirmed = False
@@ -241,6 +258,7 @@ class ApprovedLiveScheduler:
                 raise RuntimeError("OBS 실제 방송 시작 후 장면/송출 상태 확인 실패")
             self._owns_stream = True
             self._start_confirmed = True
+            self._record_event("송출시작확인")
             self._started_at = now
             self._set("실제 방송 중", "방송 송출 상태를 확인했습니다. 시청자 수신은 별도 실증입니다.")
             if self._begin_live_chat is not None:
@@ -265,6 +283,7 @@ class ApprovedLiveScheduler:
                 except Exception:
                     self._start_notice = "전송 실패 · 자동 재발신 없음"
         except Exception as exc:
+            self._record_event("송출시작실패")
             # A failed request might have reached OBS before a connection
             # dropped: never blindly stop or claim ownership of that stream.
             self._set("시작 확인 실패", type(exc).__name__ +
@@ -306,6 +325,7 @@ class ApprovedLiveScheduler:
                 if finished.streaming:
                     raise RuntimeError("OBS 방송 종료 상태가 확인되지 않았습니다.")
             self._stop_confirmed = True
+            self._record_event("송출종료확인")
             self._owns_stream = False
             self._set("실제 방송 종료", "OBS 종료 확인 · 외부 플랫폼 수신은 별도 확인")
             if self._on_finished_notice is not None:
@@ -318,6 +338,7 @@ class ApprovedLiveScheduler:
                 except Exception:
                     self._end_notice = "전송 실패 · 자동 재발신 없음"
         except Exception as exc:
+            self._record_event("송출종료실패")
             self._set("종료 확인 실패", type(exc).__name__ +
                       " · 자동 완료 기록 금지 · OBS 현재 방송 상태 수동 확인 필요")
             # Still the only stream we own; operator can use OBS itself.
