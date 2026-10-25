@@ -155,6 +155,9 @@ class ObsStatusTab(ttk.Frame):
         ttk.Label(content_row, text="콘텐츠 간격(초, 60~3600)").pack(side="left")
         ttk.Entry(content_row, textvariable=self._auto_content_interval,
                   width=8).pack(side="left", padx=(5,0))
+        ttk.Button(
+            self, text="지난 자율 콘텐츠 발화 시도·전달 기록 보기 (읽기 전용)",
+            command=self._show_live_content_history).pack(anchor="w", pady=(2,0))
         ttk.Label(self, text="운영자가 승인할 방송 주제 (줄마다 1개, 1~30개):").pack(
             anchor="w", pady=(3,0))
         self._auto_content_topics = tk.Text(self, height=3, wrap="word")
@@ -398,6 +401,32 @@ class ObsStatusTab(ttk.Frame):
             runner.request_stop()
             self._game_status.set(
                 "게임 조작 중지 요청됨 · 진행 중 키/마우스 해제 및 작업 종료 대기")
+
+    def _show_live_content_history(self) -> None:
+        """사용자 콘텐츠 주제와 실제 전달 상태만 조회; 방송/채팅 발신 없음."""
+        from .approved_live_content_agenda import ApprovedLiveContentJournal
+        from .offline_settings import data_dir
+        path = data_dir() / "approved_live_content.sqlite3"
+        if not path.is_file():
+            messagebox.showinfo(
+                "자율 콘텐츠 기록", "아직 방송 주제 발화 시도가 없습니다.",
+                parent=self)
+            return
+        try:
+            rows = ApprovedLiveContentJournal(path).recent(limit=30)
+            body = ("\\n".join(
+                f"{occurrence} · {number}회 · {topic} · {state}"
+                for occurrence, number, topic, state in rows)
+                if rows else "아직 방송 주제 발화 시도가 없습니다.")
+            messagebox.showinfo(
+                "자율 콘텐츠 발화 장부 (최근 30회)",
+                body + "\\n\\n전달확인은 공식 AI 입력 접수이며 "
+                "실제 음성·영상·시청자 수신을 증명하지 않습니다.",
+                parent=self)
+        except Exception as exc:
+            self._live_schedule_status.set(
+                "자율 콘텐츠 장부 조회 불가 (" + type(exc).__name__
+                + ") · 원본 파일을 변경하지 않았습니다.")
 
     def _show_live_history(self) -> None:
         """로컬 시작/종료 이력만 표시. OBS 연결·송출·파일 삭제 없음."""
