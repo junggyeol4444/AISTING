@@ -41,6 +41,7 @@ class ApprovedLiveSnapshot:
     journal_error: str = ""
     pre_notice: str = "미설정"
     stream_health: str = "실제 OBS 출력 통계 미관측"
+    chat_recovery: str = "채팅 자동 복구 비활성"
 
 
 class ApprovedLiveScheduler:
@@ -77,6 +78,8 @@ class ApprovedLiveScheduler:
         on_pre_notice: Callable[[str], bool] | None = None,
         pre_notice_claim: Callable[[str], bool] | None = None,
         pre_notice_lead_minutes: int = 0,
+        chat_alive: Callable[[], bool] | None = None,
+        chat_recovery_limit: int = 3,
     ) -> None:
         if operator_approved is not True or rights_confirmed is not True:
             raise PermissionError("운영자 방송 자동 시작/종료와 한국어 음성 권리 승인이 필요합니다.")
@@ -125,6 +128,20 @@ class ApprovedLiveScheduler:
                     "사전 공지는 별도 승인·10~40분 설정·영구 중복 방지 장부가 필요합니다.")
         elif pre_notice_claim is not None or pre_notice_lead_minutes != 0:
             raise ValueError("사전 공지를 사용하지 않으면 예약 설정도 비워야 합니다.")
+        if chat_alive is not None and (
+                chat_approved is not True or begin_live_chat is None
+                or end_live_chat is None or not callable(chat_alive)):
+            raise PermissionError(
+                "4플랫폼 자동 복구는 이미 승인된 시작·종료·상태 확인 연결이 필요합니다.")
+        if type(chat_recovery_limit) is not int or not 1 <= chat_recovery_limit <= 5:
+            raise ValueError("실제 채팅 복구 횟수는 1~5회만 허용됩니다.")
+        self._chat_alive = chat_alive
+        self._chat_recovery_limit = chat_recovery_limit
+        self._chat_recovery_attempts = 0
+        self._chat_unhealthy_since: float | None = None
+        self._chat_recovery_after = 0.0
+        self._chat_recovery = (
+            "자동 복구 대기" if chat_alive is not None else "채팅 자동 복구 비활성")
         self._on_pre_notice = on_pre_notice
         self._pre_notice_claim = pre_notice_claim
         self._pre_notice_lead_minutes = pre_notice_lead_minutes
@@ -183,7 +200,8 @@ class ApprovedLiveScheduler:
                 self._closing_delivered_candidate, self._start_notice,
                 self._end_notice, self._live_chat, self._journal_error,
                 self._pre_notice,
-                self._health_monitor.snapshot().description)
+                self._health_monitor.snapshot().description,
+                self._chat_recovery)
 
     def _record_event(self, state: str) -> None:
         """영구 상태 기록 실패가 이미 진행 중인 OBS 종료를 막지 않게 한다."""
@@ -304,6 +322,12 @@ class ApprovedLiveScheduler:
         self._health_monitor = ObsStreamHealthMonitor()
         self._last_health_observation = None
         self._health_event_recorded.clear()
+        self._chat_recovery_attempts = 0
+        self._chat_unhealthy_since = None
+        self._chat_recovery_after = 0.0
+        self._chat_recovery = (
+            "자동 복구 대기" if self._chat_alive is not None
+            else "채팅 자동 복구 비활성")
         self._set("방송 시작 준비", "OBS 현재 장면·녹화·공식 Live2D·실제 음성 구성을 확인합니다.")
         try:
             if self._media_preflight() is not True:
@@ -427,6 +451,67 @@ class ApprovedLiveScheduler:
                 # 자동 재시작을 막고 운영자가 현재 방송을 직접 확인한다.
                 self._stop.set()
 
+    def _recover_live_chat_if_needed(self, monotonic_now: float) -> None:
+        """이미 승인된 동일 방송의 공개 채팅 수신기만 제한적으로 재연결.
+
+        기존 SQLite FIFO는 수신기가 아니라 GUI의 영구 큐가 보유한다.
+        읽기 소켓이 죽었다고 OBS 방송을 다시 시작하거나 같은 슬롯을
+        재청구하지 않는다. 복구 실패 후 무음 방송을 무제한 유지하지 않는다.
+        """
+        if (self._chat_alive is None or not self._chat_started
+                or self._stop.is_set() or not self._owns_stream):
+            return
+        try:
+            healthy = self._chat_alive() is True
+        except Exception:
+            healthy = False
+        if healthy:
+            self._chat_unhealthy_since = None
+            self._chat_recovery = (
+                f"채팅 수신기 연결 유지 · 복구 {self._chat_recovery_attempts}회 시도")
+            return
+        if self._chat_unhealthy_since is None:
+            self._chat_unhealthy_since = monotonic_now
+            self._chat_recovery = "채팅 수신기 종료 의심 · 15초 연속 상태 확인"
+            return
+        if (monotonic_now - self._chat_unhealthy_since < 15.0
+                or monotonic_now < self._chat_recovery_after):
+            return
+        if self._chat_recovery_attempts >= self._chat_recovery_limit:
+            self._chat_recovery = "채팅 자동 복구 횟수 소진 · 승인 방송 종료 요청"
+            self._finish_owned(normal_maximum=False)
+            self._stop.set()
+            return
+        self._chat_recovery_attempts += 1
+        self._chat_recovery_after = monotonic_now + 30.0
+        self._chat_recovery = (
+            f"기존 채팅 세션 재연결 {self._chat_recovery_attempts}/"
+            f"{self._chat_recovery_limit}회 요청")
+        # GUI 콜백은 같은 승인 토큰의 세션만 종료/재시작할 수 있다.
+        # 기존 AI 작업자가 완전히 종료되지 않았다면 다음 30초까지
+        # 대기하고 절대 임의로 새 FIFO 소유권을 탈취하지 않는다.
+        try:
+            ended = self._end_live_chat() is True
+        except Exception:
+            ended = False
+        self._chat_started = False
+        if not ended:
+            self._chat_recovery = "기존 채팅 종료 미확인 · 재연결 보류"
+            self._chat_started = True
+            return
+        try:
+            restarted = self._begin_live_chat() is True
+        except Exception:
+            restarted = False
+        self._chat_started = restarted
+        if restarted:
+            self._chat_unhealthy_since = None
+            self._chat_recovery = "기존 승인 채팅 재연결 요청 접수 · 서버 입장 미확인"
+        else:
+            # 다음 복구 시도에서도 begin을 실행할 수 있게 상태 유지.
+            self._chat_started = True
+            self._chat_recovery = "채팅 재연결 미확인 · 30초 뒤 제한 재시도"
+
     def tick(self, now: datetime, monotonic_now: float) -> ApprovedLiveSnapshot:
         """한 번의 실제 시각 점검. GUI 스레드가 아닌 작업자에서만 호출."""
         if type(monotonic_now) not in (int, float) or not 0 <= monotonic_now < float("inf"):
@@ -466,7 +551,10 @@ class ApprovedLiveScheduler:
                             if warning not in self._health_event_recorded:
                                 self._health_event_recorded.add(warning)
                                 self._record_event(warning)
-                    if monotonic_now - self._started_at >= self._rules.maximum_minutes * 60:
+                    self._recover_live_chat_if_needed(monotonic_now)
+                    if (self._owns_stream and not self._stop.is_set()
+                            and monotonic_now - self._started_at
+                            >= self._rules.maximum_minutes * 60):
                         self._finish_owned(normal_maximum=True)
             except Exception as exc:
                 # 관측 실패는 실제 종료와 구분하여 기록한다.
