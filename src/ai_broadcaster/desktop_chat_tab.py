@@ -24,7 +24,8 @@ from .twitch_readonly import TwitchReadOnlySession, TwitchReadError
 from .multiplatform_readonly import ChzzkReadOnlySession, SoopReadOnlySession, YouTubeReadOnlySession
 from .multi_platform_session import MultiPlatformReadOnlySession
 from .live_runtime_metrics import (LiveLatencyMetrics, LiveParseReplyMetrics,
-                                   LiveFirstWavLatencyMetrics)
+                                   LiveFirstWavLatencyMetrics,
+                                   LiveFirstMouthLatencyMetrics)
 from .live_queue_wait_observation import LiveQueueWaitTracker
 from .offline_settings import load_settings
 
@@ -109,6 +110,9 @@ class LocalChatTab(ttk.Frame):
         self._platform_live_metrics: dict[str, LiveLatencyMetrics] = {}
         self._platform_parse_reply_metrics: dict[str, LiveParseReplyMetrics] = {}
         self._platform_first_wav_metrics: dict[str, LiveFirstWavLatencyMetrics] = {}
+        # 실제 운영자가 선택한 공식 관찰의 첫 Cubism 입 표본 후보를
+        # 플랫폼별 별도 기록. WAV·OBS·시청자 전달의 실증은 아니다.
+        self._platform_first_mouth_metrics: dict[str, LiveFirstMouthLatencyMetrics] = {}
         # 로컬 수신큐 백프레셔와 AI·GUI 적체의 실측값만 메모리에 보관한다.
         self._live_queue_block_events = 0
         self._live_queue_block_total_seconds = 0.0
@@ -813,6 +817,9 @@ class LocalChatTab(ttk.Frame):
         self._platform_first_wav_metrics = {
             name: LiveFirstWavLatencyMetrics() for name in session._channels
         }
+        self._platform_first_mouth_metrics = {
+            name: LiveFirstMouthLatencyMetrics() for name in session._channels
+        }
         with self._live_ingress_lock:
             self._live_queue_block_events = 0
             self._live_queue_block_total_seconds = 0.0
@@ -1025,13 +1032,19 @@ class LocalChatTab(ttk.Frame):
                                 raise RuntimeError("공식 WebSocket 실제 전송 미확인")
                         else:
                             from .original_plan_frontend import send_to_native_live2d_session_with_observation
+                            mouth_request_started_at = time.monotonic()
                             evidence = send_to_native_live2d_session_with_observation(
                                 chat.text, operator_approved=True, duration=8)
+                            mouth_observed_finished_at = time.monotonic()
                     except Exception as exc:
                         attempt_failed = True
                         report("twitch_ai_error", (chat, type(exc).__name__))
                         if fast_official_mode and first_wav_receipt_mode:
                             report("twitch_ai_first_wav_error",
+                                   getattr(chat, "platform", "twitch"))
+                        elif (not fast_official_mode
+                              and isinstance(session, MultiPlatformReadOnlySession)):
+                            report("twitch_ai_first_mouth_error",
                                    getattr(chat, "platform", "twitch"))
                     else:
                         if fast_official_mode:
@@ -1052,6 +1065,18 @@ class LocalChatTab(ttk.Frame):
                         else:
                             attempt_failed = not bool(evidence.verified_signal)
                             report("twitch_live2d_ok", (chat, evidence))
+                            if isinstance(session, MultiPlatformReadOnlySession):
+                                # 기존 공식 1회 질문에서 실제 Cubism 관찰한
+                                # monotonic 표본만 연결한다. 추가 질문·음성 없음.
+                                report("twitch_ai_first_mouth_timing", (
+                                    getattr(chat, "platform", "twitch"),
+                                    getattr(chat, "parsed_at_monotonic", None),
+                                    accepted_at, mouth_request_started_at,
+                                    mouth_observed_finished_at,
+                                    getattr(evidence, "first_audio_mouth_monotonic", None),
+                                    bool(evidence.verified_signal),
+                                    getattr(evidence, "official_pcm_first_wav_received_monotonic", None),
+                                ))
                     finally:
                         report_measured_elapsed()
                     continue
@@ -1509,6 +1534,33 @@ class LocalChatTab(ttk.Frame):
                             self, "_platform_first_wav_metrics", {}).get(payload)
                         if wav_meter is not None:
                             wav_meter.error()
+                    elif kind == "twitch_ai_first_mouth_timing":
+                        (code, parsed, accepted, started, finished,
+                         first_mouth, verified, wav_at) = payload
+                        meter = getattr(
+                            self, "_platform_first_mouth_metrics", {}).get(code)
+                        if meter is not None:
+                            meter.observe(parsed, accepted, started, finished,
+                                          first_mouth, verified, wav_at)
+                            state = meter.snapshot()
+                            if state["관찰시도"] <= 3 or state["관찰시도"] % 25 == 0:
+                                total = state["파싱부터입후보p95초"]
+                                wav_to_mouth = state["WAV부터입후보p95초"]
+                                self._append(
+                                    "[" + code + " 공식 Cubism 입 지연 후보] "
+                                    + "관찰 " + str(state["관찰시도"]) + "건 / 입 후보 "
+                                    + str(state["입표본후보"]) + "건 / 미관측 "
+                                    + str(state["입미관측"]) + "건 / 파싱→첫 입 p95 "
+                                    + (f"{total:.3f}초" if total is not None else "미측정")
+                                    + " / WAV→입 시각 후보 p95 "
+                                    + (f"{wav_to_mouth:.3f}초"
+                                       if wav_to_mouth is not None else "미측정")
+                                    + " · 동일 발화 인과성·OBS·시청자 미검증")
+                    elif kind == "twitch_ai_first_mouth_error":
+                        meter = getattr(
+                            self, "_platform_first_mouth_metrics", {}).get(payload)
+                        if meter is not None:
+                            meter.error()
                     elif kind == "twitch_live2d_ok":
                         chat, evidence = payload
                         if evidence.verified_signal:
