@@ -9,7 +9,9 @@
 """
 from __future__ import annotations
 
+import os
 import sqlite3
+import stat
 import threading
 from contextlib import closing, contextmanager
 from dataclasses import dataclass
@@ -42,6 +44,7 @@ class DurablePublicChatQueue:
         if self.path.exists() and not self.path.is_file():
             raise ValueError("미처리 채팅 저장 경로가 일반 파일이 아닙니다.")
         self._lock = threading.RLock()
+        self._consumer_lock_file = None
         # DB 연결은 작업마다 짧게 유지하여 Windows 종료 시 핸들 누수 방지.
         with self._connection() as db:
             appid = db.execute("PRAGMA application_id").fetchone()[0]
@@ -77,6 +80,64 @@ class DurablePublicChatQueue:
                 "WHERE event_id IS NOT NULL")
             self._pending = int(db.execute(
                 "SELECT COUNT(*) FROM pending_public_chat").fetchone()[0])
+
+    def acquire_exclusive_consumer(self) -> None:
+        """같은 미처리 DB를 둘 이상의 실행 창이 동시에 AI 처리하지 못하게 한다.
+
+        OS 파일 잠금을 프로세스 생존 기간 동안 보유한다. 별도 잠금 파일만
+        사용하고 원본 SQLite 스키마·채팅·캐릭터·설정은 변경하지 않는다.
+        비정상 종료 시 운영체제가 잠금을 회수하므로 오래된 PID 파일을
+        강제로 삭제하거나 기존 세션을 종료할 필요가 없다.
+        """
+        with self._lock:
+            if self._consumer_lock_file is not None:
+                return
+            lock_path = self.path.with_name(self.path.name + ".consumer.lock")
+            if lock_path.is_symlink() or lock_path.parent.is_symlink():
+                raise RuntimeError("공개 채팅 처리 잠금 경로가 바로가기여서 중단합니다.")
+            flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_BINARY", 0)
+            if hasattr(os, "O_NOFOLLOW"):
+                flags |= os.O_NOFOLLOW
+            fd = os.open(lock_path, flags, 0o600)
+            handle = os.fdopen(fd, "r+b", buffering=0)
+            try:
+                if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
+                    raise RuntimeError("공개 채팅 처리 잠금 경로가 일반 파일이 아닙니다.")
+                if os.name == "nt":
+                    # Windows msvcrt.locking은 길이 1인 구간을 사용한다.
+                    import msvcrt
+                    if os.fstat(handle.fileno()).st_size == 0:
+                        handle.write(b"\\x00")
+                    handle.seek(0)
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                else:
+                    import fcntl
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except (OSError, RuntimeError) as exc:
+                handle.close()
+                raise RuntimeError(
+                    "이 미처리 채팅 DB는 다른 AISTING 실행 창에서 사용 중이거나 "
+                    "잠금을 확보할 수 없습니다. 중복 AI 처리를 막기 위해 "
+                    "새 연결을 시작하지 않습니다.") from exc
+            self._consumer_lock_file = handle
+
+    def release_exclusive_consumer(self) -> None:
+        """작업자 종료 후에만 호출. 잠금 파일은 삭제하지 않는다."""
+        with self._lock:
+            handle = self._consumer_lock_file
+            if handle is None:
+                return
+            self._consumer_lock_file = None
+            try:
+                if os.name == "nt":
+                    import msvcrt
+                    handle.seek(0)
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    import fcntl
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            finally:
+                handle.close()
 
     @contextmanager
     def _connection(self):
