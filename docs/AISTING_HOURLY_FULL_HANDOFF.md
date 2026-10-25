@@ -4975,3 +4975,13 @@ F) 원본 100단계 roadmap.json status는 completed=9, pending=91이며 **코�
 - **테스트 NOT_RUN / 전체 통합 회귀 NOT_RUN / CI 미조회·미확인 / Windows 10·11 EXE GUI NOT_RUN / 실제 OBS·Cubism·GPT-SoVITS·4플랫폼·24시간·수백 명·최종 시청자 1~3초 NOT_RUN.** 전체 개발은 미완료.
 - 과거 실모델 CI 39720448468의 500/500 3초 초과·FIFO p95 2973.875초·전체 p95 2979.984초 실패와 Windows CI 39722213656 취소 기록은 그대로 보존.
 - 다음 실행: 기존 AISTING 대화 유지 최우선, 기존 예약·다른 저장소/Drive·브랜치 조작 금지. 최신 `main` 확인 후 4플랫폼 내구 채팅·AI 1~3초 처리량·실제 WAV/Cubism/OBS 24시간 동기화·자율 게임/콘텐츠 등 미완료 핵심 제품 개발부터 이어감. **모든 기능 개발 후 전체 검증 → 일괄 수정 → 재검증** 순서 유지.
+
+
+## 206절 (2026-10-26 08시대) — 승인형 한국어 동일 WAV 다음 구간 선행 합성 실제 개발
+- 시작 `main` HEAD `769aa2a7bd8e56a7d917f918cd3f00d004cfd879`; 기존 기획·원본 코드·사용자 SQLite·캐릭터·모델·96토큰·keep_alive 10m·과거 전체 인수인계 원문 보존. 기존 대화 유지 우선, 다른 프로젝트/예약/Drive/브랜치 조작 없음.
+- 실제 제품 소스 2개 비강제 `main` 커밋: `26b3f69f9e32bbc8a4915db11edd0eff70f77fe8` (신규 `approved_live_voice_prefetch.py` 한 구간 FIFO 선행 GPT-SoVITS 합성), `a03478e8182e2cee88b192c1e80ccc9a0b23bb5c` (기존 `approved_live_voice_output.py`의 Windows DPAPI SQLite·직접 FIFO 실제 음성 재생에 연결). 기존 WAV 8초 재분절·공식 Cubism·OBS 동일 발화·Stream Lease·중지/불명 상태·승인 조건 유지.
+- 현재 WAV가 공식 Cubism 입·OBS 임시 음성 소스에 연결된 뒤 다음 **한 구간**을 별도 작업자로 합성. 합성 완료순이 아니라 원문 FIFO 순서대로 재생하며, 운영자 중지 시 미재생 결과를 자동 송출하지 않는다. 실제 방송/계정·녹화·공지/채팅 발신은 이 개발 중 실행하지 않았다.
+- 상세 부록: `docs/hourly-handoff-appendices/AISTING_20261026_206_APPROVED_VOICE_SEGMENT_PREFETCH_DEVELOPMENT.md`.
+- **테스트 NOT_RUN / 전체 통합 회귀 NOT_RUN / CI 미조회·미확인 / Windows 10·11 EXE GUI NOT_RUN / 권리 GPT-SoVITS·공식 Cubism·OBS·4플랫폼·수백 명·24시간·최종 시청자 1~3초 NOT_RUN**. 전체 AISTING 미완료, 합성 대기 감소 및 1~3초 성능 미실증.
+- 과거 실모델 CI `39720448468`의 500/500 3초 초과, FIFO p95 2973.875초/전체 p95 2979.984초 실패 및 Windows CI `39722213656` 취소는 성공으로 변경하지 않는다.
+- 다음 실행: 최신 `main` HEAD 조회, 원본 전문·과거 부록 보존, 4플랫폼 SQLite 수신·재연결, AI 실제 처리량·시청자 최종 1~3초, 동일 WAV·Cubism·OBS 장시간 인과/24시간 복구, 자율 게임·콘텐츠 등 **미완 핵심 제품 기능 개발부터** 계속. 전체 기능 개발 완료 → 통합 Windows/실방송 검증 → 오류 일괄 수정 → 전체 재검증.
