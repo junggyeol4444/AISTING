@@ -97,6 +97,13 @@ class DurablePublicChatQueue:
                 "idx_aisting_pending_chat_server_event "
                 "ON pending_public_chat(platform,channel,event_id) "
                 "WHERE event_id IS NOT NULL")
+            # 4플랫폼 수신 중에는 선택 방송 채널의 시퀀스 범위 복구와
+            # 재부팅 후 잔여 건수 조회가 가장 빈번하다. 기존 보류 행은
+            # 변경하지 않고 채널·순번 복합 인덱스만 추가한다.
+            db.execute(
+                "CREATE INDEX IF NOT EXISTS "
+                "idx_aisting_pending_chat_channel_sequence "
+                "ON pending_public_chat(platform,channel,sequence)")
             self._pending = int(db.execute(
                 "SELECT COUNT(*) FROM pending_public_chat").fetchone()[0])
 
@@ -205,9 +212,10 @@ class DurablePublicChatQueue:
                         (fields[0], fields[1], fields[-1])).fetchone()
                     if old is not None:
                         return None
-                number = db.execute(
-                    "SELECT COUNT(*) FROM pending_public_chat").fetchone()[0]
-                if number >= _MAX_RECORDS:
+                # 기존 단일 소비자 락과 이 인스턴스의 RLock으로
+                # 모든 성공 커밋의 건수를 유지한다. 수백 명 동시 채팅마다
+                # 전체 테이블 COUNT를 수행하면 24시간 수신 병목이 된다.
+                if self._pending >= _MAX_RECORDS:
                     raise RuntimeError(
                         "미처리 채팅 보호 한도에 도달했습니다. 조용히 폐기하지 않습니다.")
                 cursor = db.execute(
