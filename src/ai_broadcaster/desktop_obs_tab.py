@@ -103,6 +103,15 @@ class ObsStatusTab(ttk.Frame):
             game_row, text="게임 조작 즉시 중지 요청",
             command=self._stop_approved_game, state="disabled")
         self._game_stop_button.pack(side="left", padx=(5,0))
+        game_history_row=ttk.Frame(self)
+        game_history_row.pack(fill="x", pady=(2,1))
+        ttk.Button(
+            game_history_row, text="게임 목표·행동 영구 기록 보기 (읽기 전용)",
+            command=self._show_game_goal_history).pack(side="left")
+        self._game_resume_button=ttk.Button(
+            game_history_row, text="동일 목표 지난 기록 참고해 새 승인으로 이어하기",
+            command=self._resume_approved_game)
+        self._game_resume_button.pack(side="left", padx=(5,0))
         ttk.Label(self, textvariable=self._game_status, wraplength=560).pack(
             anchor="w", pady=(1,5))
         ttk.Label(self,text="선택 장면 안의 소스 · OBS에서 설정은 직접 변경").pack(anchor="w",pady=(4,3))
@@ -226,7 +235,7 @@ class ObsStatusTab(ttk.Frame):
         finally:
             password=""
 
-    def _start_approved_game(self) -> None:
+    def _start_approved_game(self, *, resume_run_id: str | None = None) -> None:
         """운영자가 별도 승인한 경우에만 Windows 게임을 직접 조작."""
         if self._game_runner is not None:
             return
@@ -251,17 +260,20 @@ class ObsStatusTab(ttk.Frame):
                 "OBS 화면을 로컬 Ollama로 분석하며 AI가 행동을 선택합니다. "
                 "포커스가 바뀌거나 중지를 누르면 더 이상 행동하지 않습니다. "
                 "다른 프로그램/채팅/방송 제어는 승인하지 않습니다. "
+                ("이전 실행의 입력시도는 재실행하지 않고 이력만 참고합니다. "
+                 if resume_run_id else "") +
                 "운영자가 지정한 목표: " + goal + "\n\n"
                 "이 실제 게임 자동 조작을 승인합니까?", parent=self):
                 return
             runner=ApprovedLocalGameAutoplay(
                 obs_password=password, obs_port=port, model_name=model,
                 game_window_title=title, goal=goal, max_steps=steps,
-                operator_approved=True,
+                operator_approved=True, resume_run_id=resume_run_id,
                 on_event=lambda kind, value: self._events.put((
                     "approved_game_" + kind, value)))
             self._game_runner=runner
             self._game_start_button.configure(state="disabled")
+            self._game_resume_button.configure(state="disabled")
             self._game_stop_button.configure(state="normal")
             self._game_status.set("게임 자동 진행 승인됨 · 실제 Windows 게임 창 확인 중")
             self._game_worker=threading.Thread(
@@ -272,6 +284,85 @@ class ObsStatusTab(ttk.Frame):
             self._game_status.set(
                 "게임 자동 진행 미시작 (" + type(exc).__name__
                 + ") · 게임 창/목표/OBS/모델 입력을 확인하세요.")
+
+    def _show_game_goal_history(self) -> None:
+        """실제 게임 입력 없이 기존 별도 목표 장부만 조회."""
+        from .approved_game_goal_journal import ApprovedGameGoalJournal
+        from .offline_settings import data_dir
+        path=data_dir() / "approved_game_goals.sqlite3"
+        if not path.is_file() or path.is_symlink():
+            messagebox.showinfo(
+                "게임 목표 이력", "아직 승인된 게임 목표 실행 기록이 없습니다.",
+                parent=self)
+            return
+        try:
+            journal=ApprovedGameGoalJournal(path)
+            rows=journal.recent_runs(limit=12)
+            lines=[]
+            for run in rows:
+                lines.append(
+                    f"{run.created_at} · {run.game_title} · {run.goal[:80]} "
+                    f"· {run.state} · 최대 {run.max_steps}회"
+                    + (" · 이전 회차 참고" if run.parent_run_id else ""))
+                for event in journal.history(run.run_id, limit=5):
+                    lines.append(
+                        f"  {event.step_no}회 {event.phase}: {event.detail[:120]}")
+            messagebox.showinfo(
+                "게임 목표·행동 이력 (최근 12회)",
+                ("\n".join(lines) if lines else "기록 없음")[:7500]
+                + "\n\n입력시도 기록은 게임 성공 증명이 아닙니다. "
+                "강제 종료 시 행동을 자동 재생하지 않습니다.", parent=self)
+        except Exception as exc:
+            messagebox.showwarning(
+                "게임 이력 읽기 실패",
+                "원본 게임 기록을 변경하지 않았습니다 (" +
+                type(exc).__name__ + ")", parent=self)
+
+    def _resume_approved_game(self) -> None:
+        """동일 게임/목표/모델만 과거 이력 참고; 실제 입력은 다시 승인."""
+        if self._game_runner is not None:
+            return
+        from .approved_game_goal_journal import ApprovedGameGoalJournal
+        from .offline_settings import data_dir
+        path=data_dir() / "approved_game_goals.sqlite3"
+        if not path.is_file() or path.is_symlink():
+            messagebox.showinfo(
+                "이어하기", "이전에 승인된 동일 게임 목표 기록이 없습니다.",
+                parent=self)
+            return
+        try:
+            if self._chat_tab is None:
+                raise ValueError("기존 로컬 모델 선택이 없습니다.")
+            model=self._chat_tab._model_name.get().strip()
+            journal=ApprovedGameGoalJournal(path)
+            prior=journal.latest(
+                self._game_title.get().strip(),
+                self._game_goal.get().strip(), model)
+            if prior is None:
+                messagebox.showinfo(
+                    "이어하기",
+                    "게임 창 제목·목표·로컬 모델이 정확히 같은 이전 실행이 없습니다.",
+                    parent=self)
+                return
+            tail=journal.history(prior.run_id, limit=6)
+            excerpt="\n".join(
+                f"{event.step_no}회 {event.phase}: {event.detail[:130]}"
+                for event in tail)
+            if not messagebox.askyesno(
+                "이전 게임 목표 진행 이력 사용 승인",
+                f"최근 기록 상태: {prior.state}\n"
+                f"게임: {prior.game_title}\n목표: {prior.goal}\n"
+                f"최근 이력:\n{excerpt}\n\n"
+                "과거 입력시도는 실제 전달 여부가 불명확할 수 있습니다. "
+                "자동 재생하지 않고 화면을 새로 관찰해 다음 행동을 선택합니다. "
+                "새로운 행동 수/게임 조작은 다음 승인 창에서 다시 확인합니다. "
+                "이전 이력을 참고하도록 허용합니까?", parent=self):
+                return
+            self._start_approved_game(resume_run_id=prior.run_id)
+        except Exception as exc:
+            self._game_status.set(
+                "게임 목표 이어하기 준비 실패 (" + type(exc).__name__ +
+                ") · 기존 기록 변경 없음")
 
     def _work_approved_game(self, runner) -> None:
         try:
@@ -628,6 +719,33 @@ class ObsStatusTab(ttk.Frame):
         try:
             while True:
                 kind,item=self._events.get_nowait()
+                if kind == "approved_game_기록시작":
+                    self._game_status.set(
+                        "게임 장기 목표 로컬 SQLite 새 실행 시작 · "
+                        + item.run_id[:8] + " · 과거 입력 자동 재생 없음")
+                    continue
+                if kind == "approved_game_후속관찰":
+                    self._game_status.set(
+                        "게임 행동 후 실제 OBS 화면 관찰 기록됨 · "
+                        "목표 완료 여부는 로컬 AI 판정 후보와 구분")
+                    continue
+                if kind == "approved_game_목표판정":
+                    self._game_status.set(
+                        "게임 목표 화면 추정: " + item.status + " · " +
+                        item.evidence[:160] + " · 실제 게임 내부 결과 미확인")
+                    continue
+                if kind == "approved_game_목표판정불가":
+                    self._game_status.set(
+                        "게임 목표 화면 추정 불가 (" + str(item) +
+                        ") · 목표 완료로 표시하지 않음")
+                    continue
+                if kind == "approved_game_기록종료":
+                    run_id, state = item
+                    self._game_status.set(
+                        "게임 자동 진행 기록 " + run_id[:8] +
+                        " · 종료 상태 " + state +
+                        " · 실제 목표 성공/키 전달 증명 아님")
+                    continue
                 if kind == "approved_game_행동":
                     self._game_status.set(
                         f"게임 행동 {item.number}회: {item.result} · "
@@ -648,6 +766,7 @@ class ObsStatusTab(ttk.Frame):
                         self._game_runner=None
                         self._game_worker=None
                         self._game_start_button.configure(state="normal")
+                        self._game_resume_button.configure(state="normal")
                         self._game_stop_button.configure(state="disabled")
                     continue
                 if kind == "game_vision_ready":
