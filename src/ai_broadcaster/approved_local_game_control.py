@@ -331,7 +331,7 @@ class ApprovedLocalGameAutoplay:
         prior = (
             journal.history(self._resume_run_id, limit=10)
             if self._resume_run_id else ())
-        prior_context = "\\n".join(
+        prior_context = "\n".join(
             f"{e.step_no}회 {e.phase}: {e.detail[:120]}"
             for e in prior)[:900]
         try:
@@ -358,15 +358,15 @@ class ApprovedLocalGameAutoplay:
                     run.run_id, index, "관찰",
                     observed.description[:1200])
                 history = journal.history(run.run_id, limit=8)
-                context = "\\n".join(
+                context = "\n".join(
                     f"{e.step_no}회 {e.phase}: {e.detail[:130]}"
                     for e in history)[:950]
                 prompt = (
-                    f"운영자 지정 목표: {self._goal}\\n"
-                    f"현재 OBS 장면: {observed.scene}\\n"
-                    f"현재 관찰: {observed.description[:2500]}\\n"
-                    f"같은 승인 게임의 직전 행동/관찰 기록: {context}\\n"
-                    f"이전 승인 회차의 기록(재실행 금지): {prior_context}\\n"
+                    f"운영자 지정 목표: {self._goal}\n"
+                    f"현재 OBS 장면: {observed.scene}\n"
+                    f"현재 관찰: {observed.description[:2500]}\n"
+                    f"같은 승인 게임의 직전 행동/관찰 기록: {context}\n"
+                    f"이전 승인 회차의 기록(재실행 금지): {prior_context}\n"
                     "현재 실제 화면과 기록을 보고 다음 한 번의 게임 행동 JSON만 출력하세요. "
                     "목표 달성이 실제 확인되지 않으면 성공이라고 단정하지 마세요."
                 )
