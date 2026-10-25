@@ -214,7 +214,7 @@ def verify_gpt_sovits_to_obs(
                 # One authorized voice probe is never indefinite replay.
                 "looping": False,
                 "restart_on_activate": False,
-                "close_when_inactive": False,
+                "close_when_inactive": bool(couple_live2d),
             }, not couple_live2d)
             created = True
             owned_input_uuid = getattr(creation_result, "input_uuid", None)
