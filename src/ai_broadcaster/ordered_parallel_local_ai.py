@@ -1,0 +1,131 @@
+"""실제 Ollama 4개 동시 추론·완료순서가 아닌 원래 수신 FIFO 출력.
+
+운영자 선택 시에만 기존 로컬 Ollama·페르소나로 같은 SQLite 미처리
+순번에 해당하는 개별 답변을 선행 생성한다. 한 요청이 끝나도 이전
+순번의 답변이 확정되기 전에는 GUI 전달/기억 저장/확인 ACK가 없다.
+추론 시점의 대화 기억은 이미 확정된 대화만 포함하며, 추론 중인
+다른 답변은 과거 사실인 양 프롬프트에 섞지 않는다.
+GPU 실처리량이나 시청자 1~3초 응답은 보장하지 않는다.
+"""
+from __future__ import annotations
+
+import threading
+from concurrent.futures import Future, ThreadPoolExecutor
+from pathlib import Path
+from uuid import uuid4
+
+from .conversation_memory import ConversationMemory, DEFAULT_MEMORY_FILE
+from .desktop_chat import ChatResult
+from .local_llm import LocalModelConfig, LocalOllamaReplyGenerator
+from .operator_settings import load_settings, DEFAULT_FILE
+from .offline_settings import active_persona, load_settings as load_gui_settings
+from .session import ChatMessage
+
+
+class OrderedParallelLocalAI:
+    """같은 세션에서 추론은 병렬, 메시지 기억/ACK는 FIFO로 확정."""
+
+    def __init__(
+        self, model: str, *, max_workers: int = 4,
+        settings_path: Path = DEFAULT_FILE,
+        memory_path: Path = DEFAULT_MEMORY_FILE,
+        broadcast_facts: str = "",
+    ) -> None:
+        if type(max_workers) is not int or not 1 <= max_workers <= 4:
+            raise ValueError("로컬 AI 동시 추론 개수는 1~4여야 합니다.")
+        self._config = LocalModelConfig(model=model)
+        self._memory = ConversationMemory(path=memory_path)
+        settings = load_settings(settings_path)
+        confirmed = active_persona(load_gui_settings())
+        settings["persona"]["name"] = confirmed["name"]
+        settings["persona"]["traits"] = confirmed["character"]
+        settings["persona"]["speech_style"] = confirmed["style"]
+        self._settings = settings
+        self._broadcast_facts = broadcast_facts
+        self._lock = threading.RLock()
+        self._stopped = False
+        self._executor = ThreadPoolExecutor(
+            max_workers=max_workers, thread_name_prefix="AISTING-로컬추론")
+        self._pending: dict[int, Future] = {}
+        self._committed_sequence = 0
+
+    def submit(self, sequence: int, text: str, *, sender: str) -> None:
+        """원본 SQLite에 저장된 메시지만 중복 없이 비동기 선행 생성."""
+        if type(sequence) is not int or sequence < 1:
+            raise ValueError("로컬 AI 공개 채팅 FIFO 순번이 잘못되었습니다.")
+        if type(text) is not str or not text.strip() or len(text) > 4000:
+            raise ValueError("로컬 AI 공개 채팅 원문 길이가 잘못되었습니다.")
+        if type(sender) is not str or not sender.strip() or len(sender) > 160:
+            raise ValueError("로컬 AI 공개 채팅 닉네임이 잘못되었습니다.")
+        with self._lock:
+            if self._stopped:
+                raise RuntimeError("이미 종료한 로컬 AI 병렬 작업자입니다.")
+            if sequence <= self._committed_sequence:
+                raise RuntimeError("완료된 순번을 다시 추론하지 않습니다.")
+            if sequence in self._pending:
+                return
+            if len(self._pending) >= 4096:
+                raise RuntimeError("병렬 추론 대기 4096건 상한 · 원본 SQLite 보존")
+            message = ChatMessage(str(uuid4()), sender.strip(), text.strip())
+            future = self._executor.submit(self._infer_only, message)
+            self._pending[sequence] = future
+
+    def _infer_only(self, message: ChatMessage) -> tuple[ChatMessage, str, dict | None]:
+        """실제 모델 생성만 병렬화; 이 스레드에서는 기억/ACK/OBS 변경 금지."""
+        generator = LocalOllamaReplyGenerator(
+            self._config, self._settings, memory=self._memory,
+            broadcast_facts=self._broadcast_facts)
+        reply = generator.generate(message)
+        return message, reply, generator.last_server_timings_seconds
+
+    def finish(self, sequence: int, text: str, *, sender: str) -> ChatResult:
+        """호출자가 기존 단일 AI FIFO에서 순서대로만 호출해야 함.
+
+        완료 순번과 별개로 미래 응답을 전달하지 않는다. 모델 실패는
+        caller로 전달되며 동일 원문 재시도는 다시 submit할 수 있다.
+        """
+        with self._lock:
+            if self._stopped:
+                raise RuntimeError("종료한 로컬 AI 세션 응답을 확정하지 않습니다.")
+            if sequence <= self._committed_sequence:
+                raise RuntimeError("로컬 AI 응답을 중복 저장하지 않습니다.")
+            future = self._pending.get(sequence)
+        if future is None:
+            self.submit(sequence, text, sender=sender)
+            with self._lock:
+                future = self._pending[sequence]
+        try:
+            message, reply, timings = future.result()
+        except Exception:
+            with self._lock:
+                self._pending.pop(sequence, None)
+            raise
+        with self._lock:
+            if self._stopped:
+                raise RuntimeError("중지된 방송의 선행 추론 답변은 폐기합니다.")
+            if self._pending.get(sequence) is not future:
+                raise RuntimeError("실제 채팅의 선행 추론 순번이 변경되었습니다.")
+            # 다른 채팅의 확정/기억보다 먼저 나가지 않게 commit은 이
+            # FIFO 완료 스레드에서만 실행한다. 사용자의 대화 DB 불변식 보존.
+            warning = ""
+            try:
+                self._memory.append(message, reply)
+            except Exception:
+                warning = "AI 답변 생성됨 · 기존 SQLite 대화 기억 저장 실패"
+            count = self._memory.count()
+            self._pending.pop(sequence, None)
+            self._committed_sequence = sequence
+            return ChatResult(
+                reply=reply, remembered_count=count, warning=warning,
+                ollama_server_timings_seconds=timings)
+
+    def stop(self) -> None:
+        with self._lock:
+            self._stopped = True
+            self._pending.clear()
+            self._executor.shutdown(wait=False, cancel_futures=True)
+
+    @property
+    def pending(self) -> int:
+        with self._lock:
+            return len(self._pending)
