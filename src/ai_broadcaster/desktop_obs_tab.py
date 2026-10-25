@@ -337,12 +337,15 @@ class ObsStatusTab(ttk.Frame):
                             and self._approved_scheduler is not None
                             and token is self._scheduled_chat_token):
                         try:
+                            # 같은 운영자 승인으로 등록한 주간 일정의
+                            # 다음 방송에서도 1회 사용 권한을 다시 발급.
+                            # 다른 세션이나 수동 시작은 이 토큰을 받지 못함.
+                            self._chat_tab._scheduled_chat_permission = token
                             self._chat_tab._start_twitch(scheduled_approval=token)
                             self._owned_chat_session = self._chat_tab._twitch_session
                             accepted=self._owned_chat_session is not None
                         except Exception:
                             accepted=False
-                    self._scheduled_chat_token=None
                     reply.put_nowait(accepted)
                     continue
                 if kind=="live_chat_stop_request":
