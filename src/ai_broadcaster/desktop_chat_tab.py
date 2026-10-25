@@ -17,6 +17,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog
 
 from .conversation_memory import ConversationMemory, DEFAULT_MEMORY_FILE
+from .long_term_conversation_memory import LongTermConversationMemory, archive_path_for
 from .desktop_chat import run_local_chat, LocalChatRunner
 from .reply_voice import ReplyVoicePlayer, should_auto_read
 from .windows_tts import Voice
@@ -95,6 +96,7 @@ class LocalChatTab(ttk.Frame):
         self._idle_live_words = tk.StringVar()
         self._broadcast_memory_enabled = tk.BooleanVar(value=False)
         self._relevant_memory_enabled = tk.BooleanVar(value=False)
+        self._long_term_memory_enabled = tk.BooleanVar(value=False)
         self._parallel_local_ai_enabled = tk.BooleanVar(value=False)
         self._twitch_parallel_ai: OrderedParallelLocalAI | None = None
         self._approved_live_voice_enabled = tk.BooleanVar(value=False)
@@ -287,6 +289,12 @@ class LocalChatTab(ttk.Frame):
             variable=self._relevant_memory_enabled,
         ).pack(anchor="w", pady=(2,1), before=model_row)
         ttk.Checkbutton(
+            self, text="확정된 대화 전체를 별도 로컬 SQLite에 장기 보관 "
+                 "· 질문 관련 과거 검색 (기본 꺼짐 · 기존 최근 5000건 정책 유지)",
+            variable=self._long_term_memory_enabled,
+            command=self._refresh_memory_count,
+        ).pack(anchor="w", pady=(2,1), before=model_row)
+        ttk.Checkbutton(
             self, text="로컬 Ollama 동시 선행 추론 최대 4개 · "
                  "답변/SQLite 기억은 채팅 FIFO 순서대로 (기본 꺼짐)",
             variable=self._parallel_local_ai_enabled,
@@ -409,7 +417,12 @@ class LocalChatTab(ttk.Frame):
                 self._memory_count.set('저장된 대화: 0개')
                 return
             count = ConversationMemory().count()
-            self._memory_count.set(f"저장된 대화: {count}개")
+            if self._long_term_memory_enabled.get():
+                archived = LongTermConversationMemory().archive_count()
+                self._memory_count.set(
+                    f"최근 대화 {count}개 / 선택한 장기 보관 {archived}개")
+            else:
+                self._memory_count.set(f"최근 대화: {count}개")
         except (OSError, ValueError, Exception) as exc:
             self._memory_count.set("대화 기억 확인 실패")
 
@@ -437,14 +450,18 @@ class LocalChatTab(ttk.Frame):
         self._append("운영자: " + text)
         self._input.set("")
         related = bool(self._relevant_memory_enabled.get())
+        long_term = bool(self._long_term_memory_enabled.get())
         threading.Thread(
-            target=self._work, args=(model, text, related), daemon=True).start()
+            target=self._work, args=(model, text, related, long_term),
+            daemon=True).start()
 
-    def _work(self, model: str, text: str, relevant_memory: bool = False) -> None:
+    def _work(self, model: str, text: str, relevant_memory: bool = False,
+              long_term_memory: bool = False) -> None:
         try:
             result = run_local_chat(
                 model, text, use_committed_gui_character=True,
-                relevant_memory=relevant_memory)
+                relevant_memory=relevant_memory,
+                long_term_memory=long_term_memory)
         except Exception as exc:
             self._results.put(("error", type(exc).__name__))
         else:
@@ -988,6 +1005,13 @@ class LocalChatTab(ttk.Frame):
                     + type(exc).__name__ + ")", parent=self)
                 return
         relevant_memory = bool(self._relevant_memory_enabled.get())
+        long_term_memory = bool(self._long_term_memory_enabled.get())
+        if long_term_memory and official:
+            approval_dialog.showwarning(
+                "장기 기억 적용 대상",
+                "장기 대화 보관은 로컬 Ollama 모드에서만 사용합니다. "
+                "공식 Live2D 서버의 별도 기억은 변경하지 않습니다.", parent=self)
+            return
         parallel_mode = bool(
             self._parallel_local_ai_enabled.get()
             and not official and scheduled_approval is None)
@@ -1161,7 +1185,8 @@ class LocalChatTab(ttk.Frame):
             try:
                 parallel_ai = OrderedParallelLocalAI(
                     model, broadcast_facts=broadcast_facts,
-                    relevant_memory=relevant_memory)
+                    relevant_memory=relevant_memory,
+                    long_term_memory=long_term_memory)
             except Exception as exc:
                 durable.release_exclusive_consumer()
                 approval_dialog.showwarning(
@@ -1280,7 +1305,8 @@ class LocalChatTab(ttk.Frame):
                     "content_agenda": content_agenda,
                     "broadcast_facts": broadcast_facts,
                     "parallel_ai": parallel_ai,
-                    "relevant_memory": relevant_memory},
+                    "relevant_memory": relevant_memory,
+                    "long_term_memory": long_term_memory},
             daemon=True,
         ).start()
         self._twitch_start.configure(state="disabled")
@@ -1558,7 +1584,8 @@ class LocalChatTab(ttk.Frame):
                         content_agenda: ApprovedLiveContentAgenda | None = None,
                         broadcast_facts: str = "",
                         parallel_ai: OrderedParallelLocalAI | None = None,
-                        relevant_memory: bool = False) -> None:
+                        relevant_memory: bool = False,
+                        long_term_memory: bool = False) -> None:
         # Old direct-call regression contracts still use unscoped result
         # events; real UI connections always provide their unique session.
         def report(kind, value):
@@ -1832,7 +1859,8 @@ class LocalChatTab(ttk.Frame):
                                 local_runner = LocalChatRunner(
                                     model, use_committed_gui_character=True,
                                     broadcast_facts=broadcast_facts,
-                                    relevant_memory=relevant_memory)
+                                    relevant_memory=relevant_memory,
+                                    long_term_memory=long_term_memory)
                             if stream_preview_mode:
                                 partial_preview = ""
                                 received_chars = 0
@@ -2930,11 +2958,17 @@ class LocalChatTab(ttk.Frame):
                 or getattr(self, "_twitch_active_workers", None)):
             messagebox.showwarning("사용 중", "AI·채팅·실측 및 이전 응답의 기억 저장 종료 후에만 삭제할 수 있습니다.", parent=self)
             return
-        approved = messagebox.askyesno("대화 기억 삭제", "저장된 대화 기억 전체를 삭제할까요? 되돌릴 수 없습니다.", parent=self)
+        approved = messagebox.askyesno(
+            "대화 기억 삭제",
+            "최근 대화와 장기 보관소가 존재하면 그 기록까지 모두 삭제합니다. "
+            "되돌릴 수 없습니다. 진행할까요?", parent=self)
         if not approved:
             return
         try:
-            ConversationMemory().clear()
+            if archive_path_for().exists():
+                LongTermConversationMemory().clear()
+            else:
+                ConversationMemory().clear()
         except (OSError, Exception) as exc:
             messagebox.showerror(
                 "삭제 실패", "기억 저장소 처리 오류 (" + type(exc).__name__ + ")",
