@@ -4172,3 +4172,43 @@ F) 원본 100단계 roadmap.json status는 completed=9, pending=91이며 **코�
 - **여전히 남은 핵심 기능**: 공식 Live2D 화면과 OBS 오디오의 인코더/최종 시청자 동일 발화 인과성, 권리 확인된 실제 한국어 WAV의 실장비 통합, 4플랫폼 수백 명 실시간 무누락 및 SQLite/재연결 장애 중 FIFO 처리, 24시간 실제 장시간 안정성, FIFO 대기 p95 수천 초와 AI·음성·영상·시청자 1~3초 병목의 기능적 개선, 전체 기능 개발 완료 뒤 회귀→Windows 네이티브 EXE/GUI/OBS/로컬 모델 검사→오류 수정→전체 재검증. 과거 회귀 실패/취소된 Windows 작업 해결 전.
 - **진행 중 멈춘 곳**: 이번 신규 코드·계약검사까지 기존 main에 누적했지만, 전체 필수 기능 개발 완료/실기기 검증 전. 신규 CI가 완료되면 실패 로그를 숨기지 않고 기록하되, 사용자가 지시한 전체 개발 우선 순서를 유지. 위 코드는 실측 후보 경로이지 성공 판정 아님.
 - **다음 실행**: 현재 main HEAD와 새 CI 최종 상태부터 다시 확인, 본 문서 1~184절과 `docs/AISTING_NEXT_CONVERSATION_HANDOFF.md` 및 기존 모든 과거 부록 원문 보존, 실제 4플랫폼/AI/음성/OBS 핵심 개발을 이어간다. 임의 모델 옵션 96/keep_alive=10m 재도입·다른 프로젝트/예약/Drive/브랜치 변경·무단 OAuth/방송/녹화/발신 금지. 인수인계 문서 커밋 자체가 HEAD를 변경하므로 다음 시작 HEAD 재조회 필수.
+
+
+## 184. 2026-10-25 — 실제 한국어 WAV·공식 Cubism·OBS 동일 음원 연결 및 4플랫폼 복구 병행 누적 개발
+
+### 원문 지시와 시작점
+- 이번 사용자 지시 원문: "개발 다 안했잖아 다 하라고". 모든 기능 개발 우선 → 전체 회귀·Windows 네이티브 EXE/GUI·OBS·실제 로컬 음성·Live2D·4플랫폼 통합검사 → 오류 수정 → 전체 재검증. AISTING 외 업무·Drive·예약 손대지 않고 새 브랜치/force push/rollback/전면 재개발도 금지.
+- 시작 main HEAD 79d201faadacfc2bbb4b05e08896c25f58a3bc4a 확인. 이전 1~183절 누적 문서·97절 부록, 사용자 기획/로드맵과 실제 음성/Live2D/OBS/4플랫폼/SQLite 소스 확인. 모든 개별 과거 부록을 이 회차에 전부 다시 읽었다고 주장하지 않는다. 이 추가 절은 이전 원문을 요약 대체하지 않으며 기존 원문/코드/캐릭터/설정/사용자 대화기억 DB를 삭제하거나 초기화하지 않는다.
+
+### 실제 main에 반영한 소스 개발 — 음성/입/OBS 통합
+1. 신규 src/ai_broadcaster/same_wav_cubism_driver.py: 실제 GPT-SoVITS 16비트 PCM WAV에서 50ms RMS를 구해 이미 열린 공식 Live2D Windows WebView2 모델의 실제 _wavFileHandler.getRms 경로로 임시 전달. 현재 모델·캔버스·Cubism 입 파라미터 존재 및 활동 중인 공식 음성 중첩 여부를 확인한다. 호출/음량/입 변화 표본은 실제 렌더러 관측만 수집하고, 종료·타임아웃·모델 교체 때 원래 함수를 복원. 설치·모델훈련·무단 음성 변경 없음.
+2. 기존 src/ai_broadcaster/original_plan_frontend.py: 기존 인증된 Windows 네이티브 브리지에 실제 PCM 입 구동 시작/종료 IPC 추가. 권리·사용자 승인 확인, 동일 발화 토큰/현재 공식 모델 점검, 실제 Cubism 입 파라미터 관찰값 회수.
+3. 기존 src/ai_broadcaster/original_plan_voice_obs_bridge.py: 기존 합성 호출 한 번으로 얻은 WAV를 공식 Cubism 입 움직임과 OBS 고유 임시 음성 입력에 결합하는 선택형 couple_live2d 경로. 방송/녹화·OBS 장면 변경 시 중단, OBS 실제 활성 캡처 후보·임시 소스 UUID 검사, 실제 OBS 오디오 미터 및 현재 프로그램 프레임 1장 읽기, OBS/Cubism 실제 시각 근접 관측을 별도 필드로 표시. Cubism 원래 핸들러 복원 실패에도 임시 OBS 소스 정리를 먼저 수행하도록 개발. WAV·입·OBS의 후보 관찰만으로 실제 영상/음성 인코더 출력이나 시청자 수신을 증명하지 않는다.
+4. 기존 src/ai_broadcaster/desktop_chat_tab.py: "같은 한국어 WAV → 공식 Live2D 입 → OBS 동시 확인" 네이티브 Tk GUI 버튼·실제 권리/이번 한 번 사용 승인·저장된 페르소나와 공식 창 확인·중간 상태 및 관측 결과 표시. 기존 버튼·기본 모델/토큰 길이/keep_alive·사용자 계정/OBS 소스/캐릭터/SQLite 기억 무단 변경 없음.
+5. 음성 통합 개발 커밋: ae72dadf, 2cb8fe9f, 25b1488c, 2c3b61ca, f72e5a71, d6bfe5b9, 19adedd5, 72da4f6d, 23bd3ddf. 기존 main에 순차 갱신.
+
+### 실제 main에 반영한 소스 개발 — 실제 채팅 보존·재연결·중복 회피
+1. durable_public_chat_queue.py: 이미 복구해 AI에 등록한 행 뒤에서 순서대로 읽는 after_sequence 커서 구현. 또 기존 pending 테이블·행을 유지하며 자체 pending_public_chat.sqlite3에 confirmed_server_events 완료 ID 장부 추가. 성공 처리된 이벤트 ID 기록과 미처리 행 삭제를 같은 SQLite 트랜잭션으로 수행, 정상 재시작에서 같은 서버 ID 재처리 억제. 서버 ID 없는 동일 본문 별도 채팅은 보존. 원래 사용자 conversation_history SQLite와 설정은 변경하지 않는다.
+2. desktop_chat_tab.py: 과거 미처리 4096건 이상을 AI에 모두 넣은 뒤 네트워크를 늦게 시작하던 경로를 수정. 백그라운드 복구 중에도 기존 4플랫폼 실제 수신기 시작, 신규 채팅은 먼저 SQLite에 안전하게 기록, 기존/신규 seq 전역 순서로 AI FIFO와 GUI에 재등록, 콜백과 같은 락으로 live 직접 수신 모드 전환. Stop·복구 예외 시 저장된 미완료 행 삭제 금지. 코드상 순서 보존을 목표로 하나 실제 24시간·수백명 누락 제로는 검증 전이다.
+3. multi_platform_session.py/desktop_chat_tab.py: 네트워크 콜백 성공과 실제 AI FIFO 등록 성공을 분리. SQLite에만 보류된 건수·AI 큐 등록 건수·미등록 건수를 플랫폼별 표시하여 영속 저장을 즉시 AI 응답 성공으로 오인하지 않도록 개발. 재등록과 콜백 정산의 경합도 개별 확인.
+4. 큐/플랫폼 개발 커밋: 09ea9f16, 97b0a5a4, 3a169faa, 09c55b78, a73f95d5, edafe5e6.
+
+### 작성한 개발 계약검사 — 이번에는 실행/통과 주장하지 않음
+- tests/test_aisting_same_wav_cubism_obs_184.py 7건 (합성 PCM 계약 및 권리·공식 IPC 검사이며 실제 합성/실증 아님).
+- tests/test_aisting_live_recovery_during_receive_184.py 4건 (복구 페이지 커서·기존 행).
+- tests/test_aisting_confirmed_server_events_185.py 5건 (서버 ID ACK·기존 DB 행 보존).
+- tests/test_aisting_sqlite_deferred_accounting_185.py 4건 (영속 접수와 AI 등록 분리).
+- 합계 20건 검사 코드를 작성했으나 신규 검사를 실행하지 않아 성공으로 표시하지 않는다. 검사 코드 커밋 cc905c62, 9ff335db, e9393a76, 512dc82b.
+
+### 이전 실패 및 현재 CI
+- 96절 Windows run 39722213656: completed/cancelled (일부 job success, 한국 채팅 job 취소), 전체 Windows 통과 아님.
+- Ollama 500건 run 39720448468: 실제 모델 500건은 처리됐지만 500건 모두 3초 초과, 전체 p95 2979.984초, FIFO 대기 p95 2973.875초, AI p95 7.875초. 실제 시청자 500명 실증 아님.
+- 177절 전체 회귀 40155307503: 36 failures/33 errors/2 skipped의 과거 실패 기록 유지.
+- 최신 개발 소스 512dc82b 기준 validation run 40169810575, Windows EXE run 40169810560은 마지막 조회 시 queued. 구버전 edafe의 validation 40169768491, Windows 40169768580은 cancelled; 500건 40169768493 queued. 최신 검증 최종 결론 확인 전.
+
+### 실제 한 것 / 안 한 것 / 남은 것 / 진행 중 멈춘 것
+- 한 것: 위 새 PCM→실제 Cubism 입 구동→실제 OBS 입력 한 음원 연결의 코드, 기존 Tk GUI 실행 선택, 4플랫폼 대량 보류 복구 중 실제 수신 병행, 서버 완료 ID SQLite 영속 기록, 큐 등록 상태 분리 및 신규 20건 계약검사 코드 작성. GitHub main 연속 정상 커밋 반영.
+- 안 한 것: 신규 검사 직접 실행/통과 확인, 전체 회귀/Windows 실제 EXE 버튼 클릭, 권리 확보된 본인 실제 한국어 GPT-SoVITS 모델로 음성 합성, 실제 공식 Cubism 영상·OBS 최종 인코더/시청자 동일 발화, 4플랫폼 실제 수백 명/24시간, 1~3초 E2E 최종 달성, 사용자 계정·OAuth 동의 대행, 방송 송출·녹화·채팅 발신/음성 학습, 다른 프로젝트·예약·Drive 변경.
+- 아직 남은 것: 남은 생산용 방송·공지/장기 무인 운영 코드와 승인 경계 완성 여부 검토·개발, 실제 음성/입/OBS 같은 발화 인코더 실증 및 물리적 시청자 E2E, 4플랫폼 실제 수백 명 무누락·24시간 장기 재연결, 실제 FIFO p95 수천 초 AI 추론 및 음성/영상 1~3초 병목 개발과 실측, 전수 회귀·Windows GUI/EXE 검증→오류 수정→전체 재검증. 인가받지 않은 자산/계정은 임의 사용하지 않는다.
+- 진행 중 멈춘 것: 최신 소스 코딩·테스트 코드 작성 후 전수 검증 단계 시작 전. 자동 CI 구버전 cancelled와 최신 queued 상태. 전체 개발 완료 선언 금지.
+- 다음 실행은 반드시 현재 main HEAD/신규 CI 재조회. 이 문서 1~184절 및 다음 대화 전체 원문·과거 모든 appendices·원본 기획/로드맵을 삭제/요약 대체하지 않고 **AISTING 미완료 기능 전체 개발부터 지속**한다. 전체 개발 후 전수 검증→수정→전체 재검증. 문서 추가로 HEAD는 변경되므로 다음 실행 때 재조회한다.
