@@ -77,13 +77,19 @@ class LocalOllamaReplyGenerator:
     def __init__(
         self, config: LocalModelConfig, settings: dict[str, Any],
         memory: ConversationMemory | None = None,
+        broadcast_facts: str = "",
     ) -> None:
         if not isinstance(config, LocalModelConfig):
             raise TypeError("LocalModelConfig가 필요합니다.")
         if memory is not None and not isinstance(memory, ConversationMemory):
             raise TypeError("ConversationMemory가 필요합니다.")
+        if (type(broadcast_facts) is not str or len(broadcast_facts) > 1500
+                or any((ord(ch) < 32 and ch not in "\n\t") or ord(ch) == 127
+                       for ch in broadcast_facts)):
+            raise ValueError("실제 방송 기록의 입력 길이·형식이 유효하지 않습니다.")
         self.config = config
         self.system = persona_prompt(settings)
+        self.broadcast_facts = broadcast_facts.strip()
         self.memory = memory
         # Ollama 서버 자체의 단계별 실측값. 텍스트·계정 정보는 저장하지 않는다.
         self.last_server_timings_seconds: dict[str, float] | None = None
@@ -95,6 +101,8 @@ class LocalOllamaReplyGenerator:
         if not isinstance(message, ChatMessage):
             raise TypeError("ChatMessage가 필요합니다.")
         messages = [{"role": "system", "content": self.system}]
+        if self.broadcast_facts:
+            messages.append({"role": "system", "content": self.broadcast_facts})
         if self.memory is not None:
             for exchange in self.memory.recent(self.config.max_context_exchanges):
                 messages.append({
@@ -155,6 +163,8 @@ class LocalOllamaReplyGenerator:
         if should_cancel is not None and should_cancel():
             raise LocalModelError("운영자 수신 중지 · 스트리밍 요청을 시작하지 않습니다.")
         messages = [{"role": "system", "content": self.system}]
+        if self.broadcast_facts:
+            messages.append({"role": "system", "content": self.broadcast_facts})
         if self.memory is not None:
             for exchange in self.memory.recent(self.config.max_context_exchanges):
                 messages.append({
