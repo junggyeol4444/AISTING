@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from collections import deque
 
 
 def _finite_float(value, *, minimum=0.0, maximum=None):
@@ -45,6 +46,13 @@ class ObsHealthSnapshot:
     last_sample_monotonic: float | None
     read_errors: int
     frame_counter_resets: int
+    recent_drop_ratio: float | None = None
+    recent_drop_frames: int = 0
+    recent_total_frames: int = 0
+    sustained_congestion_seconds: float = 0.0
+    stalled_output_seconds: float = 0.0
+    longest_observation_gap_seconds: float = 0.0
+    warning_codes: tuple[str, ...] = ()
 
     @property
     def description(self) -> str:
@@ -61,7 +69,13 @@ class ObsHealthSnapshot:
         return (f"OBS 실제 송출 {state} · 혼잡 {congestion} · FPS {fps} "
                 f"· 누적 전송 누락 프레임 {total} · 재연결 관측 "
                 f"{self.reconnect_observations}회 · 관찰 {self.actual_samples}회 "
-                f"· 읽기 실패 {self.read_errors}회 · 수신자 E2E 미확인")
+                f"· 읽기 실패 {self.read_errors}회"
+                + (f" · 최근 60초 전송 누락 {self.recent_drop_frames}/"
+                   f"{self.recent_total_frames}프레임"
+                   if self.recent_total_frames else " · 최근 전송 누락률 미측정")
+                + (f" · 관측 위험 {', '.join(self.warning_codes)}"
+                   if self.warning_codes else "")
+                + " · 수신자 E2E 미확인")
 
 
 class ObsStreamHealthMonitor:
@@ -86,6 +100,12 @@ class ObsStreamHealthMonitor:
         self._render_skipped = None
         self._render_total = None
         self._frame_resets = 0
+        # 실제 OBS 연속 프레임 카운터 차이만 보관한다.
+        # 재시작·카운터 역행 구간의 누락률은 추정하지 않는다.
+        self._frame_deltas = deque()
+        self._congestion_since = None
+        self._stalled_since = None
+        self._longest_gap = 0.0
 
     def observe(self, official_obs, *, monotonic_now: float) -> ObsHealthSnapshot:
         if _finite_float(monotonic_now, minimum=0.0) is None:
@@ -107,15 +127,41 @@ class ObsStreamHealthMonitor:
             total = _nonnegative_int(_get(stream, "output_total_frames"))
             if (skipped is not None and total is not None and skipped > total):
                 raise ValueError("OBS 전송 프레임 통계가 일치하지 않습니다.")
+            if self._last is not None:
+                self._longest_gap = max(
+                    self._longest_gap, float(monotonic_now) - self._last)
             if self._total is not None and total is not None and total < self._total:
                 self._frame_resets += 1
+                self._frame_deltas.clear()
+                self._stalled_since = None
+            if (active and total is not None and skipped is not None
+                    and self._total is not None and self._skipped is not None
+                    and total >= self._total and skipped >= self._skipped):
+                if total > self._total:
+                    self._frame_deltas.append((
+                        float(monotonic_now), skipped - self._skipped,
+                        total - self._total))
+                    self._stalled_since = None
+                elif self._stalled_since is None:
+                    self._stalled_since = self._last
+            else:
+                self._stalled_since = None
+            while (self._frame_deltas
+                   and self._frame_deltas[0][0] < float(monotonic_now) - 60.0):
+                self._frame_deltas.popleft()
+            observed_congestion = _finite_float(
+                _get(stream, "output_congestion"), maximum=1.0)
+            if active and observed_congestion is not None and observed_congestion >= 0.8:
+                if self._congestion_since is None:
+                    self._congestion_since = float(monotonic_now)
+            else:
+                self._congestion_since = None
             if reconnect and self._last_reconnecting is not True:
                 self._reconnect += 1
             self._active = active
             self._reconnecting = reconnect
             self._last_reconnecting = reconnect
-            self._congestion = _finite_float(
-                _get(stream, "output_congestion"), maximum=1.0)
+            self._congestion = observed_congestion
             self._skipped, self._total = skipped, total
             self._fps = _finite_float(_get(stats, "active_fps"), maximum=300)
             self._render_skipped = _nonnegative_int(
@@ -132,8 +178,31 @@ class ObsStreamHealthMonitor:
         return self.snapshot()
 
     def snapshot(self) -> ObsHealthSnapshot:
+        dropped = sum(item[1] for item in self._frame_deltas)
+        frames = sum(item[2] for item in self._frame_deltas)
+        ratio = dropped / frames if frames else None
+        congestion_seconds = (
+            max(0.0, self._last - self._congestion_since)
+            if self._last is not None and self._congestion_since is not None
+            else 0.0)
+        stalled_seconds = (
+            max(0.0, self._last - self._stalled_since)
+            if self._last is not None and self._stalled_since is not None
+            else 0.0)
+        warnings = []
+        if self._reconnect:
+            warnings.append("OBS재연결감지")
+        if self._active is True:
+            if congestion_seconds >= 15.0:
+                warnings.append("OBS혼잡지속")
+            if stalled_seconds >= 15.0:
+                warnings.append("OBS프레임정체")
+            if ratio is not None and frames >= 60 and ratio >= 0.05:
+                warnings.append("OBS전송프레임누락")
         return ObsHealthSnapshot(
             self._samples, self._active, self._reconnecting,
             self._congestion, self._skipped, self._total, self._fps,
             self._render_skipped, self._render_total, self._reconnect,
-            self._first, self._last, self._errors, self._frame_resets)
+            self._first, self._last, self._errors, self._frame_resets,
+            ratio, dropped, frames, congestion_seconds, stalled_seconds,
+            self._longest_gap, tuple(warnings))
