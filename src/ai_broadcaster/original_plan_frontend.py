@@ -1080,6 +1080,73 @@ def _observe_first_wav_receipt(window, period: float) -> dict:
     return evidence
 
 
+def _authorized_pcm_ipc(payload: dict, expected_type: str) -> dict:
+    """현재 살아 있는 공식 Windows WebView2에만 승인된 PCM 구동 명령 전달."""
+    child, conn = _native_viewer, _native_bridge
+    if child is None or child.poll() is not None or conn is None:
+        raise FrontendUnavailable("공식 Live2D Windows 창이 실행 중이지 않습니다.")
+    with _native_send_lock:
+        try:
+            conn.send_bytes(json.dumps(
+                payload, ensure_ascii=False, separators=(",", ":")
+            ).encode("utf-8"))
+            if not conn.poll(8.0):
+                _invalidate_untrusted_native_bridge(conn)
+                raise FrontendUnavailable("공식 Cubism PCM 구동 응답이 도착하지 않았습니다.")
+            reply = json.loads(conn.recv_bytes(4096).decode("utf-8"))
+        except (EOFError, OSError, UnicodeError, ValueError) as exc:
+            _invalidate_untrusted_native_bridge(conn)
+            raise FrontendUnavailable("공식 Cubism PCM IPC 연결에 실패했습니다.") from exc
+    if (not isinstance(reply, dict) or reply.get("type") != expected_type
+            or reply.get("ok") is not True):
+        raise FrontendUnavailable(
+            "실제 공식 Live2D의 PCM 입 구동 준비·관찰이 확인되지 않았습니다.")
+    return reply
+
+
+def start_authorized_pcm_live2d_mouth(
+    envelope: tuple[float, ...], *,
+    operator_approved: bool = False,
+    rights_confirmed: bool = False,
+) -> str:
+    """운영자가 승인한 실제 WAV의 50ms PCM RMS를 공식 Cubism에 일시 제공."""
+    if operator_approved is not True or rights_confirmed is not True:
+        raise PermissionError("권리 있는 실제 한국어 WAV와 입 움직임 구동 승인이 필요합니다.")
+    from .same_wav_cubism_driver import start_pcm_driver_script
+    token = secrets.token_hex(16)
+    # Do not send raw audio, model file or secrets through the native bridge.
+    start_pcm_driver_script(envelope, token)
+    result = _authorized_pcm_ipc({
+        "type": "authorized-pcm-start",
+        "token": token, "envelope": list(envelope),
+    }, "authorized-pcm-start-result")
+    if (result.get("token") != token
+            or type(result.get("lipSyncIds")) is not int
+            or result["lipSyncIds"] < 1):
+        raise FrontendUnavailable("이번 실제 Cubism 모델의 입 매개변수 확인 실패")
+    return token
+
+
+def finish_authorized_pcm_live2d_mouth(
+    token: str, *, operator_approved: bool = False,
+) -> dict:
+    """공식 Cubism 실제 입 변화 샘플을 읽고 한시 변경을 복원한다."""
+    if operator_approved is not True:
+        raise PermissionError("기존 승인된 Cubism 입 구동의 종료 승인이 필요합니다.")
+    from .same_wav_cubism_driver import finish_pcm_driver_script
+    finish_pcm_driver_script(token)
+    response = _authorized_pcm_ipc({
+        "type": "authorized-pcm-finish", "token": token,
+    }, "authorized-pcm-finish-result")
+    summary = response.get("observation")
+    if (not isinstance(summary, dict)
+            or any(type(summary.get(name)) is not int or summary[name] < 0
+                   for name in ("calls", "positiveCalls", "samples", "changes"))
+            or type(summary.get("mouthRange")) not in (float, int, type(None))):
+        raise FrontendUnavailable("공식 Cubism 실제 입 관찰 결과가 유효하지 않습니다.")
+    return summary
+
+
 def _native_frontend_input_worker(window, address: str | None = None,
                                   auth_hex: str | None = None) -> None:
     """Connect authenticated Windows pipe even in PyInstaller --windowed mode.
@@ -1102,6 +1169,43 @@ def _native_frontend_input_worker(window, address: str | None = None,
             except (UnicodeError, ValueError):
                 # Reject only the malformed request; keep the authenticated pipe alive.
                 conn.send_bytes(b'{"type":"input-invalid"}')
+                continue
+            if isinstance(request, dict) and request.get("type") in (
+                    "authorized-pcm-start", "authorized-pcm-finish"):
+                from .same_wav_cubism_driver import (
+                    start_pcm_driver_script, finish_pcm_driver_script)
+                command = request["type"]
+                try:
+                    if command == "authorized-pcm-start":
+                        envelope = request.get("envelope")
+                        if not isinstance(envelope, list):
+                            raise ValueError("PCM 형식")
+                        script = start_pcm_driver_script(
+                            tuple(envelope), request.get("token"))
+                    else:
+                        script = finish_pcm_driver_script(request.get("token"))
+                    answer = window.evaluate_js(script)
+                    if isinstance(answer, str):
+                        answer = json.loads(answer)
+                    if not isinstance(answer, dict) or answer.get("ok") is not True:
+                        raise ValueError("실제 공식 모델 상태 미충족")
+                    if command == "authorized-pcm-start":
+                        response = {
+                            "type": "authorized-pcm-start-result",
+                            "ok": True,
+                            "token": answer.get("token"),
+                            "lipSyncIds": answer.get("lipSyncIds"),
+                        }
+                    else:
+                        response = {
+                            "type": "authorized-pcm-finish-result",
+                            "ok": True, "observation": answer,
+                        }
+                except (ValueError, TypeError, RuntimeError, OSError):
+                    response = {
+                        "type": command + "-result", "ok": False,
+                    }
+                conn.send_bytes(json.dumps(response).encode("utf-8"))
                 continue
             if isinstance(request, dict) and request.get('type') == 'observe-lipsync':
                 period = request.get('seconds')
