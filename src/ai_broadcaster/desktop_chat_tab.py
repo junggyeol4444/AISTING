@@ -94,6 +94,7 @@ class LocalChatTab(ttk.Frame):
         self._idle_live_threshold = tk.StringVar(value="90")
         self._idle_live_words = tk.StringVar()
         self._broadcast_memory_enabled = tk.BooleanVar(value=False)
+        self._relevant_memory_enabled = tk.BooleanVar(value=False)
         self._parallel_local_ai_enabled = tk.BooleanVar(value=False)
         self._twitch_parallel_ai: OrderedParallelLocalAI | None = None
         self._approved_live_voice_enabled = tk.BooleanVar(value=False)
@@ -281,6 +282,11 @@ class LocalChatTab(ttk.Frame):
             variable=self._local_stream_preview,
         ).pack(anchor="w", pady=(2, 1), before=model_row)
         ttk.Checkbutton(
+            self, text="로컬 AI: 저장된 실제 과거 대화 중 질문 관련 기록 2건 참고 "
+                 "(기본 꺼짐 · SQLite 읽기만 · 별도 모델 없음)",
+            variable=self._relevant_memory_enabled,
+        ).pack(anchor="w", pady=(2,1), before=model_row)
+        ttk.Checkbutton(
             self, text="로컬 Ollama 동시 선행 추론 최대 4개 · "
                  "답변/SQLite 기억은 채팅 FIFO 순서대로 (기본 꺼짐)",
             variable=self._parallel_local_ai_enabled,
@@ -430,11 +436,15 @@ class LocalChatTab(ttk.Frame):
         self._input_info.set("로컬 AI의 응답을 확인하고 있습니다…")
         self._append("운영자: " + text)
         self._input.set("")
-        threading.Thread(target=self._work, args=(model,text),daemon=True).start()
+        related = bool(self._relevant_memory_enabled.get())
+        threading.Thread(
+            target=self._work, args=(model, text, related), daemon=True).start()
 
-    def _work(self, model: str, text: str) -> None:
+    def _work(self, model: str, text: str, relevant_memory: bool = False) -> None:
         try:
-            result = run_local_chat(model, text, use_committed_gui_character=True)
+            result = run_local_chat(
+                model, text, use_committed_gui_character=True,
+                relevant_memory=relevant_memory)
         except Exception as exc:
             self._results.put(("error", type(exc).__name__))
         else:
@@ -977,6 +987,7 @@ class LocalChatTab(ttk.Frame):
                     "실제 OBS 사건 장부를 안전하게 읽지 못했습니다 ("
                     + type(exc).__name__ + ")", parent=self)
                 return
+        relevant_memory = bool(self._relevant_memory_enabled.get())
         parallel_mode = bool(
             self._parallel_local_ai_enabled.get()
             and not official and scheduled_approval is None)
@@ -1149,7 +1160,8 @@ class LocalChatTab(ttk.Frame):
         if parallel_mode:
             try:
                 parallel_ai = OrderedParallelLocalAI(
-                    model, broadcast_facts=broadcast_facts)
+                    model, broadcast_facts=broadcast_facts,
+                    relevant_memory=relevant_memory)
             except Exception as exc:
                 durable.release_exclusive_consumer()
                 approval_dialog.showwarning(
@@ -1267,7 +1279,8 @@ class LocalChatTab(ttk.Frame):
                     "idle_policy": idle_policy,
                     "content_agenda": content_agenda,
                     "broadcast_facts": broadcast_facts,
-                    "parallel_ai": parallel_ai},
+                    "parallel_ai": parallel_ai,
+                    "relevant_memory": relevant_memory},
             daemon=True,
         ).start()
         self._twitch_start.configure(state="disabled")
@@ -1544,7 +1557,8 @@ class LocalChatTab(ttk.Frame):
                         idle_policy: ApprovedLiveIdleSpeech | None = None,
                         content_agenda: ApprovedLiveContentAgenda | None = None,
                         broadcast_facts: str = "",
-                        parallel_ai: OrderedParallelLocalAI | None = None) -> None:
+                        parallel_ai: OrderedParallelLocalAI | None = None,
+                        relevant_memory: bool = False) -> None:
         # Old direct-call regression contracts still use unscoped result
         # events; real UI connections always provide their unique session.
         def report(kind, value):
@@ -1817,7 +1831,8 @@ class LocalChatTab(ttk.Frame):
                             if local_runner is None:
                                 local_runner = LocalChatRunner(
                                     model, use_committed_gui_character=True,
-                                    broadcast_facts=broadcast_facts)
+                                    broadcast_facts=broadcast_facts,
+                                    relevant_memory=relevant_memory)
                             if stream_preview_mode:
                                 partial_preview = ""
                                 received_chars = 0
