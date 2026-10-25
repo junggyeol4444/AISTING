@@ -55,6 +55,17 @@ class RealVoiceObsResult:
     obs_source_prepare_seconds: float | None = None
     obs_meter_observed_seconds: float | None = None
     tts_done_to_first_meter_seconds: float | None = None
+    # 동일 실제 WAV를 공식 Cubism RMS 경로와 OBS 임시 입력에 연결한
+    # 경우에만 기록. 입·화면·미터의 실제 관찰과 시청자 송출은 별개.
+    actual_pcm_cubism_requested: bool = False
+    cubism_renderer_rms_calls: int = 0
+    cubism_actual_mouth_samples: int = 0
+    cubism_actual_mouth_changes: int = 0
+    cubism_mouth_range: float | None = None
+    cubism_wav_mouth_candidate: bool = False
+    obs_program_frame_observed: bool = False
+    obs_program_capture_candidate: bool = False
+    same_wav_cubism_obs_candidate: bool = False
 
 
 def verify_gpt_sovits_to_obs(
@@ -67,6 +78,7 @@ def verify_gpt_sovits_to_obs(
     api_url: str = "http://127.0.0.1:9880/tts",
     operator_approved: bool = False,
     rights_confirmed: bool = False,
+    couple_live2d: bool = False,
 ) -> RealVoiceObsResult:
     """Synthesize real Korean speech, route one bounded WAV through actual OBS.
 
@@ -76,6 +88,9 @@ def verify_gpt_sovits_to_obs(
     """
     if operator_approved is not True or rights_confirmed is not True:
         raise PermissionError("이번 실제 GPT-SoVITS→OBS 연결 및 음성 사용 권리 승인이 필요합니다.")
+    if type(couple_live2d) is not bool:
+        raise ValueError("실제 Cubism 연동 선택값이 올바르지 않습니다.")
+
     # Check OBS status BEFORE voice synthesis, so no audio is generated when
     # OBS is broadcasting or cannot be authenticated.
     connection_started_at = time.monotonic()
@@ -99,6 +114,22 @@ def verify_gpt_sovits_to_obs(
             raise RuntimeError("OBS가 녹화 중일 때 임시 음성 입력 검사를 실행하지 않습니다.")
 
     ensure_not_recording()
+    frontend = None
+    obs_capture_candidate = False
+    if couple_live2d:
+        from . import original_plan_frontend as frontend
+        child = frontend._native_viewer
+        if (child is None or child.poll() is not None
+                or frontend._native_bridge is None):
+            raise RuntimeError("공식 Live2D Windows 창이 연결되지 않았습니다.")
+        # 실제 사용자 장면을 바꾸거나 OBS 캡처 소스를 생성하지 않는다.
+        # 활성 캡처 경로가 없으면 실제 영상 결합의 후보로도 진행하지 않는다.
+        media_path = obs.read_scene_media_path()
+        obs_capture_candidate = bool(
+            media_path.capture_sources and any(
+                "비활성" not in name for name in media_path.capture_sources))
+        if not obs_capture_candidate:
+            raise RuntimeError("OBS 현재 프로그램 장면에 활성 화면 캡처 후보가 없습니다.")
     kind_list = client.get_input_kind_list(False).input_kinds
     if "ffmpeg_source" not in kind_list:
         raise RuntimeError("실제 OBS 미디어 입력이 지원되지 않습니다.")
@@ -125,12 +156,22 @@ def verify_gpt_sovits_to_obs(
     # 관찰 창이 전체를 포함하지 않았음을 UI에 명시한다.
     meter_duration = min(8.0, max(3.0, wav_duration + 0.25))
     covers_duration = meter_duration >= wav_duration
+    envelope = ()
+    if couple_live2d:
+        from .same_wav_cubism_driver import authorized_pcm_envelope
+        # 실제 생성된 WAV의 전체 0.4~8초 음량을 그대로 사용하고
+        # 길이 초과를 가짜 보간/무음 대체로 처리하지 않는다.
+        envelope = authorized_pcm_envelope(raw)
     # Use a unique source name; never replace the operator's existing input.
     import secrets
     input_name = "AISTING-verification-" + secrets.token_hex(8)
     created = False
     creation_attempted = False
     owned_input_uuid = None
+    owned_scene_item_id = None
+    mouth_token = None
+    mouth_summary = None
+    program_frame_observed = False
 
     def confirm_owned_input():
         # 같은 이름이라도 다른 UUID로 교체된 입력은 절대로 재생·삭제하지 않는다.
@@ -174,9 +215,13 @@ def verify_gpt_sovits_to_obs(
                 "looping": False,
                 "restart_on_activate": False,
                 "close_when_inactive": False,
-            }, True)
+            }, not couple_live2d)
             created = True
             owned_input_uuid = getattr(creation_result, "input_uuid", None)
+            if couple_live2d:
+                owned_scene_item_id = getattr(creation_result, "scene_item_id", None)
+                if type(owned_scene_item_id) is not int:
+                    raise RuntimeError("OBS 임시 WAV의 전용 장면 항목을 확인하지 못했습니다.")
             confirmed_uuid = confirm_owned_input()
             if confirmed_uuid is not None:
                 if owned_input_uuid is not None and owned_input_uuid != confirmed_uuid:
@@ -194,7 +239,7 @@ def verify_gpt_sovits_to_obs(
             restart_returned_at = None
 
             def start_exact_created_media_after_meter_subscription():
-                nonlocal restart_requested_at, restart_returned_at
+                nonlocal restart_requested_at, restart_returned_at, mouth_token
                 # The only mutable target is the unique temporary source we
                 # created for THIS licensed utterance, never an existing
                 # recording/stream or the user's named OBS media input.
@@ -204,17 +249,38 @@ def verify_gpt_sovits_to_obs(
                         "OBS 미터 연결 도중 방송 또는 장면이 바뀌어 재생을 중단합니다.")
                 ensure_not_recording()
                 confirm_owned_input()
+                if couple_live2d:
+                    # OBS 구독 준비 뒤 동일 실제 WAV를 공식 Cubism 입에
+                    # 공급한다. 권리 있는 실제 PCM에서 나온 50ms RMS만 사용.
+                    mouth_token = frontend.start_authorized_pcm_live2d_mouth(
+                        envelope, operator_approved=True, rights_confirmed=True)
+                    # 이번에 생성한 비활성 임시 항목만 활성화한다.
+                    # 사용자 기존 장면이나 소스의 on/off는 변경하지 않는다.
+                    client.set_scene_item_enabled(
+                        state.scene, owned_scene_item_id, True)
                 restart_requested_at = time.monotonic()
                 client.trigger_media_input_action(
                     input_name, "OBS_WEBSOCKET_MEDIA_INPUT_ACTION_RESTART")
                 restart_returned_at = time.monotonic()
 
             meter_probe_started_at = time.monotonic()
-            meters = obs.read_actual_audio_meters(
-                operator_approved=True, input_name=input_name,
-                duration=meter_duration,
-                start_action=start_exact_created_media_after_meter_subscription)
+            try:
+                meters = obs.read_actual_audio_meters(
+                    operator_approved=True, input_name=input_name,
+                    duration=meter_duration,
+                    start_action=start_exact_created_media_after_meter_subscription)
+            finally:
+                if mouth_token is not None:
+                    # 오디오 미터 성공/예외와 무관하게 원래 Cubism getRms를 복원.
+                    mouth_summary = frontend.finish_authorized_pcm_live2d_mouth(
+                        mouth_token, operator_approved=True)
+                    mouth_token = None
             meter_probe_ended_at = time.monotonic()
+            if couple_live2d:
+                # OBS가 내놓은 실제 프로그램 프레임만 관찰한다.
+                # 한 장의 PNG가 입의 영상 인과성이나 방송 인코딩 증거는 아님.
+                obs.read_current_scene_frame(operator_approved=True)
+                program_frame_observed = True
             # OBS 서버는 미터 이벤트를 비동기로 전달한다. 재생 명령을
             # 보내기 이전의 양성 신호를 이번 WAV의 증거로 세지 않는다.
             # 늦게 도착한 실제 양성 시각은 추정하지 않고 별도 구분한다.
@@ -303,6 +369,33 @@ def verify_gpt_sovits_to_obs(
                 tts_done_to_first_meter_seconds=(
                     round(during_wav[0] - synthesis_ended_at, 6)
                     if during_wav else None),
+                actual_pcm_cubism_requested=couple_live2d,
+                cubism_renderer_rms_calls=(
+                    mouth_summary.get("calls", 0) if mouth_summary else 0),
+                cubism_actual_mouth_samples=(
+                    mouth_summary.get("samples", 0) if mouth_summary else 0),
+                cubism_actual_mouth_changes=(
+                    mouth_summary.get("changes", 0) if mouth_summary else 0),
+                cubism_mouth_range=(
+                    mouth_summary.get("mouthRange") if mouth_summary else None),
+                cubism_wav_mouth_candidate=bool(
+                    mouth_summary and mouth_summary.get("positiveCalls", 0) > 0
+                    and mouth_summary.get("calls", 0) >= 3
+                    and mouth_summary.get("samples", 0) >= 3
+                    and mouth_summary.get("changes", 0) >= 1
+                    and (mouth_summary.get("mouthRange") or 0) > 0.02),
+                obs_program_frame_observed=program_frame_observed,
+                obs_program_capture_candidate=obs_capture_candidate,
+                same_wav_cubism_obs_candidate=bool(
+                    couple_live2d and obs_capture_candidate
+                    and program_frame_observed and meters.usable_output_candidate
+                    and mouth_summary and mouth_summary.get("positiveCalls", 0) > 0
+                    and mouth_summary.get("calls", 0) >= 3
+                    and mouth_summary.get("samples", 0) >= 3
+                    and mouth_summary.get("changes", 0) >= 1
+                    and (mouth_summary.get("mouthRange") or 0) > 0.02
+                    and during_wav and similarity is not None and similarity >= 0.8
+                    and mapped_count >= 8),
             )
             if not result.actual_signal:
                 raise RuntimeError("OBS가 GPT-SoVITS 실제 WAV 입력 신호를 확인하지 못했습니다.")
@@ -312,6 +405,13 @@ def verify_gpt_sovits_to_obs(
             ensure_not_recording()
             return result
         finally:
+            if mouth_token is not None:
+                # Abort before OBS 미터 반환 시에도 공식 Cubism 함수를 복원.
+                try:
+                    frontend.finish_authorized_pcm_live2d_mouth(
+                        mouth_token, operator_approved=True)
+                finally:
+                    mouth_token = None
             if created:
                 # 삭제 직전에도 UUID를 재확인한다. 다른 사용자의 소스는 보호한다.
                 try:
