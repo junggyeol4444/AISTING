@@ -15,6 +15,7 @@ from .multiplatform_readonly import (
     YouTubeReadOnlySession, YouTubeChatResumeState, PreJoinChatResumeState,
 )
 from .twitch_readonly import TwitchChatLine, TwitchReadOnlySession, TwitchServerReconnect
+from .youtube_page_checkpoint import YouTubePageCheckpoint
 
 SUPPORTED = ("twitch", "chzzk", "soop", "youtube")
 
@@ -28,13 +29,18 @@ class MultiPlatformReadOnlySession:
 
     def __init__(self, channels: dict[str, str], emit, *, youtube_api_key: str = "",
                  youtube_oauth_token: str = "",
-                 twitch_oauth_token: str = "", twitch_oauth_login: str = ""):
+                 twitch_oauth_token: str = "", twitch_oauth_login: str = "",
+                 youtube_cursor_journal: YouTubePageCheckpoint | None = None):
         if (type(channels) is not dict or not channels or len(channels) > 4
                 or not callable(emit)):
             raise ValueError("동시 채팅 플랫폼과 채널을 확인하세요.")
         if any(code not in SUPPORTED or not isinstance(value, str)
                or not value.strip() for code, value in channels.items()):
             raise ValueError("지원하지 않는 플랫폼 또는 비어 있는 채널입니다.")
+        if youtube_cursor_journal is not None and (
+                "youtube" not in channels or
+                not isinstance(youtube_cursor_journal, YouTubePageCheckpoint)):
+            raise ValueError("유튜브 실제 채팅 재시작 커서 연결이 올바르지 않습니다.")
         self.channel = "전체"
         self._stop = threading.Event()
         self._stop_started_at = None
@@ -344,7 +350,10 @@ class MultiPlatformReadOnlySession:
         # 실패 뒤 새 리더 객체를 만들더라도 기존 4플랫폼 FIFO 내용과
         # 이미 전달한 이벤트 ID가 사라지지 않는다.
         self._youtube_resume = (
-            YouTubeChatResumeState() if "youtube" in channels else None
+            YouTubeChatResumeState(
+                cursor_journal=youtube_cursor_journal,
+                selected_channel=channels["youtube"].strip())
+            if "youtube" in channels else None
         )
         factories = {
             "twitch": lambda channel, cb: TwitchReadOnlySession(
