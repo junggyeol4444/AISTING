@@ -41,12 +41,17 @@ def run_local_chat(
     memory_path: Path = DEFAULT_MEMORY_FILE,
     sender: str = "운영자",
     use_committed_gui_character: bool = False,
+    relevant_memory: bool = False,
 ) -> ChatResult:
     if not isinstance(text, str) or not text.strip() or len(text) > 4000:
         raise ValueError("내용은 공백이 아닌 1~4000글자로 입력해 주세요.")
     if not isinstance(sender, str) or not sender.strip() or len(sender) > 160:
         raise ValueError("채팅 작성자 정보가 올바르지 않습니다.")
-    cfg = LocalModelConfig(model=model, port=port)
+    if type(relevant_memory) is not bool:
+        raise ValueError("과거 관련 기억 선택값이 올바르지 않습니다.")
+    cfg = LocalModelConfig(
+        model=model, port=port,
+        max_relevant_exchanges=2 if relevant_memory else 0)
     memory = ConversationMemory(path=memory_path)
     model_settings = load_settings(settings_path)
     if use_committed_gui_character:
@@ -90,8 +95,13 @@ class LocalChatRunner:
         memory_path: Path = DEFAULT_MEMORY_FILE,
         use_committed_gui_character: bool = True,
         broadcast_facts: str = "",
+        relevant_memory: bool = False,
     ) -> None:
-        config = LocalModelConfig(model=model, port=port)
+        if type(relevant_memory) is not bool:
+            raise ValueError("과거 관련 기억 선택값이 올바르지 않습니다.")
+        config = LocalModelConfig(
+            model=model, port=port,
+            max_relevant_exchanges=2 if relevant_memory else 0)
         self.memory = ConversationMemory(path=memory_path)
         settings = load_settings(settings_path)
         if use_committed_gui_character:
