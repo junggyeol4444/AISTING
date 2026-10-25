@@ -76,7 +76,7 @@ def program_motion_near_audio(
         and digest != baseline
         and any(abs(when - audio_when) <= 0.6
                 for audio_when in valid_audio)
-        for when, _scene, digest in frames[1:-1]
+        for when, _scene, digest in frames[1:]
     )
 
 
