@@ -23,6 +23,8 @@ from .offline_broadcast_duration import BroadcastDurationRules
 from .original_plan_obs import OfficialObsWebsocket
 from .obs_live2d_frame_link import active_official_window_capture
 from .obs_stream_health import ObsStreamHealthMonitor
+from .approved_obs_reconnect import (
+    ApprovedObsReconnector, ObsStreamIdentityLost, ObsReconnectExhausted)
 
 
 @dataclass(frozen=True)
@@ -42,6 +44,7 @@ class ApprovedLiveSnapshot:
     pre_notice: str = "미설정"
     stream_health: str = "실제 OBS 출력 통계 미관측"
     chat_recovery: str = "채팅 자동 복구 비활성"
+    obs_recovery: str = "OBS 연결 복구 비활성"
 
 
 class ApprovedLiveScheduler:
@@ -187,6 +190,8 @@ class ApprovedLiveScheduler:
         self._end_notice = "대기" if on_finished_notice is not None else "미설정"
         self._client = None
         self._health_monitor = ObsStreamHealthMonitor()
+        self._obs_reconnector: ApprovedObsReconnector | None = None
+        self._obs_recovery = "승인된 방송 시작 전 · OBS 연결 복구 대기"
         self._last_health_observation: float | None = None
         self._health_event_recorded: set[str] = set()
         self._running = False
@@ -201,7 +206,7 @@ class ApprovedLiveScheduler:
                 self._end_notice, self._live_chat, self._journal_error,
                 self._pre_notice,
                 self._health_monitor.snapshot().description,
-                self._chat_recovery)
+                self._chat_recovery, self._obs_recovery)
 
     def _record_event(self, state: str) -> None:
         """영구 상태 기록 실패가 이미 진행 중인 OBS 종료를 막지 않게 한다."""
@@ -320,6 +325,8 @@ class ApprovedLiveScheduler:
         self._end_notice = "대기" if self._on_finished_notice else "미설정"
         self._live_chat = "대기" if self._begin_live_chat else "미설정"
         self._health_monitor = ObsStreamHealthMonitor()
+        self._obs_reconnector = None
+        self._obs_recovery = "방송 시작 전 · OBS 연결 복구 대기"
         self._last_health_observation = None
         self._health_event_recorded.clear()
         self._chat_recovery_attempts = 0
@@ -352,6 +359,11 @@ class ApprovedLiveScheduler:
             self._start_confirmed = True
             self._record_event("송출시작확인")
             self._started_at = now
+            self._obs_reconnector = ApprovedObsReconnector(
+                scene=self._scene, started_monotonic=now,
+                password=self._password, port=self._port,
+                client_factory=self._client_factory)
+            self._obs_recovery = "실제 송출 확인 · OBS 연결 정상"
             self._set("실제 방송 중", "방송 송출 상태를 확인했습니다. 시청자 수신은 별도 실증입니다.")
             if self._begin_live_chat is not None:
                 # OBS 실제 송출 확인 뒤, 사용자가 별도로 승인한 기존
@@ -416,6 +428,11 @@ class ApprovedLiveScheduler:
             if actual.scene != self._scene:
                 raise RuntimeError("방송 중 OBS 장면이 변경되어 자동 종료를 차단합니다.")
             if actual.streaming:
+                # 이전에 승인해 시작한 출력의 가동시간이 연속된 경우에만
+                # OBS 종료 명령을 보낸다. 새로 시작된 타인 방송은 종료 금지.
+                if self._obs_reconnector is not None:
+                    self._obs_reconnector.verify_stream_identity(
+                        client, self._clock())
                 finished = client.stop_stream(operator_confirmed=True)
                 if finished.streaming:
                     raise RuntimeError("OBS 방송 종료 상태가 확인되지 않았습니다.")
@@ -527,8 +544,13 @@ class ApprovedLiveScheduler:
             self._finish_owned(normal_maximum=False)
             return self.snapshot()
         if self._owns_stream:
+            status_failed = False
             try:
-                current = self._client.status()
+                try:
+                    current = self._client.status()
+                except Exception:
+                    status_failed = True
+                    raise
                 if current.streaming is not True or current.scene != self._scene:
                     # 실제 OBS 상태 이탈은 단순 GUI 문구로만 남기지 않고
                     # 승인된 방송 슬롯의 기존 영구 사건 장부에도 기록한다.
@@ -561,6 +583,45 @@ class ApprovedLiveScheduler:
                             >= self._rules.maximum_minutes * 60):
                         self._finish_owned(normal_maximum=True)
             except Exception as exc:
+                if status_failed and self._obs_reconnector is not None:
+                    # OBS 출력이 계속 진행 중일 수 있으므로 무조건 송출을
+                    # 재시작하거나 즉시 종료하지 않고 동일 출력만 재연결.
+                    if not self._obs_reconnector.snapshot().recovering:
+                        self._record_event("OBS상태관측실패")
+                    try:
+                        candidate = self._obs_reconnector.recover(monotonic_now)
+                    except ObsStreamIdentityLost:
+                        self._record_event("OBS송출소유권상실")
+                        self._obs_recovery = (
+                            "출력 가동시간·장면 불연속 · 타 방송 소유권 보호")
+                        self._set("OBS 소유권 상실",
+                                  "다른 방송일 수 있어 자동 송출/종료 차단 · 수동 확인")
+                        self._owns_stream = False
+                        self._stop.set()
+                    except ObsReconnectExhausted:
+                        self._record_event("OBS연결복구실패")
+                        self._obs_recovery = "OBS 연결 복구 한도 소진 · 송출 상태 불명"
+                        self._set("OBS 연결 복구 중단",
+                                  "현재 OBS 송출 여부 미확인 · 새 송출/종료 금지 · 수동 확인")
+                        self._owns_stream = False
+                        self._stop.set()
+                    else:
+                        if candidate is not None:
+                            old = self._client
+                            self._client = candidate
+                            self._obs_reconnector.reset()
+                            self._last_health_observation = None
+                            self._obs_recovery = (
+                                "기존 OBS WebSocket 재연결 완료 · 같은 출력 가동시간 확인")
+                            self._record_event("OBS연결복구확인")
+                            ApprovedObsReconnector._close(old)
+                            self._set("실제 방송 중",
+                                      "기존 송출 유지 상태에서 OBS 연결만 복구 · 재송출 없음")
+                        else:
+                            self._obs_recovery = self._obs_reconnector.snapshot().status
+                            self._set("OBS 연결 복구 대기",
+                                      "송출 상태 불명 · 기존 승인 출력만 제한 재연결 시도")
+                    return self.snapshot()
                 # 관측 실패는 실제 종료와 구분하여 기록한다.
                 # OBS 상태가 불명확하므로 재시작/임의 종료는 수행하지 않는다.
                 self._record_event("OBS상태관측실패")
