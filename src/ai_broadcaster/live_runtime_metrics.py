@@ -186,3 +186,78 @@ class LiveParseReplyMetrics:
             "AIp95초": _p95([x[1] for x in self._samples]),
             "최장초": self.longest_seconds,
         }
+
+
+class LiveFirstWavLatencyMetrics:
+    """실제 공식 WebSocket의 첫 WAV 수신 *후보*까지 로컬 지연을 기록.
+
+    공식 서버에 채팅별 응답 식별자가 없으므로 이전 발화의 WAV일 수 있다.
+    같은 채팅의 합성·Cubism·OBS·시청자 출력 성공으로 절대 계수하지 않는다.
+    채팅 본문·닉네임·음성·인증정보는 기록하지 않는다.
+    """
+
+    def __init__(self, *, capacity: int = 512):
+        if type(capacity) is not int or not 1 <= capacity <= 10000:
+            raise ValueError("첫 WAV 후보 표본 한도가 올바르지 않습니다.")
+        self._samples: deque[tuple[float, float, float]] = deque(maxlen=capacity)
+        self.attempts = 0
+        self.observed_candidates = 0
+        self.not_observed = 0
+        self.errors = 0
+        self.missing_parse_time = 0
+        self.invalid = 0
+        self.over_three_seconds = 0
+        self.longest_seconds = 0.0
+
+    def error(self) -> None:
+        """실제 공식 전송/관찰 예외는 WAV 미관측과 구분한다."""
+        self.attempts += 1
+        self.errors += 1
+
+    def observe(self, parsed_at, accepted_at, request_started_at,
+                first_wav_seconds, wav_received) -> bool:
+        self.attempts += 1
+        if type(wav_received) is not bool:
+            self.invalid += 1
+            return False
+        if not wav_received:
+            if first_wav_seconds is not None:
+                self.invalid += 1
+            else:
+                self.not_observed += 1
+            return False
+        if parsed_at is None:
+            self.missing_parse_time += 1
+            return False
+        stamps = (parsed_at, accepted_at, request_started_at, first_wav_seconds)
+        if any(type(value) not in (int, float) or not isfinite(value)
+               for value in stamps):
+            self.invalid += 1
+            return False
+        parsed, accepted, started, delay = (float(v) for v in stamps)
+        if not (0 < parsed <= accepted <= started and 0 <= delay <= 20):
+            self.invalid += 1
+            return False
+        queue_wait = started - parsed
+        total = queue_wait + delay
+        self.observed_candidates += 1
+        self.over_three_seconds += int(total > 3)
+        self.longest_seconds = max(self.longest_seconds, total)
+        self._samples.append((queue_wait, delay, total))
+        return True
+
+    def snapshot(self) -> dict[str, int | float | None]:
+        return {
+            "관찰시도": self.attempts,
+            "WAV수신후보": self.observed_candidates,
+            "WAV미관측": self.not_observed,
+            "전송관찰오류": self.errors,
+            "파싱시각누락": self.missing_parse_time,
+            "시각오류": self.invalid,
+            "3초초과후보": self.over_three_seconds,
+            "최근표본": len(self._samples),
+            "파싱부터후보p95초": _p95([v[2] for v in self._samples]),
+            "파싱부터전송대기p95초": _p95([v[0] for v in self._samples]),
+            "전송부터WAV후보p95초": _p95([v[1] for v in self._samples]),
+            "최장후보초": self.longest_seconds,
+        }
