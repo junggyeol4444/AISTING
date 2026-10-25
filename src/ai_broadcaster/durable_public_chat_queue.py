@@ -106,6 +106,14 @@ class DurablePublicChatQueue:
                 "ON pending_public_chat(platform,channel,sequence)")
             self._pending = int(db.execute(
                 "SELECT COUNT(*) FROM pending_public_chat").fetchone()[0])
+            # 재시작 전 남아 있던 채팅까지 플랫폼별로 정확히 포함한다.
+            # 원본 행이나 서버 이벤트 ID는 수정하지 않고, 실제 커밋
+            # 이후에만 갱신되는 읽기 전용 운영 상태 카운터를 유지한다.
+            self._pending_by_platform = {
+                platform: int(count) for platform, count in db.execute(
+                    "SELECT platform, COUNT(*) FROM pending_public_chat "
+                    "GROUP BY platform").fetchall()
+            }
 
     def acquire_exclusive_consumer(self) -> None:
         """같은 미처리 DB를 둘 이상의 실행 창이 동시에 AI 처리하지 못하게 한다.
@@ -227,6 +235,9 @@ class DurablePublicChatQueue:
             # COMMIT에 실패하면 메모리 카운터도 성공으로 올리지 않는다.
             if inserted is not None:
                 self._pending += 1
+                platform = fields[0]
+                self._pending_by_platform[platform] = (
+                    self._pending_by_platform.get(platform, 0) + 1)
             return inserted
 
     def confirm(self, sequence: int) -> bool:
@@ -249,6 +260,9 @@ class DurablePublicChatQueue:
                         (sequence,)).rowcount == 1
             if removed:
                 self._pending = max(0, self._pending - 1)
+                platform = row[0]
+                self._pending_by_platform[platform] = max(
+                    0, self._pending_by_platform.get(platform, 0) - 1)
             return removed
 
 
@@ -372,3 +386,14 @@ class DurablePublicChatQueue:
         """GUI 표시에는 DB 파일 잠금/쓰기 없이 이전 확정 값을 사용한다."""
         with self._lock:
             return self._pending
+
+    def pending_by_platform_snapshot(self) -> dict[str, int]:
+        """실제 SQLite 성공 커밋을 기준으로 플랫폼별 잔여 건수를 반환한다.
+
+        GUI는 5초마다 이 메모리 스냅샷만 조회한다. 사용자 채팅
+        본문·닉네임·이벤트 ID를 로그로 내보내거나 DB를 재조회하지 않는다.
+        이 건수는 이미 AI FIFO에 등록했으나 아직 처리 완료하지 않은
+        채팅까지 포함하므로, 미등록 큐 길이나 서버 무누락 증거가 아니다.
+        """
+        with self._lock:
+            return dict(self._pending_by_platform)
