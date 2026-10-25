@@ -48,6 +48,14 @@ class ObsStatusTab(ttk.Frame):
         self._discord_webhook = tk.StringVar()
         self._discord_start_text = tk.StringVar()
         self._discord_end_text = tk.StringVar()
+        self._cafe_notice_approved = tk.BooleanVar(value=False)
+        self._cafe_club_id = tk.StringVar()
+        self._cafe_menu_id = tk.StringVar()
+        self._cafe_access_token = tk.StringVar()
+        self._cafe_start_title = tk.StringVar()
+        self._cafe_start_body = tk.StringVar()
+        self._cafe_end_title = tk.StringVar()
+        self._cafe_end_body = tk.StringVar()
         self._discord_pre_approved = tk.BooleanVar(value=False)
         self._discord_pre_lead = tk.StringVar()
         self._discord_pre_text = tk.StringVar()
@@ -188,6 +196,35 @@ class ObsStatusTab(ttk.Frame):
                   width=6).pack(side="left", padx=(5,0))
         ttk.Label(self, text="사전 공지 문구 (직접 입력·승인):").pack(anchor="w")
         ttk.Entry(self, textvariable=self._discord_pre_text).pack(fill="x")
+        ttk.Separator(self, orient="horizontal").pack(fill="x", pady=(5,4))
+        ttk.Checkbutton(
+            self, text="네이버 카페 공식 API 시작·종료 공지 자동 게시 별도 승인 "
+                 "(기본 해제 · 실제 방송 확인 후에만)",
+            variable=self._cafe_notice_approved).pack(anchor="w", pady=(3,2))
+        cafe_ids = ttk.Frame(self)
+        cafe_ids.pack(fill="x")
+        ttk.Label(cafe_ids, text="카페 clubid").pack(side="left")
+        ttk.Entry(cafe_ids, textvariable=self._cafe_club_id, width=14).pack(
+            side="left", padx=(4,10))
+        ttk.Label(cafe_ids, text="일반 게시판 menuid").pack(side="left")
+        ttk.Entry(cafe_ids, textvariable=self._cafe_menu_id, width=12).pack(
+            side="left", padx=4)
+        ttk.Label(self, text="네이버 로그인 카페 글쓰기 권한 OAuth 접근 토큰 "
+                  "(직접 발급·현재 실행 중 메모리만 · 자동 로그인/갱신 없음)").pack(anchor="w")
+        ttk.Entry(self, textvariable=self._cafe_access_token,
+                  show="*", width=64).pack(fill="x")
+        ttk.Label(self, text="카페 시작 공지 제목·본문 (직접 지정)").pack(anchor="w")
+        ttk.Entry(self, textvariable=self._cafe_start_title).pack(fill="x")
+        ttk.Entry(self, textvariable=self._cafe_start_body).pack(fill="x")
+        ttk.Label(self, text="카페 종료 공지 제목·본문 (직접 지정)").pack(anchor="w")
+        ttk.Entry(self, textvariable=self._cafe_end_title).pack(fill="x")
+        ttk.Entry(self, textvariable=self._cafe_end_body).pack(fill="x")
+        ttk.Button(
+            self, text="지난 네이버 카페 공지 시도·서버 확인 기록 보기 (읽기 전용)",
+            command=self._show_cafe_notice_history).pack(anchor="w", pady=(2,3))
+        ttk.Label(self, text="카페 게시글은 실제 외부 게시입니다. 승인하지 않으면 "
+                  "어떤 API 요청도 보내지 않습니다. 응답 불명/실패 시 자동 재게시 금지.",
+                  wraplength=560).pack(anchor="w", pady=(0,3))
         ttk.Label(self, text="AI 공지 문구 생성용 방송 주제 (운영자 입력)").pack(anchor="w")
         ttk.Entry(self, textvariable=self._notice_topic).pack(fill="x")
         self._notice_ai_button = ttk.Button(
@@ -465,6 +502,27 @@ class ObsStatusTab(ttk.Frame):
                 "로컬 방송 시작 장부를 확인할 수 없습니다. OBS 실제 상태를 직접 확인하세요.",
                 parent=self)
 
+    def _show_cafe_notice_history(self) -> None:
+        """카페 계정 접근 없이 현재 로컬 발신 시도만 조회한다."""
+        try:
+            from .approved_naver_cafe_notice_journal import (
+                ApprovedNaverCafeNoticeJournal)
+            rows = ApprovedNaverCafeNoticeJournal().recent(limit=20)
+            lines = [
+                " · ".join((occurrence, phase, club, menu, state,
+                            "글 " + article if article else "글번호 미확인", at))
+                for occurrence, phase, club, menu, state, article, at in rows
+            ]
+            messagebox.showinfo(
+                "네이버 카페 실제 공지 시도 기록",
+                "\\n".join(lines) if lines else "아직 카페 공지 시도 기록이 없습니다.",
+                parent=self)
+        except Exception:
+            messagebox.showwarning(
+                "카페 공지 기록 조회 실패",
+                "로컬 카페 공지 장부를 읽을 수 없습니다. 실제 게시글은 직접 확인하세요.",
+                parent=self)
+
     def _compose_local_notice_ai(self) -> None:
         """운영자가 현재 선택한 로컬 AI로 검토용 공지만 작성한다."""
         if self._notice_ai_busy or self._approved_scheduler is not None:
@@ -653,6 +711,27 @@ class ObsStatusTab(ttk.Frame):
                 if pre_enabled:
                     pre_callback = lambda _occurrence: sender.send(
                         pre_text, operator_approved=True)
+            cafe_enabled = self._cafe_notice_approved.get() is True
+            cafe_sender = None
+            cafe_messages = None
+            if cafe_enabled:
+                from .approved_naver_cafe_notice import (
+                    ApprovedNaverCafeNoticeSender, _validate_text)
+                cafe_sender = ApprovedNaverCafeNoticeSender(
+                    self._cafe_club_id.get().strip(),
+                    self._cafe_menu_id.get().strip(),
+                    self._cafe_access_token.get().strip(),
+                    operator_approved=True)
+                cafe_messages = (
+                    _validate_text(self._cafe_start_title.get(),
+                                   label="카페 시작 공지 제목", maximum=150),
+                    _validate_text(self._cafe_start_body.get(),
+                                   label="카페 시작 공지 본문", maximum=4000),
+                    _validate_text(self._cafe_end_title.get(),
+                                   label="카페 종료 공지 제목", maximum=150),
+                    _validate_text(self._cafe_end_body.get(),
+                                   label="카페 종료 공지 본문", maximum=4000),
+                )
             if not messagebox.askyesno(
                 "실제 자동 방송 시작·종료 최종 승인",
                 "이 컴퓨터의 실제 OBS가 주간 일정에 따라 외부 플랫폼에 방송을 시작합니다. "
@@ -669,6 +748,11 @@ class ObsStatusTab(ttk.Frame):
                 + (f"방송 {pre_lead}분 전에 내가 작성한 사전 공지 1회 게시를 "
                    "추가 승인합니다. 재시작해도 같은 방송 공지를 재게시하지 않습니다. "
                    if pre_enabled else "사전 공지는 게시하지 않습니다. ")
+                + ("내가 입력한 네이버 카페 번호/게시판에 방송 시작·종료 "
+                   "각 1회씩 실제 게시글을 올립니다. 네이버 로그인 카페 글쓰기 "
+                   "OAuth 토큰을 현재 실행 중 메모리에서만 사용하고, "
+                   "글쓰기 실패·응답 불명·재시작 시 자동 재게시하지 않습니다. "
+                   if cafe_enabled else "네이버 카페 자동 공지는 비활성입니다. ")
                 + ("운영자가 입력한 방송 주제를 승인된 공식 AI에 "
                    f"{content_settings[1]}초 간격으로 전달합니다. "
                    "시청자 채팅과 SQLite 미처리 작업이 우선이고 "
@@ -687,6 +771,45 @@ class ObsStatusTab(ttk.Frame):
             # 별도 로컬 SQLite 영구 장부: 강제 종료 후 같은 슬롯의
             # 중복 OBS 시작을 예방한다. 사용자 승인 전에는 생성하지 않는다.
             journal=ApprovedLiveSlotJournal()
+            on_cafe_started = None
+            on_cafe_finished = None
+            if cafe_enabled:
+                from .approved_naver_cafe_notice_journal import (
+                    ApprovedNaverCafeNoticeJournal)
+                cafe_journal = ApprovedNaverCafeNoticeJournal()
+                def post_cafe_notice(occurrence: str, phase: str) -> bool:
+                    # 승인된 방송 슬롯에서 실제 송출 확인 뒤에만 호출됨.
+                    # DB 원자적 청구 이전에는 외부 게시를 절대 시작하지 않음.
+                    if phase == "시작":
+                        subject, body = cafe_messages[:2]
+                    elif phase == "종료":
+                        subject, body = cafe_messages[2:]
+                    else:
+                        raise ValueError("카페 공지 단계가 올바르지 않습니다.")
+                    if not cafe_journal.claim(
+                            occurrence, phase, cafe_sender.club_id,
+                            cafe_sender.menu_id, subject, body):
+                        return False
+                    try:
+                        receipt = cafe_sender.post(
+                            subject, body, operator_approved=True)
+                    except Exception:
+                        try:
+                            cafe_journal.mark(
+                                occurrence, phase, cafe_sender.club_id,
+                                cafe_sender.menu_id, "서버응답불명")
+                        except Exception:
+                            pass
+                        raise
+                    cafe_journal.mark(
+                        occurrence, phase, cafe_sender.club_id,
+                        cafe_sender.menu_id, "서버게시확인",
+                        article_id=receipt.article_id)
+                    return True
+                on_cafe_started = lambda occurrence: post_cafe_notice(
+                    occurrence, "시작")
+                on_cafe_finished = lambda occurrence: post_cafe_notice(
+                    occurrence, "종료")
             runner=ApprovedLiveScheduler(
                 draft, rules, obs_password=password, obs_port=port,
                 scene=scene, closing_text=closing,
@@ -696,6 +819,9 @@ class ObsStatusTab(ttk.Frame):
                 on_started_notice=on_started_notice,
                 on_finished_notice=on_finished_notice,
                 notice_approved=discord_enabled,
+                on_cafe_started=on_cafe_started,
+                on_cafe_finished=on_cafe_finished,
+                cafe_notice_approved=cafe_enabled,
                 begin_live_chat=(
                     (lambda token=approval_token: self._request_live_chat_start(token))
                     if auto_chat else None),
@@ -719,6 +845,9 @@ class ObsStatusTab(ttk.Frame):
                 " · 일정/모델/입력/기존 송출 허가 확인 필요")
             return
         self._approved_scheduler=runner
+        # 토큰 입력창을 비우더라도 승인된 현재 실행의 콜백만
+        # 메모리에서 사용한다. 파일/인수인계/상태 로그에 저장 금지.
+        self._cafe_access_token.set("")
         self._approved_scheduler_thread=threading.Thread(
             target=self._run_approved_schedule, args=(runner,),
             name="AISTING-운영자승인-실제OBS일정", daemon=False)
@@ -959,7 +1088,9 @@ class ObsStatusTab(ttk.Frame):
                         self._live_schedule_status.set(
                             snap.state + " · " + snap.detail +
                             " · 디스코드 시작 공지 " + snap.start_notice +
-                            " / 종료 공지 " + snap.end_notice)
+                            " / 종료 공지 " + snap.end_notice +
+                            " / 카페 시작 " + snap.cafe_start_notice +
+                            " / 카페 종료 " + snap.cafe_end_notice)
                     self._approved_scheduler=None
                     if self._chat_tab is not None and self._scheduled_chat_token is not None:
                         if self._chat_tab._scheduled_chat_permission is self._scheduled_chat_token:
@@ -1009,6 +1140,8 @@ class ObsStatusTab(ttk.Frame):
                 " · 채팅/AI " + snap.live_chat +
                 " · 채팅 복구 " + snap.chat_recovery +
                 " · OBS 연결 " + snap.obs_recovery +
+                " · 카페 시작 " + snap.cafe_start_notice +
+                " / 종료 " + snap.cafe_end_notice +
                 " · " + snap.stream_health +
                 (" · " + snap.journal_error if snap.journal_error else ""))
         self.after(150,self._poll)
