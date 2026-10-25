@@ -187,6 +187,46 @@ class ApprovedLiveVoiceOutput:
             return (0, 0)
         return self._outbox.previous_unresolved(self._session_id)
 
+    def previous_sessions_for_review(self) -> tuple[tuple[str, int, int, str], ...]:
+        """운영자 수동 선택을 위한 이전 세션 건수·식별자만 제공."""
+        if self._outbox is None:
+            return ()
+        return self._outbox.previous_sessions(self._session_id)
+
+    def adopt_previous_pending(
+        self, old_session_id: str, *, operator_approved: bool = False,
+        same_broadcast_confirmed: bool = False,
+    ) -> int:
+        """운영자가 동일 방송을 확인하고 두 번 승인한 과거 미발화만 인계.
+
+        SQLite에는 과거 OBS 출력 식별 정보가 없으므로 앱 단독으로
+        동일 방송 여부를 입증하지 못한다. 현재 OBS 활성 출력·공식
+        Live2D 장면을 확인하고 운영자가 과거 방송 동일성을 확인해야 한다.
+        시도/불명 항목은 이동하지 않으며 새 송출을 시작하지 않는다.
+        """
+        if operator_approved is not True or same_broadcast_confirmed is not True:
+            raise PermissionError("이전 발화 수동 인계에는 운영자 이중 확인이 필요합니다.")
+        if self._worker is None or self._stop.is_set() or self._outbox is None:
+            raise RuntimeError("Windows 실제 방송 음성 작업자가 실행 중이어야 합니다.")
+        obs = OfficialObsWebsocket(self._obs_password, port=self._obs_port)
+        status = obs.connect()
+        self._stream_lease.check(obs)
+        if not status.streaming:
+            raise RuntimeError("현재 OBS 송출이 종료되어 과거 발화를 인계하지 않습니다.")
+        media = obs.read_scene_media_path()
+        if not active_official_window_capture(media.capture_sources):
+            raise RuntimeError("현재 OBS 장면에서 공식 Live2D 창 캡처가 확인되지 않습니다.")
+        if self._stop.is_set():
+            raise RuntimeError("운영자 중지 후 과거 음성 인계 금지")
+        count = self._outbox.adopt_previous_pending(
+            old_session_id, self._session_id,
+            operator_approved=True, same_broadcast_confirmed=True)
+        if count:
+            self._submitted += count
+            self._outbox_wakeup.set()
+            self._publish("과거대기수동인계", count)
+        return count
+
     def _publish(self, kind: str, value: object) -> None:
         if self._on_event is not None:
             self._on_event(kind, value)
