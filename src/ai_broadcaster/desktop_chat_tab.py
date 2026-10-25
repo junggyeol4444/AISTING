@@ -11,7 +11,7 @@ import threading
 import math
 import time
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog
 
@@ -108,6 +108,9 @@ class LocalChatTab(ttk.Frame):
         # 즉시 별도 SQLite에 영속 기록한다. GUI/AI 전송은 복구 순서 뒤.
         self._recovery_session = None
         self._recovery_arrival_times: dict[int, float] = {}
+        # 동일 프로세스의 실제 파싱 시각만 별도 보관한다. SQLite의
+        # 기존 채팅 본문·스키마를 바꾸지 않고 재시작 뒤 시각은 미확인.
+        self._recovery_parsed_times: dict[int, float] = {}
         # 네트워크 읽기와 AI 큐 등록을 분리해 모델 적체 중에도 모든
         # 신규 채팅을 SQLite에 먼저 보존한다. 완료/깨움은 세션마다 초기화.
         self._recovery_wakeup = threading.Event()
@@ -882,6 +885,7 @@ class LocalChatTab(ttk.Frame):
             self._twitch_ai_inbox = inbox
             self._recovery_session = session
             self._recovery_arrival_times = {}
+            self._recovery_parsed_times = {}
             self._recovery_wakeup.clear()
             self._recovery_reader_done.clear()
         # The user's real Windows receiver gets fresh private diagnostics on
@@ -987,14 +991,23 @@ class LocalChatTab(ttk.Frame):
                                     accepted_at = self._recovery_arrival_times.pop(
                                         pending.sequence, None)
                                     deferred_this_run = accepted_at is not None
+                                    parsed_at = self._recovery_parsed_times.pop(
+                                        pending.sequence, None)
                                     if accepted_at is None:
                                         accepted_at = time.monotonic()
+                                    # 새로 들어온 채팅의 실제 파싱 시각을
+                                    # 원래 메시지 필드에 복원한다. 재부팅 전
+                                    # 시각은 다른 monotonic 기준이므로 재사용 금지.
+                                    live_message = (
+                                        replace(pending.message,
+                                                parsed_at_monotonic=parsed_at)
+                                        if parsed_at is not None else pending.message)
                                     arrival_times.put(accepted_at)
                                     self._results.put(("twitch_scoped", (
                                         session, "twitch_chat", _ReaderTimestampedChat(
-                                            pending.message, accepted_at,
+                                            live_message, accepted_at,
                                             ai_prequeued=True))))
-                                    inbox.put(pending)
+                                    inbox.put(PendingChat(pending.sequence, live_message))
                                     if deferred_this_run:
                                         session.note_deferred_sqlite_chat_enqueued(
                                             pending.message.platform)
@@ -1035,6 +1048,7 @@ class LocalChatTab(ttk.Frame):
                 if self._recovery_session is session:
                     self._recovery_session = None
                     self._recovery_arrival_times.clear()
+                    self._recovery_parsed_times.clear()
             # 일반 reader 종료에서는 위 SQLite 전량 등록 뒤에만
             # AI 종료 표식을 넣고, Stop에서는 기존 단일 작업자가
             # 잔여 메시지를 처리하지 않고 종료하도록 한다.
@@ -1073,6 +1087,11 @@ class LocalChatTab(ttk.Frame):
                         if seq is not None:
                             self._recovery_arrival_times[seq] = (
                                 stamped_item.reader_received_at)
+                            parsed_at = getattr(item, "parsed_at_monotonic", None)
+                            if (type(parsed_at) in (int, float)
+                                    and math.isfinite(parsed_at)
+                                    and 0 < parsed_at <= stamped_item.reader_received_at):
+                                self._recovery_parsed_times[seq] = parsed_at
                             # 복구 완료 이후에도 계속 같은 내구 경로를
                             # 사용하므로 AI 병목이 소켓 읽기를 중단하지 않는다.
                             self._recovery_wakeup.set()
@@ -1467,6 +1486,9 @@ class LocalChatTab(ttk.Frame):
                 for code, stats in self._live_queue_block_by_platform.items()
             }
         wait_snapshots = self._live_queue_wait_tracker.snapshot()
+        durable = getattr(self, "_twitch_chat_spool", None)
+        disk_counts = (durable.pending_by_platform_snapshot()
+                       if durable is not None else {})
         lines = []
         for code, state in snapshot.items():
             block_stats = block_snapshots.get(code, {
@@ -1563,6 +1585,7 @@ class LocalChatTab(ttk.Frame):
                 f" / 최장 {block_stats['최장초']:.2f}초"
                 f" / 3초 초과 {block_stats['3초초과']}건"
                 f" / 현재 수신큐 대기 {wait_stats['진행중']}건"
+                f" / 디스크 미처리 {disk_counts.get(code, 0)}건"
                 f" / 진행 최장 {wait_stats['진행최장초']:.2f}초"
                 f" / 중단 대기 {wait_stats['중단']}건"
                 f" / 중단 누적 {wait_stats['중단누적초']:.2f}초"
