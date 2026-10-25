@@ -796,8 +796,11 @@ class LocalChatTab(ttk.Frame):
         # 누락된 척 연결하지 않고 원래 사용자 설정/기억도 건드리지 않는다.
         try:
             durable = DurablePublicChatQueue()
+            durable.acquire_exclusive_consumer()
             recovery_snapshot = durable.recovery_snapshot(session._channels)
         except Exception as exc:
+            if "durable" in locals():
+                durable.release_exclusive_consumer()
             messagebox.showerror(
                 "채팅 복구 준비 실패",
                 "미처리 채팅 저장소를 열거나 복구할 수 없습니다. "
@@ -1275,6 +1278,10 @@ class LocalChatTab(ttk.Frame):
         # _poll discards it after a restart instead of contaminating the new
         # connection's FIFO, counts or persona.
         self._twitch_session = None
+        if (not self._twitch_active_workers
+                and self._twitch_chat_spool is not None):
+            self._twitch_chat_spool.release_exclusive_consumer()
+            self._twitch_chat_spool = None
         self._platform_health_status.set("플랫폼별 수신 종료 · 시청자 무누락 여부 미확인")
         self._twitch_reader_finished = False
         if getattr(self, "_twitch_start", None) is not None:
@@ -1490,6 +1497,10 @@ class LocalChatTab(ttk.Frame):
                     workers = getattr(self, "_twitch_active_workers", None)
                     if workers is not None:
                         workers.discard(payload)
+                    if (not workers and self._twitch_session is None
+                            and self._twitch_chat_spool is not None):
+                        self._twitch_chat_spool.release_exclusive_consumer()
+                        self._twitch_chat_spool = None
                     continue
                 if kind == "twitch_scoped":
                     source_session, kind, payload = payload
@@ -1799,6 +1810,10 @@ class LocalChatTab(ttk.Frame):
                             # Only now have ALL accepted FIFO replies arrived.
                             self._twitch_session = None
                             self._twitch_reader_finished = False
+                            if (not self._twitch_active_workers
+                                    and self._twitch_chat_spool is not None):
+                                self._twitch_chat_spool.release_exclusive_consumer()
+                                self._twitch_chat_spool = None
                             self._twitch_start.configure(state="normal")
                             self._twitch_end.configure(state="disabled")
                             error = getattr(self, "_twitch_reader_error", None)
