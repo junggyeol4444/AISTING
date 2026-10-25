@@ -89,6 +89,7 @@ class LocalChatRunner:
         settings_path: Path = DEFAULT_FILE,
         memory_path: Path = DEFAULT_MEMORY_FILE,
         use_committed_gui_character: bool = True,
+        broadcast_facts: str = "",
     ) -> None:
         config = LocalModelConfig(model=model, port=port)
         self.memory = ConversationMemory(path=memory_path)
@@ -98,7 +99,9 @@ class LocalChatRunner:
             settings["persona"]["name"] = confirmed["name"]
             settings["persona"]["traits"] = confirmed["character"]
             settings["persona"]["speech_style"] = confirmed["style"]
-        self.generator = LocalOllamaReplyGenerator(config, settings, memory=self.memory)
+        self.generator = LocalOllamaReplyGenerator(
+            config, settings, memory=self.memory,
+            broadcast_facts=broadcast_facts)
 
     def reply(self, text: str, *, sender: str,
               on_stream_chunk: Callable[[str], None] | None = None,
