@@ -399,6 +399,17 @@ class ObsStatusTab(ttk.Frame):
             words, operator_approved=True, duration=8)
         return observation.verified_signal is True
 
+    def _approved_chat_alive(self) -> bool:
+        """예약이 실제로 소유한 기존 4플랫폼 수신 세션의 상태만 확인."""
+        session=self._owned_chat_session
+        chat=self._chat_tab
+        if (session is None or chat is None
+                or chat._twitch_session is not session
+                or chat._twitch_reader_finished):
+            return False
+        stopped=getattr(session, "_stop", None)
+        return stopped is not None and not stopped.is_set()
+
     def _request_live_chat_start(self, token: object) -> bool:
         reply=queue.Queue(maxsize=1)
         self._events.put(("live_chat_start_request", (token, reply)))
@@ -528,6 +539,8 @@ class ObsStatusTab(ttk.Frame):
                     if auto_chat else None),
                 end_live_chat=(self._request_live_chat_stop if auto_chat else None),
                 chat_approved=auto_chat,
+                chat_alive=(self._approved_chat_alive if auto_chat else None),
+                chat_recovery_limit=3,
                 occurrence_claim=journal.claim,
                 occurrence_event=journal.record_event,
                 on_pre_notice=pre_callback,
@@ -776,6 +789,7 @@ class ObsStatusTab(ttk.Frame):
                 " · 공지 시작 " + snap.start_notice +
                 " / 종료 " + snap.end_notice +
                 " · 채팅/AI " + snap.live_chat +
+                " · 채팅 복구 " + snap.chat_recovery +
                 " · " + snap.stream_health +
                 (" · " + snap.journal_error if snap.journal_error else ""))
         self.after(150,self._poll)
