@@ -915,6 +915,10 @@ class ObsStatusTab(ttk.Frame):
                                     "occurrence": snapshot.occurrence,
                                     "topics": content_settings[0],
                                     "interval_seconds": content_settings[1],
+                                    "broadcast_alive": lambda: (
+                                        self._approved_scheduler is not None
+                                        and self._approved_scheduler.snapshot().owns_stream
+                                        and self._approved_scheduler.snapshot().start_confirmed),
                                 }
                             else:
                                 self._chat_tab._scheduled_content_plan = None
