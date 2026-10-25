@@ -263,7 +263,7 @@ class AistingApp(tk.Tk):
         settings = ttk.Frame(tabs)
         rehearsal = ttk.Frame(tabs, padding=12)
         self._real_chat_tab = LocalChatTab(tabs, activity=self._speech_activity)
-        self._obs_status_tab = ObsStatusTab(tabs)
+        self._obs_status_tab = ObsStatusTab(tabs, chat_tab=self._real_chat_tab)
         avatar = ttk.Frame(tabs, padding=12)
         voice_test = ttk.Frame(tabs, padding=12)
         local_operation = ttk.Frame(tabs, padding=12)
