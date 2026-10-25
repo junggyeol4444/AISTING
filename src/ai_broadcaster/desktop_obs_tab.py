@@ -140,7 +140,7 @@ class ObsStatusTab(ttk.Frame):
             if not claims:
                 body = "아직 로컬 방송 시작 시도 기록이 없습니다."
             else:
-                body = "\\n".join(
+                body = "\n".join(
                     occurrence + " · " + (
                         latest[occurrence][0]
                         if occurrence in latest
@@ -148,7 +148,7 @@ class ObsStatusTab(ttk.Frame):
                     ) for occurrence, _ in claims)
             messagebox.showinfo(
                 "방송 시작·종료 기록 (최근 20회)",
-                body + "\\n\\n이 기록은 실제 플랫폼 송출/시청자 수신 증명이 아닙니다.",
+                body + "\n\n이 기록은 실제 플랫폼 송출/시청자 수신 증명이 아닙니다.",
                 parent=self)
         except Exception:
             messagebox.showwarning(
