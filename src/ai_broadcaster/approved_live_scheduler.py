@@ -68,6 +68,7 @@ class ApprovedLiveScheduler:
         chat_approved: bool = False,
         client_factory: Callable[..., OfficialObsWebsocket] = OfficialObsWebsocket,
         clock: Callable[[], float] = time.monotonic,
+        occurrence_claim: Callable[[str], bool] | None = None,
     ) -> None:
         if operator_approved is not True or rights_confirmed is not True:
             raise PermissionError("운영자 방송 자동 시작/종료와 한국어 음성 권리 승인이 필요합니다.")
@@ -122,6 +123,9 @@ class ApprovedLiveScheduler:
         self._deliver_closing = deliver_closing
         self._client_factory = client_factory
         self._clock = clock
+        if occurrence_claim is not None and not callable(occurrence_claim):
+            raise ValueError("방송 슬롯 영구 장부 연결 함수가 올바르지 않습니다.")
+        self._occurrence_claim = occurrence_claim
         self._lock = threading.RLock()
         self._stop = threading.Event()
         self._used: set[str] = set()
@@ -184,6 +188,26 @@ class ApprovedLiveScheduler:
     def _start(self, occurrence: str, now: float) -> None:
         # Consume the slot BEFORE any external side effect; a failed attempt
         # never starts another stream automatically in the same minute.
+        # 메모리 중복 방지 외에 실제 GUI가 주입한 SQLite 장부에서
+        # 시작 시각을 먼저 원자적으로 청구한다. 정상 커밋 뒤에만
+        # OBS를 건드리며 재시작/다른 앱 창의 같은 분 중복 실행을 막는다.
+        if self._occurrence_claim is not None:
+            try:
+                if self._occurrence_claim(occurrence) is not True:
+                    self._used.add(occurrence)
+                    self._set(
+                        "예약 승인됨",
+                        "이번 KST 슬롯은 이전 실행 또는 다른 창에서 이미 "
+                        "시도했습니다. 재송출하지 않고 다음 등록 일정을 기다립니다.")
+                    return
+            except Exception:
+                # 기록 불능 때 방송을 먼저 시작하면 중복송출을 피할 수 없다.
+                self._set(
+                    "방송 장부 확인 실패",
+                    "영구 슬롯 예약을 확정하지 못해 송출을 차단했습니다. "
+                    "로컬 장부와 OBS 상태를 수동으로 확인하세요.")
+                self._stop.set()
+                return
         self._used.add(occurrence)
         self._occurrence = occurrence
         # 다음 주간 슬롯의 결과는 이전 방송과 분리하고
