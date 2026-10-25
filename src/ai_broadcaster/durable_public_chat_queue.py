@@ -397,3 +397,18 @@ class DurablePublicChatQueue:
         """
         with self._lock:
             return dict(self._pending_by_platform)
+
+    def pending_capacity_snapshot(self) -> dict[str, object]:
+        """SQLite 보호 한도 접근을 GUI에서 사전에 관찰한다.
+
+        80% 이상이면 운영자에게 적체 위험을 알리기 위한 수치만
+        제공한다. 실제 수신을 임의로 중지·삭제하거나 메시지를 건너뛰지
+        않으며 보호 한도와 사용자 설정을 변경하지 않는다.
+        """
+        with self._lock:
+            return {
+                "미처리": self._pending,
+                "보호한도": _MAX_RECORDS,
+                "사용률": self._pending / _MAX_RECORDS,
+                "플랫폼별": dict(self._pending_by_platform),
+            }
