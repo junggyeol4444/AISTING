@@ -23,7 +23,8 @@ from .avatar_animation import SpeechActivity
 from .twitch_readonly import TwitchReadOnlySession, TwitchReadError
 from .multiplatform_readonly import ChzzkReadOnlySession, SoopReadOnlySession, YouTubeReadOnlySession
 from .multi_platform_session import MultiPlatformReadOnlySession
-from .live_runtime_metrics import LiveLatencyMetrics, LiveParseReplyMetrics
+from .live_runtime_metrics import (LiveLatencyMetrics, LiveParseReplyMetrics,
+                                   LiveFirstWavLatencyMetrics)
 from .live_queue_wait_observation import LiveQueueWaitTracker
 from .offline_settings import load_settings
 
@@ -107,6 +108,7 @@ class LocalChatTab(ttk.Frame):
         # 본문/닉네임/계정 정보는 별도 저장하지 않으며 시청자 E2E와 다르다.
         self._platform_live_metrics: dict[str, LiveLatencyMetrics] = {}
         self._platform_parse_reply_metrics: dict[str, LiveParseReplyMetrics] = {}
+        self._platform_first_wav_metrics: dict[str, LiveFirstWavLatencyMetrics] = {}
         # 로컬 수신큐 백프레셔와 AI·GUI 적체의 실측값만 메모리에 보관한다.
         self._live_queue_block_events = 0
         self._live_queue_block_total_seconds = 0.0
@@ -807,6 +809,10 @@ class LocalChatTab(ttk.Frame):
         self._platform_parse_reply_metrics = {
             name: LiveParseReplyMetrics() for name in session._channels
         }
+        # 실제 공식 WAV 수신 이벤트만 기록. 채팅별 발화 인과성은 미확인.
+        self._platform_first_wav_metrics = {
+            name: LiveFirstWavLatencyMetrics() for name in session._channels
+        }
         with self._live_ingress_lock:
             self._live_queue_block_events = 0
             self._live_queue_block_total_seconds = 0.0
@@ -1006,6 +1012,7 @@ class LocalChatTab(ttk.Frame):
                             # 최대 3초 관측한다. 이전 발화와의 구분은 불가.
                             if first_wav_receipt_mode:
                                 from .original_plan_frontend import send_to_native_live2d_session_with_first_wav
+                                wav_request_started_at = time.monotonic()
                                 receipt = send_to_native_live2d_session_with_first_wav(
                                     chat.text, operator_approved=True,
                                     wait_seconds=3.0)
@@ -1023,6 +1030,9 @@ class LocalChatTab(ttk.Frame):
                     except Exception as exc:
                         attempt_failed = True
                         report("twitch_ai_error", (chat, type(exc).__name__))
+                        if fast_official_mode and first_wav_receipt_mode:
+                            report("twitch_ai_first_wav_error",
+                                   getattr(chat, "platform", "twitch"))
                     else:
                         if fast_official_mode:
                             # 텍스트 전송 성공과 서버 WAV 관측을 별도 집계.
@@ -1031,6 +1041,14 @@ class LocalChatTab(ttk.Frame):
                             report("twitch_live2d_forwarded", chat)
                             if first_wav_receipt_mode:
                                 report("twitch_live2d_first_wav", (chat, receipt))
+                                # 파싱부터 공식 첫 WAV *후보* 수신까지의
+                                # 실제 단조시각을 연결한다. 동일 발화 증거 아님.
+                                report("twitch_ai_first_wav_timing", (
+                                    getattr(chat, "platform", "twitch"),
+                                    getattr(chat, "parsed_at_monotonic", None),
+                                    accepted_at, wav_request_started_at,
+                                    receipt.first_wav_seconds,
+                                    receipt.wav_received))
                         else:
                             attempt_failed = not bool(evidence.verified_signal)
                             report("twitch_live2d_ok", (chat, evidence))
@@ -1470,6 +1488,27 @@ class LocalChatTab(ttk.Frame):
                             + "건 · 미관측 "
                             + str(self._twitch_official_wav_unobserved)
                             + "건 · 실제 발화·립싱크·OBS 미검증")
+                    elif kind == "twitch_ai_first_wav_timing":
+                        code, parsed, accepted, started, delay, received = payload
+                        wav_meter = getattr(
+                            self, "_platform_first_wav_metrics", {}).get(code)
+                        if wav_meter is not None:
+                            wav_meter.observe(parsed, accepted, started, delay, received)
+                            state = wav_meter.snapshot()
+                            if state["관찰시도"] <= 3 or state["관찰시도"] % 25 == 0:
+                                p95 = state["파싱부터후보p95초"]
+                                self._append(
+                                    "[" + code + " 공식 WAV 지연 후보] "
+                                    + "관찰 " + str(state["관찰시도"]) + "건 / WAV 후보 "
+                                    + str(state["WAV수신후보"]) + "건 / 미관측 "
+                                    + str(state["WAV미관측"]) + "건 / 파싱→첫 WAV 후보 p95 "
+                                    + (f"{p95:.3f}초" if p95 is not None else "미측정")
+                                    + " · 과거 발화 혼입 가능, Cubism·OBS·시청자 미검증")
+                    elif kind == "twitch_ai_first_wav_error":
+                        wav_meter = getattr(
+                            self, "_platform_first_wav_metrics", {}).get(payload)
+                        if wav_meter is not None:
+                            wav_meter.error()
                     elif kind == "twitch_live2d_ok":
                         chat, evidence = payload
                         if evidence.verified_signal:
