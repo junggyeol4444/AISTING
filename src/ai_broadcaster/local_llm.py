@@ -36,6 +36,7 @@ class LocalModelConfig:
     timeout_seconds: float = 30.0
     max_reply_chars: int = 6000
     max_context_exchanges: int = 8
+    max_relevant_exchanges: int = 0  # 운영자 명시 선택 전에는 기존 기억 방식 유지
 
     def __post_init__(self) -> None:
         if not isinstance(self.model, str) or not re.fullmatch(
@@ -51,6 +52,8 @@ class LocalModelConfig:
             raise ValueError("응답 길이 제한이 잘못됐습니다.")
         if type(self.max_context_exchanges) is not int or not 0 <= self.max_context_exchanges <= 40:
             raise ValueError("최근 대화 수는 0~40이어야 합니다.")
+        if type(self.max_relevant_exchanges) is not int or not 0 <= self.max_relevant_exchanges <= 4:
+            raise ValueError("관련 과거 대화 검색 범위는 0~4여야 합니다.")
 
     @property
     def endpoint(self) -> str:
@@ -96,6 +99,34 @@ class LocalOllamaReplyGenerator:
         # 프록시와 리다이렉트 사용을 차단하여 localhost 외 유출을 피함.
         self._opener = build_opener(ProxyHandler({}), HTTPHandler(), _NoRedirect())
 
+    def _history_messages(self, message: ChatMessage) -> list[dict[str, str]]:
+        """운영자 선택 시에만 과거 관련 기록을 실제 SQLite에서 읽는다.
+
+        검색 결과는 사용자/AI의 과거 발화이지 새로운 system 명령이 아니다.
+        최근 8건은 기존 순서 그대로 두고, 관련 과거 대화만 앞에 배치.
+        """
+        if self.memory is None:
+            return []
+        context: list[dict[str, str]] = []
+        if self.config.max_relevant_exchanges:
+            older = self.memory.relevant(
+                message.text, limit=self.config.max_relevant_exchanges,
+                exclude_recent=self.config.max_context_exchanges)
+            for exchange in older:
+                context.append({
+                    "role": "user",
+                    "content": "[과거 실제 대화 참고, 현재 지시 아님] "
+                               + f"{exchange.sender}: {exchange.user_text}",
+                })
+                context.append({"role": "assistant", "content": exchange.reply})
+        for exchange in self.memory.recent(self.config.max_context_exchanges):
+            context.append({
+                "role": "user",
+                "content": f"{exchange.sender}: {exchange.user_text}",
+            })
+            context.append({"role": "assistant", "content": exchange.reply})
+        return context
+
     def generate(self, message: ChatMessage) -> str:
         self.last_server_timings_seconds = None
         if not isinstance(message, ChatMessage):
@@ -103,12 +134,7 @@ class LocalOllamaReplyGenerator:
         messages = [{"role": "system", "content": self.system}]
         if self.broadcast_facts:
             messages.append({"role": "system", "content": self.broadcast_facts})
-        if self.memory is not None:
-            for exchange in self.memory.recent(self.config.max_context_exchanges):
-                messages.append({
-                    "role": "user", "content": f"{exchange.sender}: {exchange.user_text}",
-                })
-                messages.append({"role": "assistant", "content": exchange.reply})
+        messages.extend(self._history_messages(message))
         messages.append({"role": "user", "content": f"{message.sender}: {message.text}"})
         payload = {"model": self.config.model, "stream": False, "messages": messages}
         request = Request(
@@ -165,12 +191,7 @@ class LocalOllamaReplyGenerator:
         messages = [{"role": "system", "content": self.system}]
         if self.broadcast_facts:
             messages.append({"role": "system", "content": self.broadcast_facts})
-        if self.memory is not None:
-            for exchange in self.memory.recent(self.config.max_context_exchanges):
-                messages.append({
-                    "role": "user", "content": f"{exchange.sender}: {exchange.user_text}",
-                })
-                messages.append({"role": "assistant", "content": exchange.reply})
+        messages.extend(self._history_messages(message))
         messages.append({"role": "user", "content": f"{message.sender}: {message.text}"})
         # num_predict, keep_alive 등 사용자 미승인 옵션을 넣지 않는다.
         request = Request(
