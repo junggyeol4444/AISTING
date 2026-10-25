@@ -6,6 +6,7 @@ Never start stream/record, post chats or clone/train any voice.
 """
 from __future__ import annotations
 
+import hashlib
 import math
 import tempfile
 import time
@@ -65,6 +66,10 @@ class RealVoiceObsResult:
     cubism_wav_mouth_candidate: bool = False
     obs_program_frame_observed: bool = False
     obs_program_capture_candidate: bool = False
+    # 실제 WAV가 OBS 입력에 재생되는 동안 캡처한 프로그램 화면의
+    # PNG 변화 후보. 입 움직임의 시각적 인과관계·송출 증명은 아님.
+    obs_program_frames_during_wav: int = 0
+    obs_program_motion_near_wav_candidate: bool = False
     same_wav_cubism_obs_candidate: bool = False
     # 서로 다른 OS/브라우저 단조시계를 대입하지 않고
     # 실제 IPC 시작 전후 시각 범위와 WebView 상대 시간을 사용한 구간 후보.
@@ -130,11 +135,13 @@ def verify_gpt_sovits_to_obs(
         # 실제 사용자 장면을 바꾸거나 OBS 캡처 소스를 생성하지 않는다.
         # 활성 캡처 경로가 없으면 실제 영상 결합의 후보로도 진행하지 않는다.
         media_path = obs.read_scene_media_path()
-        obs_capture_candidate = bool(
-            media_path.capture_sources and any(
-                "비활성" not in name for name in media_path.capture_sources))
+        from .obs_live2d_frame_link import active_official_window_capture
+        obs_capture_candidate = active_official_window_capture(
+            media_path.capture_sources)
         if not obs_capture_candidate:
-            raise RuntimeError("OBS 현재 프로그램 장면에 활성 화면 캡처 후보가 없습니다.")
+            raise RuntimeError(
+                "OBS 현재 장면에 실제 공식 AISTING Live2D 창 제목과 일치하는 "
+                "활성 창 캡처가 없습니다. 임의 모니터·게임·다른 창은 증거가 아닙니다.")
     kind_list = client.get_input_kind_list(False).input_kinds
     if "ffmpeg_source" not in kind_list:
         raise RuntimeError("실제 OBS 미디어 입력이 지원되지 않습니다.")
@@ -179,6 +186,7 @@ def verify_gpt_sovits_to_obs(
     mouth_start_call_begin_at = None
     mouth_start_call_end_at = None
     program_frame_observed = False
+    program_frames: list[tuple[float, str, str]] = []
 
     def confirm_owned_input():
         # 같은 이름이라도 다른 UUID로 교체된 입력은 절대로 재생·삭제하지 않는다.
@@ -273,12 +281,25 @@ def verify_gpt_sovits_to_obs(
                     input_name, "OBS_WEBSOCKET_MEDIA_INPUT_ACTION_RESTART")
                 restart_returned_at = time.monotonic()
 
+            def capture_actual_program_frame():
+                # 승인된 실제 OBS의 현재 프로그램 PNG를 메모리에서만
+                # SHA256으로 변환. PNG 원본·개인 화면을 기록/저장하지 않는다.
+                frame = obs.read_current_scene_frame(operator_approved=True)
+                program_frames.append((
+                    time.monotonic(), frame.scene,
+                    hashlib.sha256(frame.png_data).hexdigest(),
+                ))
+
+            if couple_live2d:
+                capture_actual_program_frame()
             meter_probe_started_at = time.monotonic()
             try:
                 meters = obs.read_actual_audio_meters(
                     operator_approved=True, input_name=input_name,
                     duration=meter_duration,
-                    start_action=start_exact_created_media_after_meter_subscription)
+                    start_action=start_exact_created_media_after_meter_subscription,
+                    **({"program_frame_probe": capture_actual_program_frame}
+                       if couple_live2d else {}))
             finally:
                 if mouth_token is not None:
                     # 오디오 미터 성공/예외와 무관하게 원래 Cubism getRms를 복원.
@@ -287,10 +308,10 @@ def verify_gpt_sovits_to_obs(
                     mouth_token = None
             meter_probe_ended_at = time.monotonic()
             if couple_live2d:
-                # OBS가 내놓은 실제 프로그램 프레임만 관찰한다.
-                # 한 장의 PNG가 입의 영상 인과성이나 방송 인코딩 증거는 아님.
-                obs.read_current_scene_frame(operator_approved=True)
-                program_frame_observed = True
+                # 실제 WAV 전/중/후 프레임: 입술의 영상 인과성·OBS
+                # 인코딩·시청자 수신을 증명하지 않는 약한 변화 후보.
+                capture_actual_program_frame()
+                program_frame_observed = len(program_frames) >= 3
             # OBS 서버는 미터 이벤트를 비동기로 전달한다. 재생 명령을
             # 보내기 이전의 양성 신호를 이번 WAV의 증거로 세지 않는다.
             # 늦게 도착한 실제 양성 시각은 추정하지 않고 별도 구분한다.
@@ -360,6 +381,12 @@ def verify_gpt_sovits_to_obs(
                     mouth_start_call_end_at + mouth_last / 1000 + 0.5
                     for moment in during_wav
                 ))
+            from .obs_live2d_frame_link import program_motion_near_audio
+            observed_program_motion = bool(
+                couple_live2d and valid_restart_times
+                and program_motion_near_audio(
+                    tuple(program_frames), after_restart,
+                    restart_at=restart_requested_at, wav_seconds=wav_duration))
             cubism_driver_valid = bool(
                 mouth_summary and mouth_summary.get("reason")
                 in ("끝", "종료요청")
@@ -422,9 +449,13 @@ def verify_gpt_sovits_to_obs(
                 cubism_wav_mouth_candidate=cubism_driver_valid,
                 obs_program_frame_observed=program_frame_observed,
                 obs_program_capture_candidate=obs_capture_candidate,
+                obs_program_frames_during_wav=(
+                    max(0, len(program_frames) - 2) if couple_live2d else 0),
+                obs_program_motion_near_wav_candidate=observed_program_motion,
                 same_wav_cubism_obs_candidate=bool(
                     couple_live2d and obs_capture_candidate
-                    and program_frame_observed and meters.usable_output_candidate
+                    and program_frame_observed and observed_program_motion
+                    and meters.usable_output_candidate
                     and cubism_driver_valid and mouth_obs_overlap
                     and during_wav and similarity is not None and similarity >= 0.8
                     and mapped_count >= 8),
