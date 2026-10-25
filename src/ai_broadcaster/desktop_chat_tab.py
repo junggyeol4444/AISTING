@@ -960,6 +960,12 @@ class LocalChatTab(ttk.Frame):
                                 if spool is None:
                                     raise RuntimeError("미처리 채팅 보존 큐가 없습니다.")
                                 sequence = spool.append(item)
+                                if sequence is None:
+                                    # 이미 SQLite에 보류 중인 동일 서버 ID의
+                                    # 재전송만 기존 미처리 순서에 맡긴다.
+                                    # 내용이 같은 신규 메시지는 항상 등록된다.
+                                    accepted = True
+                                    return True
                                 arrivals.put(stamped_item.reader_received_at)
                                 self._results.put(("twitch_scoped", (
                                     session, "twitch_chat", _ReaderTimestampedChat(
