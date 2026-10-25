@@ -130,6 +130,27 @@ class DurablePublicChatQueue:
                     "ON p.platform=first.platform "
                     "AND p.sequence=first.first_sequence").fetchall()
             }
+        # 다른 방송 채널의 장기 미처리 메시지를 현재 채널 적체로
+        # 잘못 표시하지 않도록 채널별 실제 SQLite 잔여 건수를 복원한다.
+        # 새 표나 기존 채팅 열은 만들거나 변경하지 않는다.
+        # DB 연결은 위 with 블록에서 닫혔으므로 별도 읽기 연결 사용.
+        with self._connection() as db:
+            self._pending_by_channel = {
+                (platform, channel): int(count)
+                for platform, channel, count in db.execute(
+                    "SELECT platform,channel,COUNT(*) FROM pending_public_chat "
+                    "GROUP BY platform,channel").fetchall()
+            }
+            self._oldest_pending_by_channel = {
+                (platform, channel): (int(sequence), str(created_at))
+                for platform, channel, sequence, created_at in db.execute(
+                    "SELECT p.platform,p.channel,p.sequence,p.created_at "
+                    "FROM pending_public_chat AS p JOIN "
+                    "(SELECT platform,channel,MIN(sequence) AS first_sequence "
+                    "FROM pending_public_chat GROUP BY platform,channel) AS first "
+                    "ON p.platform=first.platform AND p.channel=first.channel "
+                    "AND p.sequence=first.first_sequence").fetchall()
+            }
         # AI 완료와 새 채팅의 최근 처리율은 메모리에만 유지한다.
         # 이전 실행의 측정치를 만들어내지 않고 새 프로세스에서 다시 센다.
         self._rate_started_at = time.monotonic()
@@ -269,6 +290,12 @@ class DurablePublicChatQueue:
                 if platform not in self._oldest_pending:
                     self._oldest_pending[platform] = (
                         inserted, str(inserted_created_at))
+                channel_key = (platform, fields[1])
+                self._pending_by_channel[channel_key] = (
+                    self._pending_by_channel.get(channel_key, 0) + 1)
+                if channel_key not in self._oldest_pending_by_channel:
+                    self._oldest_pending_by_channel[channel_key] = (
+                        inserted, str(inserted_created_at))
             return inserted
 
     def confirm(self, sequence: int) -> bool:
@@ -278,7 +305,9 @@ class DurablePublicChatQueue:
         with self._lock:
             removed = False
             was_oldest = False
+            was_channel_oldest = False
             next_oldest = None
+            next_channel_oldest = None
             with self._connection() as db:
                 row = db.execute(
                     "SELECT platform,channel,event_id FROM pending_public_chat "
@@ -286,6 +315,10 @@ class DurablePublicChatQueue:
                 if row is not None:
                     was_oldest = (
                         self._oldest_pending.get(row[0], (None,))[0] == sequence)
+                    channel_key = (row[0], row[1])
+                    was_channel_oldest = (
+                        self._oldest_pending_by_channel.get(
+                            channel_key, (None,))[0] == sequence)
                     if row[2] is not None:
                         db.execute(
                             "INSERT OR IGNORE INTO confirmed_server_events "
@@ -298,6 +331,12 @@ class DurablePublicChatQueue:
                             "SELECT sequence,created_at FROM pending_public_chat "
                             "WHERE platform=? ORDER BY sequence LIMIT 1",
                             (row[0],)).fetchone()
+                    if removed and was_channel_oldest:
+                        next_channel_oldest = db.execute(
+                            "SELECT sequence,created_at FROM pending_public_chat "
+                            "WHERE platform=? AND channel=? "
+                            "ORDER BY sequence LIMIT 1",
+                            (row[0], row[1])).fetchone()
             if removed:
                 self._pending = max(0, self._pending - 1)
                 platform = row[0]
@@ -310,6 +349,20 @@ class DurablePublicChatQueue:
                     else:
                         self._oldest_pending[platform] = (
                             int(next_oldest[0]), str(next_oldest[1]))
+                channel_key = (row[0], row[1])
+                remaining = max(
+                    0, self._pending_by_channel.get(channel_key, 0) - 1)
+                if remaining:
+                    self._pending_by_channel[channel_key] = remaining
+                else:
+                    self._pending_by_channel.pop(channel_key, None)
+                if was_channel_oldest:
+                    if next_channel_oldest is None:
+                        self._oldest_pending_by_channel.pop(channel_key, None)
+                    else:
+                        self._oldest_pending_by_channel[channel_key] = (
+                            int(next_channel_oldest[0]),
+                            str(next_channel_oldest[1]))
             return removed
 
 
@@ -445,6 +498,41 @@ class DurablePublicChatQueue:
         with self._lock:
             return dict(self._pending_by_platform)
 
+    def pending_selected_channels_snapshot(
+            self, channels: dict[str, str]) -> dict[str, dict[str, object]]:
+        """현재 운영자가 선택한 방송 채널의 실제 미처리만 조회한다.
+
+        다른 채널의 미처리 자료는 디스크에 그대로 보존한다. GUI는
+        SQLite 파일을 열지 않고 성공 커밋 뒤 갱신된 메모리만 읽는다.
+        시청자에게 전달됐는지 또는 서버에서 누락됐는지는 증명하지 않는다.
+        """
+        if (type(channels) is not dict or not channels
+                or any(code not in ("twitch", "chzzk", "soop", "youtube")
+                       or type(channel) is not str or not channel.strip()
+                       for code, channel in channels.items())):
+            raise ValueError("운영 중인 플랫폼·채널 선택이 올바르지 않습니다.")
+        with self._lock:
+            utc_now = datetime.now(timezone.utc)
+            result = {}
+            for code, channel in channels.items():
+                key = (code, channel)
+                oldest = self._oldest_pending_by_channel.get(key)
+                age = None
+                if oldest is not None:
+                    try:
+                        recorded = datetime.strptime(
+                            oldest[1], "%Y-%m-%d %H:%M:%S"
+                        ).replace(tzinfo=timezone.utc)
+                        age = max(0.0, (utc_now - recorded).total_seconds())
+                    except (TypeError, ValueError, OverflowError):
+                        pass
+                result[code] = {
+                    "미처리": self._pending_by_channel.get(key, 0),
+                    "최장미처리초": age,
+                    "최초순번": oldest[0] if oldest is not None else None,
+                }
+            return result
+
     def pending_capacity_snapshot(self) -> dict[str, object]:
         """SQLite 보호 한도 접근을 GUI에서 사전에 관찰한다.
 
@@ -511,9 +599,22 @@ class DurablePublicChatQueue:
                         pending / completed_rate if completed_rate > 0
                         else None),
                 }
+            total_ingress = sum(
+                len(self._recent_ingress[code])
+                for code in ("twitch", "chzzk", "soop", "youtube"))
+            total_confirmed = sum(
+                len(self._recent_confirmed[code])
+                for code in ("twitch", "chzzk", "soop", "youtube"))
+            net_growth = (total_ingress - total_confirmed) / duration
+            # 10초 미만 표본이나 순감소·정체에는 허위 마감 시간을 표시하지 않는다.
+            projected_limit = (
+                max(0, _MAX_RECORDS - self._pending) / net_growth
+                if duration >= 10.0 and net_growth > 0.0 else None)
             return {
                 "측정창초": duration,
                 "실행중측정": True,
+                "전체순증초당": net_growth,
+                "추정보호한도도달초": projected_limit,
                 "플랫폼별": platforms,
                 "시각기준": "SQLite UTC 접수 시각·운영체제 현재 시각",
             }

@@ -1522,6 +1522,10 @@ class LocalChatTab(ttk.Frame):
         disk_snapshot = (durable.pending_capacity_snapshot()
                          if durable is not None else {})
         disk_counts = disk_snapshot.get("플랫폼별", {})
+        selected_disk = (
+            durable.pending_selected_channels_snapshot(session._channels)
+            if durable is not None
+            and isinstance(session, MultiPlatformReadOnlySession) else {})
         # SQLite 원본·채팅 본문을 읽지 않는 이번 실행의 처리율과
         # 미처리 최장 시간을 표시한다. 3초 목표 충족을 추정으로 대체하지 않는다.
         operating = (durable.pending_operating_snapshot()
@@ -1534,7 +1538,10 @@ class LocalChatTab(ttk.Frame):
             wait_stats = wait_snapshots.get(code, {
                 "진행중": 0, "진행최장초": 0.0, "중단": 0, "중단누적초": 0.0})
             flow = operating_platforms.get(code, {})
-            oldest_age = flow.get("최장미처리초")
+            selected = selected_disk.get(code)
+            oldest_age = (selected.get("최장미처리초")
+                          if selected is not None
+                          else flow.get("최장미처리초"))
             oldest_label = (
                 "최장 미처리 시간 미측정" if oldest_age is None
                 else f"최장 미처리 {oldest_age:.1f}초")
@@ -1632,7 +1639,9 @@ class LocalChatTab(ttk.Frame):
                 f" / 최장 {block_stats['최장초']:.2f}초"
                 f" / 3초 초과 {block_stats['3초초과']}건"
                 f" / 현재 수신큐 대기 {wait_stats['진행중']}건"
-                f" / 디스크 미처리 {disk_counts.get(code, 0)}건"
+                f" / 선택 채널 미처리 "
+                f"{selected.get('미처리', 0) if selected is not None else disk_counts.get(code, 0)}건"
+                f" / 플랫폼 전체 미처리 {disk_counts.get(code, 0)}건"
                 f" / {oldest_label}"
                 f" / 이번 실행 접수 {flow.get('최근접수', 0)}건"
                 f" / 완료 {flow.get('최근완료', 0)}건"
@@ -1658,6 +1667,11 @@ class LocalChatTab(ttk.Frame):
         durable_count = disk_snapshot.get("미처리")
         disk_limit = disk_snapshot.get("보호한도")
         disk_usage = disk_snapshot.get("사용률", 0.0)
+        projected_limit = operating.get("추정보호한도도달초")
+        projected_label = (
+            " / 전체 SQLite 한도 도달 시간 미추정"
+            if projected_limit is None
+            else f" / 현재 순증 기준 전체 SQLite 한도 예상 {projected_limit:.0f}초(보장 아님)")
         self._platform_health_status.set(
             "플랫폼별 실제 수신 진단 (무누락·24시간·시청자 지연 미검증):\n"
             + "\n".join(lines)
@@ -1670,6 +1684,9 @@ class LocalChatTab(ttk.Frame):
                if disk_limit is not None else "")
             + (" · 주의: 디스크 미처리 채팅 80% 이상 적체 · AI 처리 속도 확인"
                if disk_usage >= 0.8 else "")
+            + projected_label
+            + (" · 경고: 현재 증가율 지속 시 10분 내 SQLite 보호한도 도달 예상"
+               if projected_limit is not None and projected_limit <= 600 else "")
             + " · 재시작 복구 가능/장애 경계 중복 처리 가능"
             + f" / 수신 큐 대기 완료 {blocked_count}건"
             + f" / 누적 {blocked_total:.2f}초 / 최장 {blocked_max:.2f}초"
