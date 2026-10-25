@@ -314,6 +314,10 @@ class LocalChatTab(ttk.Frame):
         ).pack(anchor="w", before=model_row, pady=(3,1))
         ttk.Label(self, textvariable=self._approved_live_voice_status,
                   wraplength=600).pack(anchor="w", before=model_row)
+        ttk.Button(
+            self, text="실제 방송 한국어 발화 시도·중단·전달불명 기록 보기",
+            command=self._show_approved_voice_history,
+        ).pack(anchor="w", before=model_row, pady=(1,2))
         ttk.Checkbutton(
             self, text="이전 실제 OBS 방송 시작·종료 사실을 내 로컬 AI가 기억"
                  " (선택 시에만 · 기본 꺼짐 · 다른 캐릭터/채팅 원문 저장 없음)",
@@ -762,6 +766,25 @@ class LocalChatTab(ttk.Frame):
             self._results.put(("youtube_oauth_error", type(exc).__name__))
         else:
             self._results.put(("youtube_oauth_ok", token))
+
+    def _show_approved_voice_history(self) -> None:
+        """기존 방송 음성 장부의 해시 일부·상태만 표시. 방송 발신 없음."""
+        try:
+            from .approved_live_voice_journal import ApprovedLiveVoiceJournal
+            rows = ApprovedLiveVoiceJournal().recent(limit=30)
+            message = ("기록 없음" if not rows else "\n".join(
+                f"{stamp} · {state} · 발화 {key}"
+                for key, state, stamp in rows))
+        except Exception as exc:
+            messagebox.showwarning(
+                "방송 음성 기록 조회",
+                "로컬 발화 장부를 열 수 없습니다 (" + type(exc).__name__ + ")",
+                parent=self)
+            return
+        messagebox.showinfo(
+            "한국어 GPT-SoVITS·Cubism·OBS 발화 기록",
+            message + "\n\n※ 재생요청완료는 실제 시청자 수신 증명이 아닙니다. "
+            "시도/불명 발화는 자동 재생하지 않습니다.", parent=self)
 
     def _start_twitch(self, *, scheduled_approval: object | None = None) -> None:
         """사용자 버튼 또는 사용자 승인된 같은 방송의 단발성 채팅 연결."""
@@ -2167,6 +2190,10 @@ class LocalChatTab(ttk.Frame):
                             self._approved_live_voice_status.set(
                                 f"실제 음성·Cubism·OBS 발화 구간 {value.segments_completed}개 "
                                 "재생 요청 완료 · 시청자 수신 미확인")
+                        elif event == "발화중복차단":
+                            self._approved_live_voice_status.set(
+                                "기존 서버 채팅 이벤트 음성 재전송 차단 · "
+                                "과거 시도/전달 불명 상태 보존 · " + str(value))
                         elif event == "발화오류":
                             self._approved_live_voice_status.set(
                                 "실방송 음성 연결 중단 (" + str(value) +
@@ -2288,7 +2315,11 @@ class LocalChatTab(ttk.Frame):
                         live_voice = self._approved_live_voice_output
                         if live_voice is not None:
                             try:
-                                count = live_voice.enqueue(result.reply)
+                                count = live_voice.enqueue(
+                                    result.reply,
+                                    platform=getattr(chat, "platform", "twitch"),
+                                    channel=getattr(chat, "channel", "직접선택"),
+                                    event_id=getattr(chat, "event_id", None))
                             except (ValueError, RuntimeError) as exc:
                                 self._approved_live_voice_status.set(
                                     "실제 한국어 음성 전송 불가 (" + type(exc).__name__
