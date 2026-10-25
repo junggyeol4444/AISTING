@@ -1,0 +1,22 @@
+## 184. 2026-10-25 15:31 KST — 동일 실제 한국어 WAV 중 공식 Live2D 대상 OBS 영상 프레임 관측 및 4플랫폼 병행 복구 계약 누적 개발
+
+### 시작 HEAD·원문·CI 실상
+- 이번 재개 시작 main HEAD: `23bd3ddfde04b564a47870ee9e54560d0ab22500`. 본 회차 첫 작업에서 main HEAD와 요청된 과거 Windows CI `39722213656`, 실모델 500건 CI `39720448468`를 실제 GitHub API로 다시 조회. 원본 `docs/ORIGINAL_PLAN.txt`, `docs/ROADMAP_100.md`, `config/roadmap.json`, 본 문서 전체 1~183절, `docs/AISTING_NEXT_CONVERSATION_HANDOFF.md`, 97절 원문 부록 및 실제 OBS/Live2D/4플랫폼/SQLite 소스 기준으로 기존 코드 이어 개발. `docs/hourly-handoff-appendices/`의 기존 109개 부록 원문을 삭제하거나 대체하지 않았으며, 모든 부록 파일을 이번 실행에서 하나씩 전수 열람했다고 주장하지 않는다.
+- 96절 Windows CI `39722213656` 최종 **completed/cancelled**. obs-real-readonly, twitch-public-readonly, windows-exe, ollama-real-local-e2e 4개 작업은 성공, korean-public-chat-readonly 작업은 취소. 해당 CI의 일부 GUI 버튼 성공 로그는 **OBS/모델 시뮬레이션**이므로 실제 동일 발화 실증 아님. 전체 Windows 성공으로 오인 금지.
+- 96절 실제 Ollama 500건 CI `39720448468` 최종 **completed/success**는 작업 완주 의미: 합성 채팅 500/500, 실제 로컬 모델 처리 실패 0건이지만 **3초 초과 500/500건**, 전체 p95 **2979.984초**, FIFO 대기 p95 **2973.875초**, 로컬 AI p95 **7.875초**. 실제 500명 시청자/24시간/시청자 종단간 지연 성공 아님.
+- 기존 177절 전체 회귀 `40155307503`의 36 failures/33 errors/2 skipped 및 Windows `40155307396` EXE 취소, 500건 `40155307463`의 3초 초과 500/500 기록은 그대로 유지. 이번 회차 자동 push 후 생성된 새 CI `40169569235`(회귀), `40169569274`(Windows), `40169557779`(실모델 500건)은 조회 당시 **queued**였고 이번 신규 코드 성공/실패 결과로 단정하지 않는다. 이전 연속 push로 중간 SHA CI가 취소된 사실도 숨기지 않는다.
+
+### 이번 회차 실제로 추가한 기능 코드 (전체 개발 우선, 실행 검증 전)
+1. `src/ai_broadcaster/obs_live2d_frame_link.py` 신규: OBS 현재 장면의 실제 입력 설정이 **활성 window_capture이고 대상 창 제목이 기존 공식 AISTING Live2D 네이티브 창과 일치**하는 경우에만 캡처 후보로 인정. 임의 모니터 캡처/게임 캡처/다른 창을 공식 Live2D 영상으로 오인하지 않음. 동일 WAV 구간의 OBS 프로그램 화면 PNG 해시 변화와 실제 양성 오디오 미터 시각이 근접하는지 관찰 후보 함수 추가. 전체 화면 변화는 입술의 영상 인과성·시청자 송출 증거가 아니라는 제한을 명시.
+2. `src/ai_broadcaster/original_plan_obs.py`: 기존 오디오 미터 이벤트 구독 후 실제 WAV를 재생하는 경로에 **승인된 OBS 프로그램 프레임 관찰 콜백**을 선택적으로 추가. WAV 재생 중 25%·65% 시점의 실제 OBS 현재 장면 PNG를 메모리에서 읽을 수 있게 하고, 기존 승인 없는 오디오 미터 읽기 동작은 유지. OBS 방송 시작·녹화·채팅 발신 없음.
+3. `src/ai_broadcaster/original_plan_voice_obs_bridge.py`: 이전 183절 이후 작성된 실제 GPT-SoVITS WAV→공식 Cubism PCM RMS→OBS 임시 미디어 입력 단일 발화 경로를 그대로 재사용. 임시 WAV가 OBS에 재생되기 **전/중 2회/후**의 실제 프로그램 프레임 취득 시각·SHA256만 메모리 보관, 원본 PNG/개인 화면 저장·전송하지 않음. 공식 Live2D 대상 창 캡처 후보·실제 OBS 미터·입 파라미터 변화·실제 WAV/미터 구간·화면 변화의 결합 후보를 기존 결과 구조에 별도 표기. 후보는 실제 인코더/시청자 E2E·입의 시각적 인과성 검증 완료가 아님. 기존 소스 삭제·장면 변경 없이 1회 임시 소스 정리.
+4. `src/ai_broadcaster/desktop_chat_tab.py`: 기존 Windows Tk GUI의 단일 WAV→Cubism→OBS 승인 버튼 결과에 **실제 OBS 프로그램 영상의 WAV 중 프레임 수·화면 변화 후보·공식 창 캡처 설정 일치 여부**를 한국어로 표시. 실제 시청자 출력/인코딩 미검증 안내 유지.
+5. `tests/test_aisting_same_wav_program_frames_184.py`: 공식 창 제목 불일치·비활성·다른 창 차단, 실제 WAV 시간 경계/OBS 영상 변화/양성 오디오 구간 후보 등 8개 계약검사 작성. `tests/test_aisting_durable_live_catchup_184.py`: 기존 SQLite 4플랫폼 수신/복구 중 신규 메시지 순번 커서·원본 동일본문·서버 ID 중복·유효성 등 4개 계약검사 작성. **작성만 했으며 이번 회차 실행·통과 주장 금지**.
+6. 코드 누적 fast-forward 커밋: `d43dabfe7e762e1b2c74b0ba7769d18a9bfe1f00` → `2e08d491ed5adf10f30306223943a2e515a5c177` → `dd1bffbd82f9a085dfb394c53d396e7336e10b46` → `12ab6a30c7310a603b004f53966c8a9b6cabd695` → `c8aa4278a1a36341a71fa89abff101a10e441959` → `d1152d468741b436967d1042abf1398c7baed005`. 기존 1~183절 원문/원본 기획·설정·캐릭터·사용자 SQLite 대화 기록/모델 기본 토큰 길이·keep_alive는 수정하지 않음. 새 브랜치/강제 push/롤백/다른 저장소/Drive/예약 변경 없음.
+
+### 실제 한 것·안 한 것·남은 것·작업 중 멈춘 것·다음 인계
+- **실제로 한 것**: 기존 main HEAD·원문 기획/로드맵/인수인계·실제 소스 확인, 두 과거 CI와 500건 실패 수치 확인, 동일 실제 WAV 중 공식 OBS 창 대상 확인/영상 샘플·오디오/입 후보 경로 개발, 네이티브 GUI 표시 연결, 4플랫폼 durable 복구 신규 계약검사 작성, main 순차 커밋. 신규 기능은 아직 **개발 중**.
+- **하지 않은 것**: 신규 계약검사 실행/통과, 전체 회귀·Windows 10/11 네이티브 EXE/GUI 실사용·실제 OBS/로컬 Ollama/GPT-SoVITS/Cubism 실기기 통합 검증, 실제 시청자/인코더 동일 발화 증명, 실계정 YouTube OAuth 동의 대행, 방송/녹화/채팅 발신, 권리 없는 음성/모델 훈련, 실제 수백 명 무누락·24시간/1~3초 E2E 달성.
+- **여전히 남은 핵심 기능**: 공식 Live2D 화면과 OBS 오디오의 인코더/최종 시청자 동일 발화 인과성, 권리 확인된 실제 한국어 WAV의 실장비 통합, 4플랫폼 수백 명 실시간 무누락 및 SQLite/재연결 장애 중 FIFO 처리, 24시간 실제 장시간 안정성, FIFO 대기 p95 수천 초와 AI·음성·영상·시청자 1~3초 병목의 기능적 개선, 전체 기능 개발 완료 뒤 회귀→Windows 네이티브 EXE/GUI/OBS/로컬 모델 검사→오류 수정→전체 재검증. 과거 회귀 실패/취소된 Windows 작업 해결 전.
+- **진행 중 멈춘 곳**: 이번 신규 코드·계약검사까지 기존 main에 누적했지만, 전체 필수 기능 개발 완료/실기기 검증 전. 신규 CI가 완료되면 실패 로그를 숨기지 않고 기록하되, 사용자가 지시한 전체 개발 우선 순서를 유지. 위 코드는 실측 후보 경로이지 성공 판정 아님.
+- **다음 실행**: 현재 main HEAD와 새 CI 최종 상태부터 다시 확인, 본 문서 1~184절과 `docs/AISTING_NEXT_CONVERSATION_HANDOFF.md` 및 기존 모든 과거 부록 원문 보존, 실제 4플랫폼/AI/음성/OBS 핵심 개발을 이어간다. 임의 모델 옵션 96/keep_alive=10m 재도입·다른 프로젝트/예약/Drive/브랜치 변경·무단 OAuth/방송/녹화/발신 금지. 인수인계 문서 커밋 자체가 HEAD를 변경하므로 다음 시작 HEAD 재조회 필수.
