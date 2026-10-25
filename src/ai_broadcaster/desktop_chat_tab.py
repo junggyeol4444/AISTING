@@ -27,6 +27,8 @@ from .live_runtime_metrics import (LiveLatencyMetrics, LiveParseReplyMetrics,
                                    LiveFirstWavLatencyMetrics,
                                    LiveFirstMouthLatencyMetrics)
 from .live_queue_wait_observation import LiveQueueWaitTracker
+from .live_pcm_cubism_alignment import (
+    analyze_pcm_cubism_alignment, LivePcmCubismAlignmentMetrics)
 from .offline_settings import load_settings
 
 
@@ -113,6 +115,8 @@ class LocalChatTab(ttk.Frame):
         # 실제 운영자가 선택한 공식 관찰의 첫 Cubism 입 표본 후보를
         # 플랫폼별 별도 기록. WAV·OBS·시청자 전달의 실증은 아니다.
         self._platform_first_mouth_metrics: dict[str, LiveFirstMouthLatencyMetrics] = {}
+        # 기존 공식 WAV·Cubism 렌더러 실측 RMS만 시간정렬 후보로 분석한다.
+        self._platform_pcm_alignment_metrics: dict[str, LivePcmCubismAlignmentMetrics] = {}
         # 로컬 수신큐 백프레셔와 AI·GUI 적체의 실측값만 메모리에 보관한다.
         self._live_queue_block_events = 0
         self._live_queue_block_total_seconds = 0.0
@@ -819,6 +823,9 @@ class LocalChatTab(ttk.Frame):
         }
         self._platform_first_mouth_metrics = {
             name: LiveFirstMouthLatencyMetrics() for name in session._channels
+        }
+        self._platform_pcm_alignment_metrics = {
+            name: LivePcmCubismAlignmentMetrics() for name in session._channels
         }
         with self._live_ingress_lock:
             self._live_queue_block_events = 0
@@ -1563,6 +1570,32 @@ class LocalChatTab(ttk.Frame):
                             meter.error()
                     elif kind == "twitch_live2d_ok":
                         chat, evidence = payload
+                        # 같은 기존 공식 1회 관찰의 첫 WAV PCM과
+                        # 실제 렌더러 RMS를 추가 전송 없이 대조한다.
+                        # 동일 발화/OBS/시청자 실증으로 승격하지 않는다.
+                        code = getattr(chat, "platform", "twitch")
+                        meter = getattr(
+                            self, "_platform_pcm_alignment_metrics", {}).get(code)
+                        if meter is not None:
+                            candidate = analyze_pcm_cubism_alignment(
+                                getattr(evidence, "official_pcm_first_wav_rms_envelope", ()),
+                                getattr(evidence, "official_pcm_live2d_rms_samples", ()),
+                                mouth_observed=bool(evidence.verified_signal))
+                            meter.observe(candidate)
+                            state = meter.snapshot()
+                            if state["관찰시도"] <= 3 or state["관찰시도"] % 25 == 0:
+                                corr = candidate.correlation
+                                lag = candidate.lag_seconds
+                                self._append(
+                                    "[" + code + " 공식 PCM·Cubism 정렬 후보] "
+                                    + candidate.status + " · WAV PCM↔렌더러 RMS "
+                                    + (f"상관 {corr:.3f}" if corr is not None else "상관 미측정")
+                                    + " · 지연 후보 "
+                                    + (f"{lag:.3f}초" if lag is not None else "미측정")
+                                    + " · 실제 관찰 " + str(state["관찰시도"])
+                                    + "건 / 입 동시 후보 "
+                                    + str(state["Cubism입동시후보"])
+                                    + "건 · 동일 발화·OBS·시청자 미검증")
                         if evidence.verified_signal:
                             self._twitch_replied += 1
                             self._append("공식 AI·Live2D 입력 및 입 움직임 확인: " + chat.sender)
