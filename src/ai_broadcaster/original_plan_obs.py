@@ -778,7 +778,8 @@ class OfficialObsWebsocket:
     def read_actual_audio_meters(self, *, operator_approved: bool = False,
                                  duration: float = 3.0,
                                  input_name: str | None = None,
-                                 start_action=None) -> ActualObsAudioMeters:
+                                 start_action=None,
+                                 program_frame_probe=None) -> ActualObsAudioMeters:
         """Observe selected OBS input events without recording or changing OBS.
 
         Meter peaks are not proof of GPT-SoVITS speech or stream delivery.
@@ -792,6 +793,10 @@ class OfficialObsWebsocket:
             raise PermissionError('실제 OBS 오디오 미터 관찰 승인이 필요합니다.')
         if start_action is not None and (input_name is None or not callable(start_action)):
             raise ValueError('실제 지정 음성 입력과 승인된 재생 작업이 필요합니다.')
+        if program_frame_probe is not None and (
+                input_name is None or not callable(start_action)
+                or not callable(program_frame_probe)):
+            raise ValueError('실제 WAV 시작·OBS 프로그램 영상 관찰 함수가 필요합니다.')
         if type(duration) not in (int, float) or not 1 <= duration <= 8:
             raise ValueError('OBS 미터 관찰 기간은 1~8초여야 합니다.')
         if input_name is not None and (
@@ -912,7 +917,26 @@ class OfficialObsWebsocket:
             # (or all) of a short generated Korean utterance is missed.
             if start_action is not None:
                 start_action()
-            threading.Event().wait(float(duration))
+            # 기존 오디오 미터 수신 콜백은 별도 이벤트 스레드에서
+            # 계속 실행된다. 운영자가 공식 Live2D 창까지 승인한 경우
+            # 현재 OBS 프로그램 화면을 WAV 진행 중 2회만 추가로 읽는다.
+            # 프레임 PNG 원본 저장 여부/관측 판단은 호출자가 담당한다.
+            # 승인하지 않은 기존 미터 검사에서는 원래 대기만 수행한다.
+            if program_frame_probe is None:
+                threading.Event().wait(float(duration))
+            else:
+                observation_started = time.monotonic()
+                deadline = observation_started + float(duration)
+                for fraction in (0.25, 0.65):
+                    remaining = observation_started + duration * fraction - time.monotonic()
+                    if remaining > 0:
+                        threading.Event().wait(remaining)
+                    if time.monotonic() >= deadline:
+                        break
+                    program_frame_probe()
+                remaining = deadline - time.monotonic()
+                if remaining > 0:
+                    threading.Event().wait(remaining)
         except Exception as exc:
             raise ObsConnectionError('실제 OBS 오디오 미터 이벤트 관찰 실패') from exc
         finally:
