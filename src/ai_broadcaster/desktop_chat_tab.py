@@ -2008,8 +2008,15 @@ class LocalChatTab(ttk.Frame):
                                    + "건 / 실제 WAV·Cubism·OBS 입력 경로 "
                                    + ("연동 후보" if payload.same_wav_cubism_obs_candidate
                                       else "미충족")
-                                   + " · OBS 실제 프로그램 영상 1프레임만 확인"
-                                   + " · 동일 발화 시청자 출력·인코딩은 미검증"
+                                   + " · 실제 OBS 프로그램 영상 WAV 중 "
+                                   + str(payload.obs_program_frames_during_wav)
+                                   + "회·화면 변화 "
+                                   + ("관측 후보" if payload.obs_program_motion_near_wav_candidate
+                                      else "미충족")
+                                   + " · 공식 Live2D 대상 창 캡처 "
+                                   + ("설정 일치" if payload.obs_program_capture_candidate
+                                      else "미확인")
+                                   + " · 입 인과성·동일 발화 시청자 출력·인코딩은 미검증"
                                    if payload.actual_pcm_cubism_requested else
                                    " · Live2D·시청자 송출은 별도 검사"))
                         else:
