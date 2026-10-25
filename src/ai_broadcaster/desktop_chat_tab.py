@@ -30,6 +30,7 @@ from .live_queue_wait_observation import LiveQueueWaitTracker
 from .live_pcm_cubism_alignment import (
     analyze_pcm_cubism_alignment, LivePcmCubismAlignmentMetrics)
 from .offline_settings import load_settings
+from .durable_public_chat_queue import DurablePublicChatQueue, PendingChat
 
 
 @dataclass(frozen=True)
@@ -100,6 +101,8 @@ class LocalChatTab(ttk.Frame):
         self._twitch_replied = 0
         self._twitch_ai_failures = 0
         self._twitch_ai_inbox: queue.SimpleQueue | None = None
+        # 기존 대화/캐릭터 SQLite에 영향을 주지 않는 공개 채팅 미처리 큐.
+        self._twitch_chat_spool: DurablePublicChatQueue | None = None
         # 실제 수신 콜백의 AI 등록과 Stop 종료 표식을 직렬화한다.
         # tkinter 객체를 잠금 보유 상태에서 직접 조작하지 않는다.
         self._live_ingress_lock = threading.Lock()
@@ -788,6 +791,20 @@ class LocalChatTab(ttk.Frame):
                                 "채널·API 설정을 확인하세요 (" + type(exc).__name__ + ")",
                                 parent=self)
             return
+        # 수신기를 시작하기 전 다른 방송/채널의 미처리 데이터를 격리하고
+        # 이전 강제 종료로 남은 공개 채팅을 먼저 복구한다. DB 오류면
+        # 누락된 척 연결하지 않고 원래 사용자 설정/기억도 건드리지 않는다.
+        try:
+            durable = DurablePublicChatQueue()
+            recovered = durable.load_for(session._channels)
+        except Exception as exc:
+            messagebox.showerror(
+                "채팅 복구 준비 실패",
+                "미처리 채팅 저장소를 열거나 복구할 수 없습니다. "
+                "원본은 변경하지 않았습니다 (" + type(exc).__name__ + ")",
+                parent=self)
+            return
+        self._twitch_chat_spool = durable
         self._twitch_session = session
         self._platform_health_updated_at = 0.0
         self._platform_health_status.set("플랫폼별 채팅방 입장 대기 · 수신/누락 미확인")
@@ -838,6 +855,20 @@ class LocalChatTab(ttk.Frame):
                 for name in session._channels
             }
             self._live_queue_wait_tracker = LiveQueueWaitTracker()
+        # 이미 보관된 미처리 채팅을 새 수신보다 먼저 같은 단일 AI FIFO로
+        # 넣는다. 장비 재부팅 뒤 과거 monotonic 시각은 그대로 재사용하지
+        # 않고 파싱 시각 미확인으로 분리한다. 기존 메시지는 삭제하지 않는다.
+        for pending in recovered:
+            accepted_at = time.monotonic()
+            arrival_times.put(accepted_at)
+            inbox.put(pending)
+            self._results.put(("twitch_scoped", (
+                session, "twitch_chat", _ReaderTimestampedChat(
+                    pending.message, accepted_at, ai_prequeued=True))))
+        if recovered:
+            self._append(
+                "[미처리 채팅 복구] 이전 작업 " + str(len(recovered))
+                + "건을 원래 순서로 AI 큐에 재등록 · 중복 처리 여부는 미검증")
         self._twitch_active_workers.add(session)
         # One worker calls the EXISTING local Ollama conversation in order.
         # No extra model service, intentional delay or platform chat posting.
@@ -927,7 +958,14 @@ class LocalChatTab(ttk.Frame):
                                     session, "twitch_chat", _ReaderTimestampedChat(
                                         item, stamped_item.reader_received_at,
                                         ai_prequeued=True))))
-                                inbox.put(item)
+                                # 실제 AI 수용 직전에 독립 SQLite에 확정.
+                                # 예외가 발생하면 네트워크 콜백 실패로 전파해
+                                # 성공한 수신인 척 버리지 않는다.
+                                spool = self._twitch_chat_spool
+                                if spool is None:
+                                    raise RuntimeError("미처리 채팅 보존 큐가 없습니다.")
+                                sequence = spool.append(item)
+                                inbox.put(PendingChat(sequence, item))
                                 accepted = True
                                 return True
                     else:
@@ -976,6 +1014,26 @@ class LocalChatTab(ttk.Frame):
                 chat = inbox.get()
                 if chat is None or (session is not None and session._stop.is_set()):
                     break
+                pending_sequence = None
+                if isinstance(chat, PendingChat):
+                    pending_sequence, chat = chat.sequence, chat.message
+
+                def confirm_durable_after_success():
+                    # 실제 AI 처리 완료/공식 전달이 확인된 경우에만 항목 삭제.
+                    # 재시작 직전에는 중복 처리 가능성이 남음을 숨기지 않는다.
+                    if (pending_sequence is None or session is None
+                            or session._stop.is_set()):
+                        return
+                    spool = getattr(self, "_twitch_chat_spool", None)
+                    if spool is None:
+                        report("twitch_ai_error", (chat, "미처리 채팅 보존 큐 누락"))
+                        return
+                    try:
+                        if not spool.confirm(pending_sequence):
+                            report("twitch_ai_error", (chat, "미처리 채팅 확인 대상 없음"))
+                    except Exception:
+                        report("twitch_ai_error", (chat, "미처리 채팅 완료기록 실패"))
+
                 # 실제 GUI에서는 생성 시 전달한 세션 전용 시각 큐만 사용.
                 # 인자 없는 이전 직접 호출 검사만 기존 속성을 사용한다.
                 arrivals = (arrival_times if arrival_times is not None
@@ -1059,6 +1117,7 @@ class LocalChatTab(ttk.Frame):
                             # wav_received라도 원인 발화나 출력까지는
                             # 증명되지 않으므로 AI 응답 성공에 넣지 않는다.
                             report("twitch_live2d_forwarded", chat)
+                            confirm_durable_after_success()
                             if first_wav_receipt_mode:
                                 report("twitch_live2d_first_wav", (chat, receipt))
                                 # 파싱부터 공식 첫 WAV *후보* 수신까지의
@@ -1072,6 +1131,8 @@ class LocalChatTab(ttk.Frame):
                         else:
                             attempt_failed = not bool(evidence.verified_signal)
                             report("twitch_live2d_ok", (chat, evidence))
+                            if evidence.verified_signal:
+                                confirm_durable_after_success()
                             if isinstance(session, MultiPlatformReadOnlySession):
                                 # 기존 공식 1회 질문에서 실제 Cubism 관찰한
                                 # monotonic 표본만 연결한다. 추가 질문·음성 없음.
@@ -1138,6 +1199,7 @@ class LocalChatTab(ttk.Frame):
                     report("twitch_ai_error", (chat, type(exc).__name__))
                 else:
                     report("twitch_ai_ok", (chat, result))
+                    confirm_durable_after_success()
                 finally:
                     report_measured_elapsed()
             # The reader can reach EOF while the serial model is still replying.
