@@ -458,7 +458,7 @@ class ApprovedLiveScheduler:
         읽기 소켓이 죽었다고 OBS 방송을 다시 시작하거나 같은 슬롯을
         재청구하지 않는다. 복구 실패 후 무음 방송을 무제한 유지하지 않는다.
         """
-        if (self._chat_alive is None or not self._chat_started
+        if (self._chat_alive is None or self._begin_live_chat is None
                 or self._stop.is_set() or not self._owns_stream):
             return
         try:
@@ -490,10 +490,15 @@ class ApprovedLiveScheduler:
         # GUI 콜백은 같은 승인 토큰의 세션만 종료/재시작할 수 있다.
         # 기존 AI 작업자가 완전히 종료되지 않았다면 다음 30초까지
         # 대기하고 절대 임의로 새 FIFO 소유권을 탈취하지 않는다.
-        try:
-            ended = self._end_live_chat() is True
-        except Exception:
-            ended = False
+        if self._chat_started:
+            try:
+                ended = self._end_live_chat() is True
+            except Exception:
+                ended = False
+        else:
+            # 직전 재연결 실패로 실제 소유 세션이 없으면
+            # 종료 콜백을 다시 호출하지 않고 기존 승인으로 재연결한다.
+            ended = True
         self._chat_started = False
         if not ended:
             self._chat_recovery = "기존 채팅 종료 미확인 · 재연결 보류"
@@ -508,8 +513,7 @@ class ApprovedLiveScheduler:
             self._chat_unhealthy_since = None
             self._chat_recovery = "기존 승인 채팅 재연결 요청 접수 · 서버 입장 미확인"
         else:
-            # 다음 복구 시도에서도 begin을 실행할 수 있게 상태 유지.
-            self._chat_started = True
+            # 다음 복구 시도에서 실제 소유 세션이 없음을 유지한다.
             self._chat_recovery = "채팅 재연결 미확인 · 30초 뒤 제한 재시도"
 
     def tick(self, now: datetime, monotonic_now: float) -> ApprovedLiveSnapshot:
