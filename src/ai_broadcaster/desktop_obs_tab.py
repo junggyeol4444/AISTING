@@ -36,6 +36,9 @@ class ObsStatusTab(ttk.Frame):
         self._discord_webhook = tk.StringVar()
         self._discord_start_text = tk.StringVar()
         self._discord_end_text = tk.StringVar()
+        self._discord_pre_approved = tk.BooleanVar(value=False)
+        self._discord_pre_lead = tk.StringVar()
+        self._discord_pre_text = tk.StringVar()
         self._notice_ai_busy = False
         self._notice_ai_status = tk.StringVar(
             value="로컬 공지 AI 미실행 · 생성된 공지는 자동 게시하지 않습니다.")
@@ -106,6 +109,16 @@ class ObsStatusTab(ttk.Frame):
         ttk.Entry(self, textvariable=self._discord_start_text).pack(fill="x")
         ttk.Label(self, text="방송 종료 공지(직접 지정, 자동 생성 아님)").pack(anchor="w")
         ttk.Entry(self, textvariable=self._discord_end_text).pack(fill="x", pady=(0,4))
+        ttk.Checkbutton(
+            self, text="방송 시작 전 사전 공지도 별도 승인 (기본 해제)",
+            variable=self._discord_pre_approved).pack(anchor="w", pady=(2,0))
+        pre_row = ttk.Frame(self)
+        pre_row.pack(fill="x")
+        ttk.Label(pre_row, text="시작 전 몇 분(10~40)").pack(side="left")
+        ttk.Entry(pre_row, textvariable=self._discord_pre_lead,
+                  width=6).pack(side="left", padx=(5,0))
+        ttk.Label(self, text="사전 공지 문구 (직접 입력·승인):").pack(anchor="w")
+        ttk.Entry(self, textvariable=self._discord_pre_text).pack(fill="x")
         ttk.Label(self, text="AI 공지 문구 생성용 방송 주제 (운영자 입력)").pack(anchor="w")
         ttk.Entry(self, textvariable=self._notice_topic).pack(fill="x")
         self._notice_ai_button = ttk.Button(
@@ -301,6 +314,18 @@ class ObsStatusTab(ttk.Frame):
                     raise ValueError("실제 채팅 탭에서 공식 AI와 대기 상태를 확인하세요.")
             approval_token = object() if auto_chat else None
             discord_enabled = self._discord_notice_approved.get() is True
+            pre_enabled = self._discord_pre_approved.get() is True
+            if pre_enabled and not discord_enabled:
+                raise ValueError("사전 공지에는 Discord 웹훅 게시 승인도 필요합니다.")
+            pre_lead = 0
+            pre_callback = None
+            if pre_enabled:
+                pre_lead = int(self._discord_pre_lead.get().strip())
+                if not 10 <= pre_lead <= 40:
+                    raise ValueError("사전 공지 시각은 방송 10~40분 전만 가능합니다.")
+                pre_text = self._discord_pre_text.get().strip()
+                if not 1 <= len(pre_text) <= 1500:
+                    raise ValueError("사전 공지 문구를 1~1500자 직접 입력하세요.")
             on_started_notice = None
             on_finished_notice = None
             if discord_enabled:
@@ -318,6 +343,9 @@ class ObsStatusTab(ttk.Frame):
                     start_message, operator_approved=True)
                 on_finished_notice=lambda _occurrence: sender.send(
                     end_message, operator_approved=True)
+                if pre_enabled:
+                    pre_callback = lambda _occurrence: sender.send(
+                        pre_text, operator_approved=True)
             if not messagebox.askyesno(
                 "실제 자동 방송 시작·종료 최종 승인",
                 "이 컴퓨터의 실제 OBS가 주간 일정에 따라 외부 플랫폼에 방송을 시작합니다. "
@@ -328,6 +356,9 @@ class ObsStatusTab(ttk.Frame):
                    "각 1회씩 자동 게시합니다. 실패 시 자동 재게시하지 않습니다. "
                    if discord_enabled else
                    "디스코드 자동 공지는 비활성입니다. ")
+                + (f"방송 {pre_lead}분 전에 내가 작성한 사전 공지 1회 게시를 "
+                   "추가 승인합니다. 재시작해도 같은 방송 공지를 재게시하지 않습니다. "
+                   if pre_enabled else "사전 공지는 게시하지 않습니다. ")
                 + ("선택된 기존 4플랫폼 채팅·공식 AI 읽기 전용 수신기도 "
                    "이 방송 시 자동 연결합니다. 계정 동의나 채팅 발신은 하지 않으며 "
                    "기존 공식 AI 서버 설정의 권리·외부 접속은 운영자가 확인합니다. "
@@ -354,7 +385,10 @@ class ObsStatusTab(ttk.Frame):
                 end_live_chat=(self._request_live_chat_stop if auto_chat else None),
                 chat_approved=auto_chat,
                 occurrence_claim=journal.claim,
-                occurrence_event=journal.record_event)
+                occurrence_event=journal.record_event,
+                on_pre_notice=pre_callback,
+                pre_notice_claim=(journal.claim_pre_notice if pre_enabled else None),
+                pre_notice_lead_minutes=pre_lead)
             if auto_chat:
                 self._chat_tab._scheduled_chat_permission = approval_token
                 self._scheduled_chat_token = approval_token
@@ -542,6 +576,7 @@ class ObsStatusTab(ttk.Frame):
             snap=self._approved_scheduler.snapshot()
             self._live_schedule_status.set(
                 snap.state + " · " + snap.detail +
+                " · 사전 공지 " + snap.pre_notice +
                 " · 공지 시작 " + snap.start_notice +
                 " / 종료 " + snap.end_notice +
                 " · 채팅/AI " + snap.live_chat +
