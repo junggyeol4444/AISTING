@@ -24,6 +24,9 @@ class ObsStatusTab(ttk.Frame):
         self._capture=tk.StringVar(value="장면을 선택해 소스 상태를 확인할 수 있어요.")
         self._events: queue.SimpleQueue[tuple[str,object]]=queue.SimpleQueue()
         self._working=False
+        self._vision_busy=False
+        self._vision_status=tk.StringVar(
+            value="게임 화면 이해: 미실행 · 사용자 승인 전에는 실제 화면 읽지 않음")
         self._approved_scheduler = None
         self._approved_scheduler_thread = None
         self._live_schedule_status = tk.StringVar(
@@ -68,6 +71,12 @@ class ObsStatusTab(ttk.Frame):
         )
         self._inspect_button.pack(anchor="w",pady=(8,4))
         self._inspect_button.configure(state="disabled")
+        self._vision_button=ttk.Button(
+            self, text="현재 OBS 화면을 내 로컬 시각 AI로 이해 (검토만)",
+            command=self._start_game_vision)
+        self._vision_button.pack(anchor="w", pady=(1,2))
+        ttk.Label(self, textvariable=self._vision_status,
+                  wraplength=560).pack(anchor="w", pady=(0,3))
         ttk.Label(self,text="선택 장면 안의 소스 · OBS에서 설정은 직접 변경").pack(anchor="w",pady=(4,3))
         self._sources=tk.Listbox(self,height=5,activestyle="none",exportselection=False)
         self._sources.pack(fill="both",expand=True)
@@ -143,6 +152,51 @@ class ObsStatusTab(ttk.Frame):
             anchor="w", pady=(2,5))
         self._scenes.bind("<<ListboxSelect>>",lambda _event:self._update_inspect_button())
         self.after(150,self._poll)
+
+    def _start_game_vision(self) -> None:
+        """현재 실제 OBS 화면의 1회 로컬 분석. 방송/게임 조작 없음."""
+        if self._vision_busy:
+            return
+        try:
+            if self._chat_tab is None:
+                raise ValueError("기존 로컬 AI 탭이 필요합니다.")
+            model=self._chat_tab._model_name.get().strip()
+            if not model:
+                raise ValueError("로컬 AI 탭에서 시각 입력 지원 모델을 선택하세요.")
+            port=int(self._port.get())
+            password=self._password.get()
+            if not password:
+                raise ValueError("실제 OBS WebSocket 암호가 필요합니다.")
+            if not messagebox.askyesno(
+                "현재 OBS 게임 화면 읽기 승인",
+                "현재 OBS 장면에는 비공개 화면·채팅 등이 포함될 수 있습니다. "
+                "이 버튼을 누르는 이번 1회에만 OBS 실제 PNG 프레임을 "
+                "읽어 내 PC의 127.0.0.1 로컬 Ollama 모델에 전달합니다. "
+                "외부 계정/방송 발신·게임 자동 조작·파일 저장은 하지 않습니다. "
+                "현재 화면 분석을 승인합니까?", parent=self):
+                return
+            self._vision_busy=True
+            self._vision_button.configure(state="disabled")
+            self._vision_status.set(
+                "내 OBS 실제 PNG 1장 읽기·로컬 시각 AI 추론 중 · 외부 게시 없음")
+            threading.Thread(
+                target=self._work_game_vision, args=(password,port,model),
+                name="AISTING-로컬게임화면이해", daemon=True).start()
+        except Exception as exc:
+            self._vision_status.set(
+                "화면 이해 미시작 · " + type(exc).__name__ +
+                " · 모델/OBS 암호/포트를 확인하세요.")
+
+    def _work_game_vision(self, password: str, port: int, model: str) -> None:
+        try:
+            from .approved_local_game_vision import observe_game_scene_with_local_vision
+            item=observe_game_scene_with_local_vision(
+                password, port, model, operator_approved=True)
+            self._events.put(("game_vision_ready", item))
+        except Exception as exc:
+            self._events.put(("game_vision_error", type(exc).__name__))
+        finally:
+            password=""
 
     def _show_live_history(self) -> None:
         """로컬 시작/종료 이력만 표시. OBS 연결·송출·파일 삭제 없음."""
@@ -471,6 +525,36 @@ class ObsStatusTab(ttk.Frame):
         try:
             while True:
                 kind,item=self._events.get_nowait()
+                if kind == "game_vision_ready":
+                    self._vision_busy=False
+                    self._vision_button.configure(state="normal")
+                    self._vision_status.set(
+                        "실제 OBS 프레임 1장 로컬 모델 분석 응답 수신 · "
+                        "게임 조작/송출/시청자 수신 증명 아님")
+                    popup=tk.Toplevel(self)
+                    popup.title("로컬 시각 AI의 실제 OBS 화면 이해 결과")
+                    popup.geometry("720x450")
+                    view=tk.Text(popup, wrap="word")
+                    scroll=ttk.Scrollbar(popup, orient="vertical",command=view.yview)
+                    view.configure(yscrollcommand=scroll.set)
+                    scroll.pack(side="right", fill="y")
+                    view.pack(side="left",fill="both",expand=True)
+                    view.insert("end",
+                        "OBS 장면: " + item.scene + "\n"
+                        + "프레임: " + str(item.width) + "x" + str(item.height)
+                        + "\n로컬 모델: " + item.local_model + "\n\n"
+                        + item.description + "\n\n"
+                        + "※ 이번 화면의 관찰 후보일 뿐, 실제 게임 조작·"
+                        "시청자 화면/24시간 운영 증명이 아닙니다.")
+                    view.configure(state="disabled")
+                    continue
+                if kind == "game_vision_error":
+                    self._vision_busy=False
+                    self._vision_button.configure(state="normal")
+                    self._vision_status.set(
+                        "로컬 시각 AI 분석 실패 (" + str(item) +
+                        ") · 실제 프레임 미분석 또는 모델 이미지 미지원")
+                    continue
                 if kind == "notice_ai_ready":
                     self._notice_ai_busy = False
                     self._notice_ai_button.configure(state="normal")
