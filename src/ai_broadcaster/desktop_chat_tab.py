@@ -34,6 +34,8 @@ from .offline_settings import load_settings
 from .durable_public_chat_queue import DurablePublicChatQueue, PendingChat
 from .live_ai_recovery import run_local_fifo_with_recovery
 from .approved_live_idle_speech import ApprovedLiveIdleSpeech
+from .approved_live_content_agenda import (
+    ApprovedLiveContentAgenda, ApprovedLiveContentJournal)
 from .approved_live_voice_output import ApprovedLiveVoiceOutput
 from .ordered_parallel_local_ai import OrderedParallelLocalAI
 
@@ -124,6 +126,8 @@ class LocalChatTab(ttk.Frame):
         # 승인형 OBS 일정에 연결하는 자동 채팅은 GUI에서 운영자
         # 동의 후 발급한 단발성 메모리 토큰을 사용한다. 재시작 저장 없음.
         self._scheduled_chat_permission: object | None = None
+        # OBS 예약 GUI에서 운영자가 별도 승인한 콘텐츠 주제만 이 토큰에 귀속.
+        self._scheduled_content_plan: dict | None = None
         self._recovery_arrival_times: dict[int, float] = {}
         # 동일 프로세스의 실제 파싱 시각만 별도 보관한다. SQLite의
         # 기존 채팅 본문·스키마를 바꾸지 않고 재시작 뒤 시각은 미확인.
@@ -879,6 +883,30 @@ class LocalChatTab(ttk.Frame):
                     "다음 채팅이 들어오기 전에는 다시 자발 발화하지 않습니다. "
                     "이 문구와 방송 중 발화를 직접 승인합니까?", parent=self):
                 return
+        content_agenda = None
+        if scheduled_approval is not None:
+            approved_plan = self._scheduled_content_plan
+            if (approved_plan is not None
+                    and approved_plan.get("token") is scheduled_approval):
+                if not official:
+                    approval_dialog.showwarning(
+                        "자율 방송 콘텐츠",
+                        "승인한 주제 진행은 기존 공식 Live2D 서버에서만 지원합니다.",
+                        parent=self)
+                    return
+                try:
+                    content_agenda = ApprovedLiveContentAgenda(
+                        occurrence=approved_plan["occurrence"],
+                        topics=approved_plan["topics"],
+                        interval_seconds=approved_plan["interval_seconds"],
+                        journal=ApprovedLiveContentJournal(),
+                        operator_approved=True)
+                except (ValueError, TypeError, RuntimeError, OSError) as exc:
+                    approval_dialog.showwarning(
+                        "방송 주제 진행 장부",
+                        "콘텐츠 장부/주제/간격 준비에 실패했습니다 ("
+                        + type(exc).__name__ + ")", parent=self)
+                    return
         broadcast_facts = ""
         if self._broadcast_memory_enabled.get() and scheduled_approval is None:
             if official:
@@ -1176,6 +1204,7 @@ class LocalChatTab(ttk.Frame):
                     "stream_preview_mode": stream_preview,
                     "arrival_times": arrival_times,
                     "idle_policy": idle_policy,
+                    "content_agenda": content_agenda,
                     "broadcast_facts": broadcast_facts,
                     "parallel_ai": parallel_ai},
             daemon=True,
@@ -1445,6 +1474,7 @@ class LocalChatTab(ttk.Frame):
                         stream_preview_mode: bool = False,
                         arrival_times: queue.SimpleQueue | None = None,
                         idle_policy: ApprovedLiveIdleSpeech | None = None,
+                        content_agenda: ApprovedLiveContentAgenda | None = None,
                         broadcast_facts: str = "",
                         parallel_ai: OrderedParallelLocalAI | None = None) -> None:
         # Old direct-call regression contracts still use unscoped result
@@ -1460,7 +1490,8 @@ class LocalChatTab(ttk.Frame):
         local_runner: LocalChatRunner | None = None
         try:
             while True:
-                if idle_policy is not None and official and session is not None:
+                if (official and session is not None
+                        and (idle_policy is not None or content_agenda is not None)):
                     try:
                         chat = inbox.get(timeout=0.5)
                     except queue.Empty:
@@ -1475,27 +1506,54 @@ class LocalChatTab(ttk.Frame):
                             counts = spool.pending_selected_channels_snapshot(
                                 session._channels)
                             pending = sum(int(x["미처리"]) for x in counts.values())
-                            speech = idle_policy.next_if_quiet(
+                            speech = (idle_policy.next_if_quiet(
                                 pending_count=pending,
                                 sending=not inbox.empty())
+                                if idle_policy is not None else None)
+                            content_turn = (content_agenda.next_if_quiet(
+                                pending_count=pending,
+                                sending=not inbox.empty())
+                                if content_agenda is not None and speech is None
+                                else None)
                         except Exception:
                             # DB 상태를 알 수 없으면 자발 발화만 차단.
                             continue
-                        if speech is None or session._stop.is_set() or not inbox.empty():
+                        if ((speech is None and content_turn is None)
+                                or session._stop.is_set() or not inbox.empty()):
+                            # 콘텐츠 발화는 위 장부에 이미 '시도'로 확정됨.
+                            # 채팅이 끼어들어 발화를 보류해도 자동 재전송 금지.
                             continue
+                        delivered = False
                         try:
                             from .original_plan_frontend import send_to_native_live2d_session
                             accepted = send_to_native_live2d_session(
-                                speech, operator_approved=True)
+                                speech if speech is not None else content_turn.prompt,
+                                operator_approved=True)
                             if accepted is not True:
-                                raise RuntimeError("공식 자발 발화 전송 결과 불명")
+                                raise RuntimeError("공식 방송 콘텐츠 전송 결과 불명")
+                            delivered = True
                         except Exception:
-                            report("twitch_idle_speech", (
-                                "전송 불명 · 재발화 없음", idle_policy.attempted))
+                            if content_turn is None:
+                                report("twitch_idle_speech", (
+                                    "전송 불명 · 재발화 없음", idle_policy.attempted))
                         else:
-                            report("twitch_idle_speech", (
-                                "기존 공식 서버 1회 전달 확인 · 실제 음성/OBS 미실증",
-                                idle_policy.attempted))
+                            if content_turn is None:
+                                report("twitch_idle_speech", (
+                                    "기존 공식 서버 1회 전달 확인 · 실제 음성/OBS 미실증",
+                                    idle_policy.attempted))
+                        finally:
+                            if content_turn is not None:
+                                try:
+                                    content_agenda.record_delivery(
+                                        content_turn, delivered=delivered)
+                                except Exception:
+                                    report("twitch_content_turn", (
+                                        content_turn.sequence, "장부 확정 실패 · 재전송 금지"))
+                                else:
+                                    report("twitch_content_turn", (
+                                        content_turn.sequence,
+                                        "공식 AI 서버 1회 전달 확인 · 실제 방송 출력 미실증"
+                                        if delivered else "전송 불명 · 자동 재전송 없음"))
                         continue
                 else:
                     chat = inbox.get()
@@ -1504,6 +1562,8 @@ class LocalChatTab(ttk.Frame):
                 if idle_policy is not None:
                     # 실제 채팅 우선, 해당 무채팅 구간 다시 처음부터 측정.
                     idle_policy.note_chat()
+                if content_agenda is not None:
+                    content_agenda.note_chat()
                 pending_sequence = None
                 if isinstance(chat, PendingChat):
                     pending_sequence, chat = chat.sequence, chat.message
@@ -2346,6 +2406,13 @@ class LocalChatTab(ttk.Frame):
                         self._twitch_status.set(
                             "공식 Live2D 성공 " + str(self._twitch_replied) +
                             "건 · 미검증/오류 " + str(self._twitch_ai_failures) + "건")
+                    elif kind == "twitch_content_turn":
+                        sequence, result = payload
+                        self._append(
+                            "[승인된 자율 콘텐츠 " + str(sequence) + "회차] "
+                            + str(result) + " · 실제 시청자 수신 미검증")
+                        self._twitch_status.set(
+                            "운영자 승인 주제 자동 진행: " + str(result))
                     elif kind == "twitch_idle_speech":
                         description, count = payload
                         self._append(
