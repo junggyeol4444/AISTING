@@ -1,6 +1,6 @@
-"""AISTING offline Windows desktop program. No web server or browser.
+"""AISTING Windows 네이티브 데스크톱: 기존 오프라인 연습 및 승인형 실제 운영.
 
-All chat input is simulated locally. Actual streaming controls are absent.
+프로그램 시작만으로 네트워크 채팅·OBS 송출을 자동 실행하지 않는다.
 """
 from __future__ import annotations
 
@@ -142,6 +142,7 @@ from .persona_modes import chosen_persona
 from .offline_settings import active_persona
 from .original_plan_studio import OriginalPlanStudio
 from .desktop_chat_tab import LocalChatTab
+from .desktop_obs_tab import ObsStatusTab
 from .persona_drafts import EXAMPLE_DRAFTS, apply_draft_example, compact_persona_preview, preview_persona_guidance
 from .local_runtime import local_operation_plan, check_local_storage
 from .os_readiness import (
@@ -262,6 +263,7 @@ class AistingApp(tk.Tk):
         settings = ttk.Frame(tabs)
         rehearsal = ttk.Frame(tabs, padding=12)
         self._real_chat_tab = LocalChatTab(tabs, activity=self._speech_activity)
+        self._obs_status_tab = ObsStatusTab(tabs)
         avatar = ttk.Frame(tabs, padding=12)
         voice_test = ttk.Frame(tabs, padding=12)
         local_operation = ttk.Frame(tabs, padding=12)
@@ -349,6 +351,7 @@ class AistingApp(tk.Tk):
         for tab, label in ((studio, "방송인 홈"), (character_tab, "내 캐릭터"),
                            (settings, "방송 설정"), (rehearsal, "시청자 채팅 연습"),
                            (self._real_chat_tab, "실제 채팅·AI"),
+                           (self._obs_status_tab, "실제 OBS·승인형 자동 방송"),
                            (voice_test, "무료 한국어 음성"), (avatar, "아바타 미리보기"),
                            (local_operation, "PC 로컬 운영"),
                            (os_review, "OS 확인 준비"),
