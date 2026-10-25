@@ -252,7 +252,8 @@ class DurablePublicChatQueue:
         return int(count), int(last)
 
     def iter_recovery(self, channels: dict[str, str], *,
-                      through_sequence: int, batch_size: int = 256):
+                      through_sequence: int, batch_size: int = 256,
+                      after_sequence: int = 0):
         """한정된 페이지로 전체 미처리 채팅을 원래 전역 순서대로 읽는다.
 
         마지막 순번을 고정하여 복구 도중 다른 인스턴스의 신규 입력이
@@ -264,12 +265,16 @@ class DurablePublicChatQueue:
                        or type(v) is not str or not v.strip()
                        for k, v in channels.items())
                 or type(through_sequence) is not int or through_sequence < 0
-                or type(batch_size) is not int or not 1 <= batch_size <= 4096):
+                or type(batch_size) is not int or not 1 <= batch_size <= 4096
+                or type(after_sequence) is not int
+                or not 0 <= after_sequence <= through_sequence):
             raise ValueError("미처리 채팅 순차 복구 조건이 잘못되었습니다.")
         clauses = " OR ".join("(platform=? AND channel=?)" for _ in channels)
         args = [value for platform, channel in channels.items()
                 for value in (platform, channel)]
-        cursor = 0
+        # 실행 중 도착한 실제 플랫폼 메시지는 새 seq를 발급받는다.
+        # 이전 페이지를 중복 AI 등록하지 않고 이어받는 커서이다.
+        cursor = after_sequence
         while cursor < through_sequence:
             with self._lock, self._connection() as db:
                 rows = db.execute(
