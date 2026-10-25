@@ -31,6 +31,7 @@ from .approved_live_voice_journal import ApprovedLiveVoiceJournal, voice_turn_ke
 from .approved_live_voice_outbox import ApprovedLiveVoiceOutbox
 from .approved_live_voice_stream_lease import ApprovedVoiceStreamLease
 from .approved_live_voice_causal_journal import ApprovedVoiceCausalJournal
+from .approved_live_voice_playback_watch import ApprovedLiveVoicePlaybackWatch
 
 
 _MAX_SEGMENT_CHARS = 64
@@ -118,6 +119,7 @@ class ApprovedLiveVoiceOutput:
         self._outbox_wakeup = threading.Event()
         self._stream_lease = ApprovedVoiceStreamLease()
         self._causal_journal = ApprovedVoiceCausalJournal()
+        self._playback_watch = ApprovedLiveVoicePlaybackWatch()
         self._stop = threading.Event()
         self._inbox: queue.Queue[tuple[str, str]] = queue.Queue(
             maxsize=_MAX_SPEECH_QUEUE)
@@ -421,11 +423,16 @@ class ApprovedLiveVoiceOutput:
                 client.trigger_media_input_action(
                     name, "OBS_WEBSOCKET_MEDIA_INPUT_ACTION_RESTART")
                 self._causal_journal.obs_triggered(causal_row)
-                if self._stop.wait(wav_seconds + 0.2):
-                    raise RuntimeError("운영자가 실제 방송 음성 출력을 중지했습니다.")
-                self._stream_lease.check(obs)
-                if not obs.status().streaming:
-                    raise RuntimeError("실제 발화 도중 OBS 송출이 종료되었습니다.")
+                # 한 WAV 재생 중에도 실제 송출/입/임시 소스가 유지되는지
+                # 주기적으로 읽는다. 관측 불명 시 후속 구간 재발화 금지.
+                self._playback_watch.wait_for_current_wav(
+                    seconds=wav_seconds, stop=self._stop, obs=obs,
+                    lease=self._stream_lease, expected_scene=original.scene,
+                    source_is_owned=source_is_owned,
+                    cubism_is_alive=lambda: (
+                        child.poll() is None
+                        and frontend._native_viewer is child
+                        and frontend._native_bridge is not None))
                 self._causal_journal.finish(causal_row, completed=True)
                 causal_row = None
                 return wav_seconds
