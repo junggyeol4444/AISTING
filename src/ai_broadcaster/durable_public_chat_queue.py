@@ -28,6 +28,7 @@ _DEFAULT_PATH = data_dir() / "pending_public_chat.sqlite3"
 _APPLICATION_ID = 0x41535447  # ASTG
 _MAX_RECORDS = 200_000
 _MAX_MESSAGE = 4000
+_INCIDENT_STATES = frozenset(("로컬AI확정실패", "공식AI전달불명"))
 
 
 @dataclass(frozen=True)
@@ -59,7 +60,8 @@ class DurablePublicChatQueue:
             if existing and (appid != _APPLICATION_ID
                              or "pending_public_chat" not in tables
                              or not tables.issubset({
-                                 "pending_public_chat", "confirmed_server_events"})):
+                                 "pending_public_chat", "confirmed_server_events",
+                                 "public_chat_processing_incidents"})):
                 raise ValueError("AISTING 미처리 채팅 DB가 아닌 파일을 변경하지 않습니다.")
             if existed_before and not existing:
                 raise ValueError("기존 빈 SQLite 파일의 소유권을 확인할 수 없습니다.")
@@ -94,6 +96,18 @@ class DurablePublicChatQueue:
                     "platform", "channel", "event_id", "confirmed_at"):
                 raise ValueError(
                     "기존 채팅 완료 ID 기록 장부 구조가 일치하지 않습니다.")
+            # AI 처리 확정에 실패한 원래 미처리 sequence만 사건 기록.
+            # 원본 채팅 본문/닉네임, 서버 이벤트 ID, SQLite 기억은 불변.
+            db.execute(
+                "CREATE TABLE IF NOT EXISTS public_chat_processing_incidents("
+                "sequence INTEGER NOT NULL, "
+                "incident_kind TEXT NOT NULL, "
+                "recorded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+                "PRIMARY KEY(sequence,incident_kind))")
+            incident_columns = tuple(row[1] for row in db.execute(
+                "PRAGMA table_info(public_chat_processing_incidents)").fetchall())
+            if incident_columns != ("sequence", "incident_kind", "recorded_at"):
+                raise ValueError("기존 공개 채팅 장애 장부 구조가 일치하지 않습니다.")
             # 동일 본문/사용자의 별개 채팅은 보존. 플랫폼이 실제 발급한
             # 이벤트 ID의 보류 중/처리 완료 재전송만 중복 작업으로 막는다.
             db.execute(
@@ -365,6 +379,45 @@ class DurablePublicChatQueue:
                             str(next_channel_oldest[1]))
             return removed
 
+
+    def record_processing_incident(self, sequence: int, kind: str) -> bool:
+        """실제 FIFO 실패를 채팅 본문 없이 append-only로 영구 보존.
+
+        원본 pending 채팅이 존재하는 경우만 기록한다. 한 sequence/종류는
+        여러 실행에서 발생해도 최초 1회만 저장한다. DB 장애는 호출자에게
+        전달하며 원본 pending 건을 완료 처리하거나 삭제하지 않는다.
+        """
+        if type(sequence) is not int or sequence < 1:
+            raise ValueError("AI 처리 실패 원본 순번이 올바르지 않습니다.")
+        if type(kind) is not str or kind not in _INCIDENT_STATES:
+            raise ValueError("공개 채팅 실패 종류가 올바르지 않습니다.")
+        with self._lock, self._connection() as db:
+            cursor = db.execute(
+                "INSERT OR IGNORE INTO public_chat_processing_incidents "
+                "(sequence,incident_kind) SELECT sequence,? "
+                "FROM pending_public_chat WHERE sequence=?", (kind, sequence))
+            if cursor.rowcount == 1:
+                return True
+            known = db.execute(
+                "SELECT 1 FROM public_chat_processing_incidents "
+                "WHERE sequence=? AND incident_kind=?", (sequence, kind)).fetchone()
+            if known is None:
+                raise RuntimeError("실패 사건에 해당하는 미처리 채팅이 없습니다.")
+            return False
+
+    def recent_processing_incidents(self, *, limit: int = 25
+                                    ) -> tuple[tuple[int, str, str], ...]:
+        """원본 발화·작성자 없이 최근 실패 사건만 운영자에게 제공."""
+        if type(limit) is not int or not 1 <= limit <= 100:
+            raise ValueError("공개 채팅 장애 내역 조회 범위가 올바르지 않습니다.")
+        with self._lock, self._connection() as db:
+            rows = db.execute(
+                "SELECT sequence,incident_kind,recorded_at "
+                "FROM public_chat_processing_incidents "
+                "ORDER BY recorded_at DESC, sequence DESC LIMIT ?",
+                (limit,)).fetchall()
+        return tuple((int(sequence), str(kind), str(at))
+                     for sequence, kind, at in rows)
 
     def load_for(self, channels: dict[str, str], *, limit: int = 4096
                  ) -> list[PendingChat]:
