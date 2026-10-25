@@ -796,7 +796,7 @@ class LocalChatTab(ttk.Frame):
         # 누락된 척 연결하지 않고 원래 사용자 설정/기억도 건드리지 않는다.
         try:
             durable = DurablePublicChatQueue()
-            recovered = durable.load_for(session._channels)
+            recovery_snapshot = durable.recovery_snapshot(session._channels)
         except Exception as exc:
             messagebox.showerror(
                 "채팅 복구 준비 실패",
@@ -858,17 +858,11 @@ class LocalChatTab(ttk.Frame):
         # 이미 보관된 미처리 채팅을 새 수신보다 먼저 같은 단일 AI FIFO로
         # 넣는다. 장비 재부팅 뒤 과거 monotonic 시각은 그대로 재사용하지
         # 않고 파싱 시각 미확인으로 분리한다. 기존 메시지는 삭제하지 않는다.
-        for pending in recovered:
-            accepted_at = time.monotonic()
-            arrival_times.put(accepted_at)
-            inbox.put(pending)
-            self._results.put(("twitch_scoped", (
-                session, "twitch_chat", _ReaderTimestampedChat(
-                    pending.message, accepted_at, ai_prequeued=True))))
-        if recovered:
+        if recovery_snapshot[0]:
             self._append(
-                "[미처리 채팅 복구] 이전 작업 " + str(len(recovered))
-                + "건을 원래 순서로 AI 큐에 재등록 · 중복 처리 여부는 미검증")
+                "[미처리 채팅 복구] " + str(recovery_snapshot[0])
+                + "건을 백그라운드에서 순서대로 재등록 예정 · "
+                "완료 전 신규 네트워크 수신 대기 · 중복 처리 여부 미검증")
         self._twitch_active_workers.add(session)
         # One worker calls the EXISTING local Ollama conversation in order.
         # No extra model service, intentional delay or platform chat posting.
@@ -890,7 +884,48 @@ class LocalChatTab(ttk.Frame):
         self._twitch_start.configure(state="disabled")
         self._twitch_end.configure(state="normal")
         self._twitch_status.set(choice + " 채팅 연결 요청 중 · 실제 수신 대기")
-        threading.Thread(target=self._work_twitch, args=(session,), daemon=True).start()
+        threading.Thread(
+            target=self._work_twitch_recover_then_read,
+            args=(session, durable, recovery_snapshot, inbox, arrival_times),
+            daemon=True).start()
+
+    def _work_twitch_recover_then_read(
+            self, session, spool, recovery_snapshot, inbox, arrival_times) -> None:
+        """과거 전체 채팅을 한정된 FIFO 용량으로 복구한 후 새 수신기를 연다.
+
+        4096건 초과로 방송 재연결 자체가 막히던 상태를 피하되,
+        과거 메시지보다 신규 수신을 먼저 처리하지 않는다. 복구가 오래
+        걸리면 신규 채팅 수신도 대기하므로 실시간 무누락 보증은 아니다.
+        """
+        try:
+            for pending in spool.iter_recovery(
+                    session._channels, through_sequence=recovery_snapshot[1]):
+                while not session._stop.is_set():
+                    with self._live_ingress_lock:
+                        if (session is not self._twitch_session
+                                or getattr(self, "_closed", False)):
+                            return
+                        if inbox.qsize() < 4096 and self._results.qsize() < 4096:
+                            accepted_at = time.monotonic()
+                            arrival_times.put(accepted_at)
+                            self._results.put(("twitch_scoped", (
+                                session, "twitch_chat", _ReaderTimestampedChat(
+                                    pending.message, accepted_at, ai_prequeued=True))))
+                            inbox.put(pending)
+                            break
+                    session._stop.wait(0.02)
+                if session._stop.is_set():
+                    return
+            if session._stop.is_set():
+                return
+        except Exception as exc:
+            # 원본 DB를 건드리지 않고 사용자에게 기존 오류 경로로 알린다.
+            self._results.put(("twitch_scoped", (
+                session, "twitch_error", "복구실패_" + type(exc).__name__)))
+            self._results.put(("twitch_scoped", (
+                session, "twitch_finished", session)))
+            return
+        self._work_twitch(session)
 
     def _enqueue_public_event(self, session, kind, item, *, limit: int = 4096) -> bool:
         """Back-pressure on the network reader, never on the Tk GUI thread.

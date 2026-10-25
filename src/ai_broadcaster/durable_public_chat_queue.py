@@ -169,6 +169,65 @@ class DurablePublicChatQueue:
             recovered.append(PendingChat(int(seq), chat))
         return recovered
 
+
+    def recovery_snapshot(self, channels: dict[str, str]) -> tuple[int, int]:
+        """선택 채널의 복구 대상 건수와 고정된 최종 순번을 한 번에 확인한다.
+
+        전체 미처리 자료를 GUI 메모리에 올리지 않고 읽기 전용 조회만 수행한다.
+        """
+        if (not isinstance(channels, dict) or not channels
+                or any(k not in ("twitch", "chzzk", "soop", "youtube")
+                       or type(v) is not str or not v.strip()
+                       for k, v in channels.items())):
+            raise ValueError("복구할 플랫폼 및 채널 선택을 확인하세요.")
+        clauses = " OR ".join("(platform=? AND channel=?)" for _ in channels)
+        args = [value for platform, channel in channels.items()
+                for value in (platform, channel)]
+        with self._lock, self._connection() as db:
+            count, last = db.execute(
+                "SELECT COUNT(*), COALESCE(MAX(sequence), 0) "
+                f"FROM pending_public_chat WHERE {clauses}", args
+            ).fetchone()
+        return int(count), int(last)
+
+    def iter_recovery(self, channels: dict[str, str], *,
+                      through_sequence: int, batch_size: int = 256):
+        """한정된 페이지로 전체 미처리 채팅을 원래 전역 순서대로 읽는다.
+
+        마지막 순번을 고정하여 복구 도중 다른 인스턴스의 신규 입력이
+        과거 복구에 무한히 합류하지 않도록 한다. 원본 행은 삭제하지 않는다.
+        실제 AI 처리 성공 시에만 기존 confirm()이 개별 행을 제거한다.
+        """
+        if (not isinstance(channels, dict) or not channels
+                or any(k not in ("twitch", "chzzk", "soop", "youtube")
+                       or type(v) is not str or not v.strip()
+                       for k, v in channels.items())
+                or type(through_sequence) is not int or through_sequence < 0
+                or type(batch_size) is not int or not 1 <= batch_size <= 4096):
+            raise ValueError("미처리 채팅 순차 복구 조건이 잘못되었습니다.")
+        clauses = " OR ".join("(platform=? AND channel=?)" for _ in channels)
+        args = [value for platform, channel in channels.items()
+                for value in (platform, channel)]
+        cursor = 0
+        while cursor < through_sequence:
+            with self._lock, self._connection() as db:
+                rows = db.execute(
+                    "SELECT sequence,platform,channel,sender,message,event_id "
+                    f"FROM pending_public_chat WHERE ({clauses}) "
+                    "AND sequence>? AND sequence<=? "
+                    "ORDER BY sequence LIMIT ?",
+                    [*args, cursor, through_sequence, batch_size]
+                ).fetchall()
+            if not rows:
+                return
+            for seq, platform, channel, sender, message, event_id in rows:
+                cursor = int(seq)
+                yield PendingChat(
+                    cursor, PlatformChat(
+                        channel=channel, sender=sender, text=message,
+                        platform=platform, event_id=event_id,
+                        parsed_at_monotonic=None))
+
     def pending_count(self) -> int:
         """GUI 표시에는 DB 파일 잠금/쓰기 없이 이전 확정 값을 사용한다."""
         with self._lock:
