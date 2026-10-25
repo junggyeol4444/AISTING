@@ -35,6 +35,7 @@ from .durable_public_chat_queue import DurablePublicChatQueue, PendingChat
 from .live_ai_recovery import run_local_fifo_with_recovery
 from .approved_live_idle_speech import ApprovedLiveIdleSpeech
 from .approved_live_voice_output import ApprovedLiveVoiceOutput
+from .ordered_parallel_local_ai import OrderedParallelLocalAI
 
 
 @dataclass(frozen=True)
@@ -89,6 +90,8 @@ class LocalChatTab(ttk.Frame):
         self._idle_live_threshold = tk.StringVar(value="90")
         self._idle_live_words = tk.StringVar()
         self._broadcast_memory_enabled = tk.BooleanVar(value=False)
+        self._parallel_local_ai_enabled = tk.BooleanVar(value=False)
+        self._twitch_parallel_ai: OrderedParallelLocalAI | None = None
         self._approved_live_voice_enabled = tk.BooleanVar(value=False)
         self._approved_live_voice_output: ApprovedLiveVoiceOutput | None = None
         self._approved_live_voice_status = tk.StringVar(
@@ -271,6 +274,11 @@ class LocalChatTab(ttk.Frame):
             self, text="로컬 Ollama 생성 중 답변 미리보기 (기본 꺼짐 · 방송/저장 없음)",
             variable=self._local_stream_preview,
         ).pack(anchor="w", pady=(2, 1), before=model_row)
+        ttk.Checkbutton(
+            self, text="로컬 Ollama 동시 선행 추론 최대 4개 · "
+                 "답변/SQLite 기억은 채팅 FIFO 순서대로 (기본 꺼짐)",
+            variable=self._parallel_local_ai_enabled,
+        ).pack(anchor="w", pady=(2,1), before=model_row)
         ttk.Checkbutton(
             self,
             text="공식 창 빠른 전송: 채팅당 8초 립싱크 실증 대기 생략 (전송 확인만 · 기본 켜짐)",
@@ -889,6 +897,15 @@ class LocalChatTab(ttk.Frame):
                     "실제 OBS 사건 장부를 안전하게 읽지 못했습니다 ("
                     + type(exc).__name__ + ")", parent=self)
                 return
+        parallel_mode = bool(
+            self._parallel_local_ai_enabled.get()
+            and not official and scheduled_approval is None)
+        if parallel_mode and self._local_stream_preview.get():
+            approval_dialog.showwarning(
+                "병렬 AI 실시간 미리보기",
+                "4개 선행 추론 중 서로 다른 답변의 생성 조각을 섞지 않도록 "
+                "부분 미리보기를 먼저 해제하세요.", parent=self)
+            return
         live_voice_options = None
         if self._approved_live_voice_enabled.get() and scheduled_approval is None:
             if official:
@@ -1043,6 +1060,18 @@ class LocalChatTab(ttk.Frame):
                 + str(len(prior_ai_incidents))
                 + "개 사건 기록 있음 · 해당 채팅의 성공/송출 미확인 · "
                 "원본 SQLite 보존 상태 확인 필요")
+        parallel_ai = None
+        if parallel_mode:
+            try:
+                parallel_ai = OrderedParallelLocalAI(
+                    model, broadcast_facts=broadcast_facts)
+            except Exception as exc:
+                durable.release_exclusive_consumer()
+                approval_dialog.showwarning(
+                    "로컬 AI 선행 추론",
+                    "현재 선택한 모델·캐릭터·대화 기억을 준비하지 못했습니다 ("
+                    + type(exc).__name__ + ")", parent=self)
+                return
         if live_voice_options is not None:
             try:
                 live_voice = ApprovedLiveVoiceOutput(
@@ -1051,6 +1080,8 @@ class LocalChatTab(ttk.Frame):
                         "approved_live_voice_event", (session, kind, value))))
                 live_voice.start()
             except Exception as exc:
+                if parallel_ai is not None:
+                    parallel_ai.stop()
                 durable.release_exclusive_consumer()
                 approval_dialog.showwarning(
                     "방송용 실제 한국어 음성",
@@ -1062,6 +1093,7 @@ class LocalChatTab(ttk.Frame):
                 "실제 한국어 방송 발화 FIFO 시작 · 기존 OBS 방송 중에만 음성 전송")
         else:
             self._approved_live_voice_output = None
+        self._twitch_parallel_ai = parallel_ai
         self._twitch_chat_spool = durable
         self._twitch_session = session
         self._platform_health_updated_at = 0.0
@@ -1144,7 +1176,8 @@ class LocalChatTab(ttk.Frame):
                     "stream_preview_mode": stream_preview,
                     "arrival_times": arrival_times,
                     "idle_policy": idle_policy,
-                    "broadcast_facts": broadcast_facts},
+                    "broadcast_facts": broadcast_facts,
+                    "parallel_ai": parallel_ai},
             daemon=True,
         ).start()
         self._twitch_start.configure(state="disabled")
@@ -1207,6 +1240,14 @@ class LocalChatTab(ttk.Frame):
                                         session, "twitch_chat", _ReaderTimestampedChat(
                                             live_message, accepted_at,
                                             ai_prequeued=True))))
+                                    if self._twitch_parallel_ai is not None:
+                                        actor_name = "[" + {
+                                            "twitch": "트위치", "chzzk": "치지직",
+                                            "soop": "SOOP", "youtube": "유튜브"
+                                        }.get(live_message.platform, "트위치") + "] " + live_message.sender
+                                        self._twitch_parallel_ai.submit(
+                                            pending.sequence, live_message.text,
+                                            sender=actor_name)
                                     inbox.put(PendingChat(pending.sequence, live_message))
                                     if deferred_this_run:
                                         session.note_deferred_sqlite_chat_enqueued(
@@ -1358,6 +1399,13 @@ class LocalChatTab(ttk.Frame):
                                     session, "twitch_chat", _ReaderTimestampedChat(
                                         item, stamped_item.reader_received_at,
                                         ai_prequeued=True))))
+                                if self._twitch_parallel_ai is not None:
+                                    actor_name = "[" + {
+                                        "twitch": "트위치", "chzzk": "치지직",
+                                        "soop": "SOOP", "youtube": "유튜브"
+                                    }.get(item.platform, "트위치") + "] " + item.sender
+                                    self._twitch_parallel_ai.submit(
+                                        sequence, item.text, sender=actor_name)
                                 inbox.put(PendingChat(sequence, item))
                                 accepted = True
                                 return True
@@ -1397,7 +1445,8 @@ class LocalChatTab(ttk.Frame):
                         stream_preview_mode: bool = False,
                         arrival_times: queue.SimpleQueue | None = None,
                         idle_policy: ApprovedLiveIdleSpeech | None = None,
-                        broadcast_facts: str = "") -> None:
+                        broadcast_facts: str = "",
+                        parallel_ai: OrderedParallelLocalAI | None = None) -> None:
         # Old direct-call regression contracts still use unscoped result
         # events; real UI connections always provide their unique session.
         def report(kind, value):
@@ -1619,67 +1668,78 @@ class LocalChatTab(ttk.Frame):
                     actor = "[" + {"twitch":"트위치","chzzk":"치지직",
                         "soop":"SOOP","youtube":"유튜브"}.get(
                             getattr(chat, "platform", "twitch"), "트위치") + "] " + chat.sender
-                    if reply_function is None:
-                        # 한 번 선택한 로컬 Ollama·캐릭터/기억 경로를
-                        # 동일 수신 워커 내에서만 보유한다. 다른 방송
-                        # 세션과 공유하지 않고 원래 단일 FIFO를 유지한다.
-                        if local_runner is None:
-                            local_runner = LocalChatRunner(
-                                model, use_committed_gui_character=True,
-                                broadcast_facts=broadcast_facts)
-                        if stream_preview_mode:
-                            partial_preview = ""
-                            received_chars = 0
-                            last_progress_at = 0.0
-                            def on_stream_chunk(delta: str) -> None:
-                                nonlocal partial_preview, received_chars, last_progress_at
-                                if session is not None and session._stop.is_set():
-                                    # 끝난 세션의 추가 토큰/미리보기는 막는다.
-                                    raise RuntimeError("운영자 중지 · 부분 텍스트 폐기")
-                                received_chars += len(delta)
-                                if len(partial_preview) < 160:
-                                    partial_preview += delta[:160-len(partial_preview)]
-                                now = time.monotonic()
-                                if (last_progress_at == 0.0
-                                        or now - last_progress_at >= 0.35):
-                                    last_progress_at = now
-                                    report("twitch_ai_stream_preview", (
-                                        partial_preview, received_chars,
-                                        max(0.0, now - model_started_at)))
-                            def _generate_stream_reply():
-                                return local_runner.reply(
-                                    chat.text, sender=actor,
-                                    on_stream_chunk=on_stream_chunk,
-                                    should_cancel=(
-                                        (lambda: session._stop.is_set())
-                                        if session is not None else None))
-                            if isinstance(session, MultiPlatformReadOnlySession):
-                                def _stream_retry(attempt, delay):
+                    if (parallel_ai is not None and pending_sequence is not None
+                            and isinstance(session, MultiPlatformReadOnlySession)):
+                        result = run_local_fifo_with_recovery(
+                            lambda: parallel_ai.finish(
+                                pending_sequence, chat.text, sender=actor),
+                            stop=session._stop,
+                            on_retry=lambda attempt, delay: report(
+                                "twitch_ai_retry", (
+                                    getattr(chat, "platform", "twitch"),
+                                    attempt, delay)))
+                    else:
+                        if reply_function is None:
+                            # 한 번 선택한 로컬 Ollama·캐릭터/기억 경로를
+                            # 동일 수신 워커 내에서만 보유한다. 다른 방송
+                            # 세션과 공유하지 않고 원래 단일 FIFO를 유지한다.
+                            if local_runner is None:
+                                local_runner = LocalChatRunner(
+                                    model, use_committed_gui_character=True,
+                                    broadcast_facts=broadcast_facts)
+                            if stream_preview_mode:
+                                partial_preview = ""
+                                received_chars = 0
+                                last_progress_at = 0.0
+                                def on_stream_chunk(delta: str) -> None:
                                     nonlocal partial_preview, received_chars, last_progress_at
-                                    partial_preview, received_chars, last_progress_at = "", 0, 0.0
-                                    report("twitch_ai_retry", (
-                                        getattr(chat, "platform", "twitch"), attempt, delay))
-                                result = run_local_fifo_with_recovery(
-                                    _generate_stream_reply, stop=session._stop,
-                                    on_retry=_stream_retry)
+                                    if session is not None and session._stop.is_set():
+                                        # 끝난 세션의 추가 토큰/미리보기는 막는다.
+                                        raise RuntimeError("운영자 중지 · 부분 텍스트 폐기")
+                                    received_chars += len(delta)
+                                    if len(partial_preview) < 160:
+                                        partial_preview += delta[:160-len(partial_preview)]
+                                    now = time.monotonic()
+                                    if (last_progress_at == 0.0
+                                            or now - last_progress_at >= 0.35):
+                                        last_progress_at = now
+                                        report("twitch_ai_stream_preview", (
+                                            partial_preview, received_chars,
+                                            max(0.0, now - model_started_at)))
+                                def _generate_stream_reply():
+                                    return local_runner.reply(
+                                        chat.text, sender=actor,
+                                        on_stream_chunk=on_stream_chunk,
+                                        should_cancel=(
+                                            (lambda: session._stop.is_set())
+                                            if session is not None else None))
+                                if isinstance(session, MultiPlatformReadOnlySession):
+                                    def _stream_retry(attempt, delay):
+                                        nonlocal partial_preview, received_chars, last_progress_at
+                                        partial_preview, received_chars, last_progress_at = "", 0, 0.0
+                                        report("twitch_ai_retry", (
+                                            getattr(chat, "platform", "twitch"), attempt, delay))
+                                    result = run_local_fifo_with_recovery(
+                                        _generate_stream_reply, stop=session._stop,
+                                        on_retry=_stream_retry)
+                                else:
+                                    result = _generate_stream_reply()
                             else:
-                                result = _generate_stream_reply()
-                        else:
-                            def _generate_full_reply():
-                                return local_runner.reply(
-                                    chat.text, sender=actor,
-                                    should_cancel=(
-                                        (lambda: session._stop.is_set())
-                                        if session is not None else None))
-                            if isinstance(session, MultiPlatformReadOnlySession):
-                                result = run_local_fifo_with_recovery(
-                                    _generate_full_reply, stop=session._stop,
-                                    on_retry=lambda attempt, delay: report(
-                                        "twitch_ai_retry", (
-                                            getattr(chat, "platform", "twitch"),
-                                            attempt, delay)))
-                            else:
-                                result = _generate_full_reply()
+                                def _generate_full_reply():
+                                    return local_runner.reply(
+                                        chat.text, sender=actor,
+                                        should_cancel=(
+                                            (lambda: session._stop.is_set())
+                                            if session is not None else None))
+                                if isinstance(session, MultiPlatformReadOnlySession):
+                                    result = run_local_fifo_with_recovery(
+                                        _generate_full_reply, stop=session._stop,
+                                        on_retry=lambda attempt, delay: report(
+                                            "twitch_ai_retry", (
+                                                getattr(chat, "platform", "twitch"),
+                                                attempt, delay)))
+                                else:
+                                    result = _generate_full_reply()
                     else:
                         result = reply_function(
                             model, chat.text, sender=actor,
@@ -1720,6 +1780,10 @@ class LocalChatTab(ttk.Frame):
         if session is None:
             return
         session.stop()
+        parallel_ai = self._twitch_parallel_ai
+        self._twitch_parallel_ai = None
+        if parallel_ai is not None:
+            parallel_ai.stop()
         live_voice = self._approved_live_voice_output
         self._approved_live_voice_output = None
         if live_voice is not None:
@@ -1764,6 +1828,10 @@ class LocalChatTab(ttk.Frame):
         if self._pipeline_cancel is not None:
             self._pipeline_cancel.set()
         self._queued_voice.clear()
+        parallel_ai = self._twitch_parallel_ai
+        if parallel_ai is not None:
+            parallel_ai.stop()
+            self._twitch_parallel_ai = None
         live_voice = self._approved_live_voice_output
         if live_voice is not None:
             live_voice.stop()
@@ -1960,6 +2028,8 @@ class LocalChatTab(ttk.Frame):
             + "\n".join(lines)
             + f"\nGUI 이벤트 대기 {self._results.qsize()}건"
             + f" / 로컬 AI FIFO 대기 {pending}건"
+            + (f" / 선행 AI 아직 확정 안 된 채팅 {self._twitch_parallel_ai.pending}건"
+               if self._twitch_parallel_ai is not None else "")
             + (" / 디스크 미처리 채팅 "
                + (str(durable_count) + "건" if durable_count is not None
                   else "저장소 미연결"))
