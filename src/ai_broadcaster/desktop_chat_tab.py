@@ -333,6 +333,10 @@ class LocalChatTab(ttk.Frame):
             self, text="실제 방송 한국어 발화 시도·중단·전달불명 기록 보기",
             command=self._show_approved_voice_history,
         ).pack(anchor="w", before=model_row, pady=(1,2))
+        ttk.Button(
+            self, text="이전 방송 미발화 음성 직접 확인·동일 방송 승인 후 인계",
+            command=self._review_previous_voice_pending,
+        ).pack(anchor="w", before=model_row, pady=(1, 2))
         ttk.Checkbutton(
             self, text="이전 실제 OBS 방송 시작·종료 사실을 내 로컬 AI가 기억"
                  " (선택 시에만 · 기본 꺼짐 · 다른 캐릭터/채팅 원문 저장 없음)",
@@ -839,6 +843,80 @@ class LocalChatTab(ttk.Frame):
             "한국어 GPT-SoVITS·Cubism·OBS 발화 기록",
             message + "\n\n※ 재생요청완료는 실제 시청자 수신 증명이 아닙니다. "
             "시도/불명 발화는 자동 재생하지 않습니다.", parent=self)
+
+    def _review_previous_voice_pending(self) -> None:
+        """운영자 수동 확인 두 번 없이는 이전 방송 대기 발화를 이동하지 않음."""
+        voice = getattr(self, "_approved_live_voice_output", None)
+        session = self._twitch_session
+        if voice is None or session is None or sys.platform != "win32":
+            messagebox.showwarning(
+                "이전 방송 발화 인계",
+                "Windows에서 실제 방송 음성 작업자를 승인·시작한 후에만 가능합니다.",
+                parent=self)
+            return
+        try:
+            rows = voice.previous_sessions_for_review()
+        except Exception as exc:
+            messagebox.showwarning(
+                "이전 방송 발화 인계",
+                "이전 방송 대기 기록을 조회하지 못했습니다 (" +
+                type(exc).__name__ + ")", parent=self)
+            return
+        choices = [row for row in rows if row[1] > 0]
+        if not choices:
+            messagebox.showinfo(
+                "이전 방송 발화 인계",
+                "이전 방송에서 아직 시도하지 않은 대기 음성이 없습니다. "
+                "시도·불명 기록은 인계하지 않습니다.", parent=self)
+            return
+        display = "\n".join(
+            f"{sid} · 미발화 {pending}건 · 시도/불명 {attempted}건 · {at}"
+            for sid, pending, attempted, at in choices[:15])
+        selected = simpledialog.askstring(
+            "이전 방송 미발화 수동 인계",
+            "이전 세션의 미발화만 선택합니다.\n"
+            "다른 방송의 오래된 문장을 읽을 수 있으므로 동일 OBS 방송인지 "
+            "운영자가 직접 확인해야 합니다.\n"
+            "시도/불명 발화는 절대 재발화하지 않습니다.\n\n"
+            + display + "\n\n인계할 과거 세션 ID 32자:",
+            parent=self)
+        if selected is None:
+            return
+        selected = selected.strip()
+        match = next((row for row in choices if row[0] == selected), None)
+        if match is None:
+            messagebox.showwarning(
+                "이전 방송 발화 인계", "표시된 과거 미발화 세션 ID만 선택할 수 있습니다.",
+                parent=self)
+            return
+        if not messagebox.askyesno(
+                "동일 방송 확인 1/2",
+                f"이전 미발화 {match[1]}건이 현재 진행 중인 동일 OBS 방송의 "
+                "발화임을 직접 확인했습니까?\n"
+                "다른 방송·확인 불명이라면 취소하세요.", parent=self):
+            return
+        if not messagebox.askyesno(
+                "실제 음성 송출 최종 승인 2/2",
+                "이 작업은 선택한 과거 미발화 문장을 현재 OBS/Live2D에 "
+                "실제로 읽도록 대기열에 인계합니다.\n"
+                "이전 시도/불명은 제외합니다. 실행을 승인합니까?",
+                parent=self):
+            return
+        self._approved_live_voice_status.set(
+            "운영자 승인한 과거 미발화 인계 · 현재 OBS 상태 확인 중")
+        def worker():
+            try:
+                moved = voice.adopt_previous_pending(
+                    selected, operator_approved=True,
+                    same_broadcast_confirmed=True)
+                self._results.put(("approved_voice_manual_recovery",
+                                   (session, moved, "")))
+            except Exception as exc:
+                self._results.put(("approved_voice_manual_recovery",
+                                   (session, 0, type(exc).__name__)))
+        threading.Thread(
+            target=worker, daemon=True,
+            name="AISTING-과거음성수동인계").start()
 
     def _start_twitch(self, *, scheduled_approval: object | None = None) -> None:
         """사용자 버튼 또는 사용자 승인된 같은 방송의 단발성 채팅 연결."""
@@ -2256,6 +2334,15 @@ class LocalChatTab(ttk.Frame):
                         self._twitch_status.set(
                             "소유 Google 읽기 인증 실패 (" + str(payload)
                             + ") · 계정/클라이언트/브라우저 설정 확인")
+                    continue
+                if kind == "approved_voice_manual_recovery":
+                    source, moved, error = payload
+                    if source is self._twitch_session:
+                        self._approved_live_voice_status.set(
+                            "이전 방송 미발화 수동 인계 실패 (" + error + ")"
+                            if error else
+                            f"운영자 승인 · 이전 미발화 {moved}건 현재 음성 FIFO 인계"
+                            " · 시도/불명은 그대로 보존")
                     continue
                 if kind == "approved_live_voice_event":
                     source, event, value = payload
