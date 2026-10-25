@@ -107,7 +107,7 @@ class DurablePublicChatQueue:
                     # Windows msvcrt.locking은 길이 1인 구간을 사용한다.
                     import msvcrt
                     if os.fstat(handle.fileno()).st_size == 0:
-                        handle.write(b"\\x00")
+                        handle.write(bytes((0,)))
                     handle.seek(0)
                     msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
                 else:
