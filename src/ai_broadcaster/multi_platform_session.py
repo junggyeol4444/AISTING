@@ -65,6 +65,15 @@ class MultiPlatformReadOnlySession:
         # 성공·거절·예외를 모두 측정하며 전달 성공으로 혼동하지 않는다.
         self._callback_emit_samples = {code: deque(maxlen=512) for code in channels}
         self._callback_emit_over_three_seconds = {code: 0 for code in channels}
+        # 채팅 파싱부터 기존 단일 AI FIFO 콜백이 실제 수용할 때까지
+        # 보류/재연결/콜백 대기를 모두 포함한다. 모델 생성·음성·시청자
+        # E2E 지연은 포함하지 않으며 본문·토큰은 저장하지 않는다.
+        self._parse_to_accept_samples = {
+            code: deque(maxlen=512) for code in channels
+        }
+        self._parse_to_accept_max_seconds = {code: 0.0 for code in channels}
+        self._parse_to_accept_over_three = {code: 0 for code in channels}
+        self._parse_timestamp_missing_count = {code: 0 for code in channels}
         self._callback_aborted_count = {code: 0 for code in channels}
         # 실제 콜백에서 이미 수용한 서버 ID를 다시 받은 경우와
         # YouTube 수신기 내부 페이지 재수신 통계는 별도로 정산한다.
@@ -147,7 +156,7 @@ class MultiPlatformReadOnlySession:
                         if code == "twitch" and isinstance(item, TwitchChatLine):
                             item = PlatformChat(
                                 item.channel, item.sender, item.text, code,
-                                item.event_id)
+                                item.event_id, item.parsed_at_monotonic)
                         if not isinstance(item, PlatformChat) or item.platform != code:
                             raise ValueError("채팅 플랫폼 식별자가 올바르지 않습니다.")
                         event_id = item.event_id
@@ -182,6 +191,23 @@ class MultiPlatformReadOnlySession:
                                     self._callback_aborted_count[code] += 1
                                 else:
                                     self._forwarded_chat_count[code] += 1
+                                    parsed_at = item.parsed_at_monotonic
+                                    if (type(parsed_at) in (int, float)
+                                            and math.isfinite(parsed_at)
+                                            and 0 < parsed_at <= started):
+                                        parse_to_accept = max(
+                                            0.0, time.monotonic() - parsed_at)
+                                        self._parse_to_accept_samples[code].append(
+                                            parse_to_accept)
+                                        self._parse_to_accept_max_seconds[code] = max(
+                                            self._parse_to_accept_max_seconds[code],
+                                            parse_to_accept)
+                                        self._parse_to_accept_over_three[code] += int(
+                                            parse_to_accept > 3.0)
+                                    else:
+                                        # 외부에서 직접 구성한 가상 사건이나
+                                        # 비정상 시각은 실제 지연 표본으로 세지 않는다.
+                                        self._parse_timestamp_missing_count[code] += 1
                                     if event_id is not None:
                                         recent = self._recent_event_ids[code]
                                         recent.append(event_id)
@@ -437,6 +463,18 @@ class MultiPlatformReadOnlySession:
                         ], 6) if self._callback_emit_samples[code] else None
                     ),
                     "콜백소요3초초과": self._callback_emit_over_three_seconds[code],
+                    "파싱후수용최근표본": len(self._parse_to_accept_samples[code]),
+                    "파싱후수용최근p95초": (
+                        round(sorted(self._parse_to_accept_samples[code])[
+                            math.ceil(len(self._parse_to_accept_samples[code]) * 0.95) - 1
+                        ], 6) if self._parse_to_accept_samples[code] else None
+                    ),
+                    "파싱후수용최장초": round(
+                        self._parse_to_accept_max_seconds[code], 6),
+                    "파싱후수용3초초과": self._parse_to_accept_over_three[code],
+                    "파싱시각미확인수용": self._parse_timestamp_missing_count[code],
+                    "파싱후미수용최장경과초": self._oldest_pending_parsed_age_seconds(
+                        code, now),
                     "콜백전달진행중": self._callback_inflight_started_at[code] is not None,
                     "콜백전달진행초": (
                         round(max(0.0, now - self._callback_inflight_started_at[code]), 6)
@@ -486,6 +524,31 @@ class MultiPlatformReadOnlySession:
                 }
                 for code in self._channels
             }
+
+    def _oldest_pending_parsed_age_seconds(
+            self, code: str, now: float) -> float | None:
+        """재연결 보류 선두의 실제 파싱 후 경과를 조회한다.
+
+        각 보류 deque의 맨 앞만 확인하고 채팅 본문은 반환하지 않는다.
+        이 값은 AI 처리시간이나 실제 서버가 보내지 않은 채팅 지연이 아니다.
+        """
+        heads = []
+        pending = self._pending_websocket_chats.get(code)
+        if pending:
+            heads.append(pending[0])
+        prejoin = self._prejoin_resume_states.get(code)
+        if prejoin is not None and prejoin.pending:
+            heads.append(prejoin.pending[0])
+        if (code == "youtube" and self._youtube_resume is not None
+                and self._youtube_resume.pending_page_chats):
+            heads.append(self._youtube_resume.pending_page_chats[0])
+        ages = []
+        for item in heads:
+            parsed = getattr(item, "parsed_at_monotonic", None)
+            if (type(parsed) in (int, float) and math.isfinite(parsed)
+                    and 0 < parsed <= now):
+                ages.append(max(0.0, now - parsed))
+        return round(max(ages), 6) if ages else None
 
     def try_reconnect_snapshot(self):
         """GUI 대기열이 많을 때 상태 잠금을 기다리지 않고 다음 주기 재시도."""
