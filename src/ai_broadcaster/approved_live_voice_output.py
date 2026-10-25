@@ -30,6 +30,7 @@ from .obs_live2d_frame_link import active_official_window_capture
 from .approved_live_voice_journal import ApprovedLiveVoiceJournal, voice_turn_key
 from .approved_live_voice_outbox import ApprovedLiveVoiceOutbox
 from .approved_live_voice_stream_lease import ApprovedVoiceStreamLease
+from .approved_live_voice_causal_journal import ApprovedVoiceCausalJournal
 
 
 _MAX_SEGMENT_CHARS = 64
@@ -116,6 +117,7 @@ class ApprovedLiveVoiceOutput:
         self._outbox = ApprovedLiveVoiceOutbox() if sys.platform == "win32" else None
         self._outbox_wakeup = threading.Event()
         self._stream_lease = ApprovedVoiceStreamLease()
+        self._causal_journal = ApprovedVoiceCausalJournal()
         self._stop = threading.Event()
         self._inbox: queue.Queue[tuple[str, str]] = queue.Queue(
             maxsize=_MAX_SPEECH_QUEUE)
@@ -208,7 +210,9 @@ class ApprovedLiveVoiceOutput:
                 for segment in segments:
                     if self._stop.is_set():
                         break
-                    duration += self._speak_segment(segment)
+                    duration += self._speak_segment(
+                        segment, turn_key=turn_key,
+                        part_id=str(completed + 1))
                     completed += 1
                     self._publish("구간완료", (completed, len(segments)))
                 if self._stop.is_set() or completed != len(segments):
@@ -274,7 +278,9 @@ class ApprovedLiveVoiceOutput:
                 for segment in segments:
                     if self._stop.is_set():
                         break
-                    duration += self._speak_segment(segment)
+                    duration += self._speak_segment(
+                        segment, turn_key=turn_key,
+                        part_id=str(completed + 1))
                     completed += 1
                     self._publish("구간완료", (completed, len(segments)))
                 if self._stop.is_set() or completed != len(segments):
@@ -301,7 +307,10 @@ class ApprovedLiveVoiceOutput:
                 self._stop.set()
                 break
 
-    def _speak_segment(self, text: str, *, depth: int = 0) -> float:
+    def _speak_segment(
+        self, text: str, *, depth: int = 0,
+        turn_key: str | None = None, part_id: str = "1",
+    ) -> float:
         """실제 OBS의 '이미 송출 중' 상태에서만 동일 PCM을 재생·입 구동."""
         from . import original_plan_frontend as frontend
         if self._stop.is_set():
@@ -348,8 +357,12 @@ class ApprovedLiveVoiceOutput:
             if not left or not right or self._stop.is_set():
                 raise RuntimeError("한국어 음성 문장 재분절을 중단했습니다.")
             # 원래 문장의 각 글자를 순서대로 읽고 매번 같은 권리 모델 사용.
-            return (self._speak_segment(left, depth=depth + 1)
-                    + self._speak_segment(right, depth=depth + 1))
+            return (self._speak_segment(
+                        left, depth=depth + 1, turn_key=turn_key,
+                        part_id=part_id + ".1")
+                    + self._speak_segment(
+                        right, depth=depth + 1, turn_key=turn_key,
+                        part_id=part_id + ".2"))
         if wav_seconds < 0.4:
             raise RuntimeError("공식 Cubism 최소 0.4초 미만의 실제 음성입니다.")
         envelope = authorized_pcm_envelope(raw)
@@ -360,6 +373,7 @@ class ApprovedLiveVoiceOutput:
         uuid = None
         created = False
         mouth_token = None
+        causal_row = None
 
         def source_is_owned() -> bool:
             values = client.get_input_list().inputs
@@ -397,17 +411,31 @@ class ApprovedLiveVoiceOutput:
                 # 하나의 WAV로 공식 Cubism 입과 OBS 오디오를 함께 구동.
                 mouth_token = frontend.start_authorized_pcm_live2d_mouth(
                     envelope, operator_approved=True, rights_confirmed=True)
+                causal_row = self._causal_journal.mouth_started(
+                    turn_key=turn_key or secrets.token_hex(32),
+                    part_id=part_id, wav_data=raw,
+                    wav_seconds=wav_seconds, obs_scene=original.scene,
+                    obs_source_uuid=uuid)
                 client.set_scene_item_enabled(original.scene, scene_item_id, True)
                 self._stream_lease.check(obs)
                 client.trigger_media_input_action(
                     name, "OBS_WEBSOCKET_MEDIA_INPUT_ACTION_RESTART")
+                self._causal_journal.obs_triggered(causal_row)
                 if self._stop.wait(wav_seconds + 0.2):
                     raise RuntimeError("운영자가 실제 방송 음성 출력을 중지했습니다.")
                 self._stream_lease.check(obs)
                 if not obs.status().streaming:
                     raise RuntimeError("실제 발화 도중 OBS 송출이 종료되었습니다.")
+                self._causal_journal.finish(causal_row, completed=True)
+                causal_row = None
                 return wav_seconds
             finally:
+                if causal_row is not None:
+                    try:
+                        self._causal_journal.finish(causal_row, completed=False)
+                    except Exception:
+                        # 불명 원본 행은 유지. 재발화하지 않는다.
+                        pass
                 restore_error = None
                 if mouth_token is not None:
                     try:
