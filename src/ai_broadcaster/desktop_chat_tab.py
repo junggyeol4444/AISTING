@@ -1487,8 +1487,9 @@ class LocalChatTab(ttk.Frame):
             }
         wait_snapshots = self._live_queue_wait_tracker.snapshot()
         durable = getattr(self, "_twitch_chat_spool", None)
-        disk_counts = (durable.pending_by_platform_snapshot()
-                       if durable is not None else {})
+        disk_snapshot = (durable.pending_capacity_snapshot()
+                         if durable is not None else {})
+        disk_counts = disk_snapshot.get("플랫폼별", {})
         lines = []
         for code, state in snapshot.items():
             block_stats = block_snapshots.get(code, {
@@ -1601,8 +1602,9 @@ class LocalChatTab(ttk.Frame):
             peak_gui = self._live_peak_gui_backlog
         active_waits = sum(stats["진행중"] for stats in wait_snapshots.values())
         interrupted_waits = sum(stats["중단"] for stats in wait_snapshots.values())
-        durable = getattr(self, "_twitch_chat_spool", None)
-        durable_count = durable.pending_count() if durable is not None else None
+        durable_count = disk_snapshot.get("미처리")
+        disk_limit = disk_snapshot.get("보호한도")
+        disk_usage = disk_snapshot.get("사용률", 0.0)
         self._platform_health_status.set(
             "플랫폼별 실제 수신 진단 (무누락·24시간·시청자 지연 미검증):\n"
             + "\n".join(lines)
@@ -1611,6 +1613,10 @@ class LocalChatTab(ttk.Frame):
             + (" / 디스크 미처리 채팅 "
                + (str(durable_count) + "건" if durable_count is not None
                   else "저장소 미연결"))
+            + (f" / SQLite 보호한도 {disk_limit}건 중 {disk_usage * 100:.1f}%"
+               if disk_limit is not None else "")
+            + (" · 주의: 디스크 미처리 채팅 80% 이상 적체 · AI 처리 속도 확인"
+               if disk_usage >= 0.8 else "")
             + " · 재시작 복구 가능/장애 경계 중복 처리 가능"
             + f" / 수신 큐 대기 완료 {blocked_count}건"
             + f" / 누적 {blocked_total:.2f}초 / 최장 {blocked_max:.2f}초"
