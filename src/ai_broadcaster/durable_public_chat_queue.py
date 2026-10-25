@@ -302,6 +302,29 @@ class DurablePublicChatQueue:
             ).fetchone()
         return int(count), int(last)
 
+    def recovery_ceiling(self, channels: dict[str, str]) -> int:
+        """현재 선택한 방송의 복구 대상 마지막 순번만 빠르게 조회한다.
+
+        최초 복구 건수는 기존 recovery_snapshot()으로 한 번 확인한다.
+        상시 수신 작업에서는 SQLite COUNT 전체 스캔을 반복하지 않고
+        기존 채널·순번 인덱스의 MAX만 조회해 읽기와 AI 등록을 분리한다.
+        이 값은 접수 순번이며 실제 채팅 총량/무누락 증거가 아니다.
+        """
+        if (not isinstance(channels, dict) or not channels
+                or any(k not in ("twitch", "chzzk", "soop", "youtube")
+                       or type(v) is not str or not v.strip()
+                       for k, v in channels.items())):
+            raise ValueError("복구할 플랫폼 및 채널 선택을 확인하세요.")
+        clauses = " OR ".join("(platform=? AND channel=?)" for _ in channels)
+        args = [value for platform, channel in channels.items()
+                for value in (platform, channel)]
+        with self._lock, self._connection() as db:
+            row = db.execute(
+                "SELECT COALESCE(MAX(sequence), 0) "
+                f"FROM pending_public_chat WHERE {clauses}", args).fetchone()
+        return int(row[0])
+
+
     def iter_recovery(self, channels: dict[str, str], *,
                       through_sequence: int, batch_size: int = 256,
                       after_sequence: int = 0):
