@@ -27,12 +27,17 @@ class OrderedParallelLocalAI:
 
     def __init__(
         self, model: str, *, max_workers: int = 4,
+        max_prefetch: int = 32,
         settings_path: Path = DEFAULT_FILE,
         memory_path: Path = DEFAULT_MEMORY_FILE,
         broadcast_facts: str = "",
     ) -> None:
         if type(max_workers) is not int or not 1 <= max_workers <= 4:
             raise ValueError("로컬 AI 동시 추론 개수는 1~4여야 합니다.")
+        if (type(max_prefetch) is not int or
+                not max_workers <= max_prefetch <= 512):
+            raise ValueError("로컬 AI 선행 추론 창은 동시 작업자 이상·512건 이하여야 합니다.")
+        self._prefetch_limit = max_prefetch
         self._config = LocalModelConfig(model=model)
         self._memory = ConversationMemory(path=memory_path)
         settings = load_settings(settings_path)
@@ -49,6 +54,23 @@ class OrderedParallelLocalAI:
         self._pending: dict[int, Future] = {}
         self._committed_sequence = 0
 
+    def can_submit(self, sequence: int | None = None) -> bool:
+        """SQLite를 삭제하지 않고 다음 선행 추론 슬롯을 받을 수 있는지 확인.
+
+        수신기는 이 값이 거짓일 때 현재 SQLite 원본 순번에 머물며
+        메모리 FIFO/스레드풀로 다음 수천 건을 미리 옮기지 않는다.
+        """
+        with self._lock:
+            if self._stopped:
+                return False
+            if sequence is not None and sequence in self._pending:
+                return True
+            return len(self._pending) < self._prefetch_limit
+
+    @property
+    def prefetch_limit(self) -> int:
+        return self._prefetch_limit
+
     def submit(self, sequence: int, text: str, *, sender: str) -> None:
         """원본 SQLite에 저장된 메시지만 중복 없이 비동기 선행 생성."""
         if type(sequence) is not int or sequence < 1:
@@ -64,8 +86,10 @@ class OrderedParallelLocalAI:
                 raise RuntimeError("완료된 순번을 다시 추론하지 않습니다.")
             if sequence in self._pending:
                 return
-            if len(self._pending) >= 4096:
-                raise RuntimeError("병렬 추론 대기 4096건 상한 · 원본 SQLite 보존")
+            if len(self._pending) >= self._prefetch_limit:
+                raise RuntimeError(
+                    "로컬 AI 선행 추론 창이 가득 찼습니다 · "
+                    "원본 SQLite 채팅을 건너뛰지 않고 다음 슬롯을 기다리세요")
             message = ChatMessage(str(uuid4()), sender.strip(), text.strip())
             future = self._executor.submit(self._infer_only, message)
             self._pending[sequence] = future
