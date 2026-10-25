@@ -405,38 +405,50 @@ def verify_gpt_sovits_to_obs(
             ensure_not_recording()
             return result
         finally:
+            # 공식 모델 복원 실패가 나더라도 임시 OBS 소스 제거를 건너뛰지 않는다.
+            restore_error = None
             if mouth_token is not None:
-                # Abort before OBS 미터 반환 시에도 공식 Cubism 함수를 복원.
                 try:
                     frontend.finish_authorized_pcm_live2d_mouth(
                         mouth_token, operator_approved=True)
-                finally:
-                    mouth_token = None
-            if created:
-                # 삭제 직전에도 UUID를 재확인한다. 다른 사용자의 소스는 보호한다.
-                try:
-                    confirm_owned_input()
-                    client.remove_input(input_name)
                 except Exception as exc:
-                    # Never report success when our temporary input may remain.
-                    raise RuntimeError("OBS 임시 음성 소스 정리에 실패했습니다.") from exc
-            elif creation_attempted:
-                # OBS can CREATE the source and then lose the RPC response.
-                # Do not leave a live audio input behind merely because the
-                # create_input call raised before setting created=True.
-                try:
-                    inputs = client.get_input_list().inputs
-                    if not isinstance(inputs, list):
-                        raise ValueError("OBS 입력 목록 형식 오류")
-                    matches = [item for item in inputs if isinstance(item, dict)
-                               and item.get("inputName") == input_name]
-                    if len(matches) > 1:
-                        raise ValueError("OBS 임시 소스 이름 중복")
-                    if matches:
-                        if matches[0].get("inputKind") != "ffmpeg_source":
-                            raise ValueError("OBS 임시 음성 소스 유형 불일치")
+                    restore_error = exc
+                mouth_token = None
+            source_error = None
+            try:
+                if created:
+                    # 삭제 직전에도 UUID를 재확인한다. 다른 사용자의 소스는 보호한다.
+                    try:
+                        confirm_owned_input()
                         client.remove_input(input_name)
-                except Exception as exc:
-                    raise RuntimeError(
-                        "OBS 임시 음성 소스 생성 오류 후 정리 상태를 확인하지 못했습니다."
-                    ) from exc
+                    except Exception as exc:
+                        # Never report success when our temporary input may remain.
+                        raise RuntimeError("OBS 임시 음성 소스 정리에 실패했습니다.") from exc
+                elif creation_attempted:
+                    # OBS can CREATE the source and then lose the RPC response.
+                    # Do not leave a live audio input behind merely because the
+                    # create_input call raised before setting created=True.
+                    try:
+                        inputs = client.get_input_list().inputs
+                        if not isinstance(inputs, list):
+                            raise ValueError("OBS 입력 목록 형식 오류")
+                        matches = [item for item in inputs if isinstance(item, dict)
+                                   and item.get("inputName") == input_name]
+                        if len(matches) > 1:
+                            raise ValueError("OBS 임시 소스 이름 중복")
+                        if matches:
+                            if matches[0].get("inputKind") != "ffmpeg_source":
+                                raise ValueError("OBS 임시 음성 소스 유형 불일치")
+                            client.remove_input(input_name)
+                    except Exception as exc:
+                        raise RuntimeError(
+                            "OBS 임시 음성 소스 생성 오류 후 정리 상태를 확인하지 못했습니다."
+                        ) from exc
+            except Exception as exc:
+                source_error = exc
+            if source_error is not None:
+                raise source_error
+            if restore_error is not None:
+                raise RuntimeError(
+                    "공식 Cubism 원래 음성 입 구동을 복원하지 못했습니다."
+                ) from restore_error
