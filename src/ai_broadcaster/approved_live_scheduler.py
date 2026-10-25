@@ -186,6 +186,15 @@ class ApprovedLiveScheduler:
         # never starts another stream automatically in the same minute.
         self._used.add(occurrence)
         self._occurrence = occurrence
+        # 다음 주간 슬롯의 결과는 이전 방송과 분리하고
+        # 성공·실패 기록을 이번 슬롯의 관측값으로 새로 시작한다.
+        self._start_confirmed = False
+        self._stop_confirmed = False
+        self._closing_attempted = False
+        self._closing_delivered_candidate = False
+        self._start_notice = "대기" if self._on_started_notice else "미설정"
+        self._end_notice = "대기" if self._on_finished_notice else "미설정"
+        self._live_chat = "대기" if self._begin_live_chat else "미설정"
         self._set("방송 시작 준비", "OBS 현재 장면·녹화·공식 Live2D·실제 음성 구성을 확인합니다.")
         try:
             if self._media_preflight() is not True:
@@ -289,7 +298,18 @@ class ApprovedLiveScheduler:
                       " · 자동 완료 기록 금지 · OBS 현재 방송 상태 수동 확인 필요")
             # Still the only stream we own; operator can use OBS itself.
         finally:
-            self._stop.set()
+            if normal_maximum and self._stop_confirmed and not self._stop.is_set():
+                # 예약을 사용자가 취소하지 않았다면 다음 주간 슬롯도
+                # 같은 승인 기간에 실행한다. 본인 소유 이전 OBS 연결
+                # 하나만 종료하고 다른 소유자의 방송은 제어하지 않는다.
+                self._close_client()
+                self._started_at = None
+                self._set("예약 승인됨",
+                          "이번 실제 방송 종료 확인 · 다음 등록 KST 시작 일정 대기")
+            else:
+                # 수동 Stop·불확실한 OBS 상태·출력 실패는 안전을 위해
+                # 자동 재시작을 막고 운영자가 현재 방송을 직접 확인한다.
+                self._stop.set()
 
     def tick(self, now: datetime, monotonic_now: float) -> ApprovedLiveSnapshot:
         """한 번의 실제 시각 점검. GUI 스레드가 아닌 작업자에서만 호출."""
