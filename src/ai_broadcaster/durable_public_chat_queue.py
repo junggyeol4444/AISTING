@@ -37,6 +37,7 @@ class DurablePublicChatQueue:
 
     def __init__(self, path: Path = _DEFAULT_PATH):
         self.path = Path(path)
+        existed_before = self.path.exists()
         if self.path.is_symlink() or self.path.parent.is_symlink():
             raise ValueError("미처리 채팅 저장 경로는 바로가기일 수 없습니다.")
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -52,6 +53,8 @@ class DurablePublicChatQueue:
             if existing and (appid != _APPLICATION_ID
                              or {row[0] for row in existing} != {"pending_public_chat"}):
                 raise ValueError("AISTING 미처리 채팅 DB가 아닌 파일을 변경하지 않습니다.")
+            if existed_before and not existing:
+                raise ValueError("기존 빈 SQLite 파일의 소유권을 확인할 수 없습니다.")
             if not existing and appid not in (0, _APPLICATION_ID):
                 raise ValueError("다른 프로그램의 DB를 덮어쓰지 않습니다.")
             db.execute(f"PRAGMA application_id={_APPLICATION_ID}")
@@ -67,6 +70,13 @@ class DurablePublicChatQueue:
             if actual != ("sequence", "platform", "channel", "sender",
                           "message", "event_id", "created_at"):
                 raise ValueError("AISTING 미처리 채팅 DB 구조가 일치하지 않습니다.")
+            # 동일 본문/사용자의 별개 채팅은 보존. 플랫폼이 실제 발급한
+            # 이벤트 ID가 같은 미확인 재전송에 한해서만 중복 작업을 막는다.
+            db.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS "
+                "idx_aisting_pending_chat_server_event "
+                "ON pending_public_chat(platform,channel,event_id) "
+                "WHERE event_id IS NOT NULL")
 
     from contextlib import contextmanager
 
@@ -92,19 +102,30 @@ class DurablePublicChatQueue:
                 or (event_id is not None and (
                     type(event_id) is not str or len(event_id) > 512))):
             raise ValueError("복구할 공개 채팅의 형식 또는 길이가 잘못되었습니다.")
-        return platform, channel, sender, message, event_id
+        return platform, channel, sender, message, (event_id or None)
 
-    def append(self, chat) -> int:
-        """네트워크 수용 콜백에서 AI FIFO 전 등록이 보장될 때만 호출."""
+    def append(self, chat) -> int | None:
+        """커밋 뒤 ID 반환. 이미 보류 중인 실제 서버 ID 재전송이면 None.
+
+        본문 같은 별개 채팅 또는 서버 ID 없는 메시지는 절대 합치지 않는다.
+        """
         fields = self._fields(chat)
         with self._lock, self._connection() as db:
+            if fields[-1] is not None:
+                old = db.execute(
+                    "SELECT sequence FROM pending_public_chat "
+                    "WHERE platform=? AND channel=? AND event_id=?",
+                    (fields[0], fields[1], fields[-1])).fetchone()
+                if old is not None:
+                    return None
             number = db.execute("SELECT COUNT(*) FROM pending_public_chat").fetchone()[0]
             if number >= _MAX_RECORDS:
                 raise RuntimeError("미처리 채팅 보호 한도에 도달했습니다. 조용히 폐기하지 않습니다.")
             cursor = db.execute(
-                "INSERT INTO pending_public_chat "
+                "INSERT OR IGNORE INTO pending_public_chat "
                 "(platform, channel, sender, message, event_id) VALUES(?,?,?,?,?)", fields)
-            return int(cursor.lastrowid)
+            # 외부 동시 인스턴스가 같은 실제 서버 ID를 막 넣은 경우.
+            return int(cursor.lastrowid) if cursor.rowcount == 1 else None
 
     def confirm(self, sequence: int) -> bool:
         """실제 AI 처리 결과가 끝났거나 공식 텍스트 전달이 확인된 것만 제거."""
