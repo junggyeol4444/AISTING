@@ -22,6 +22,7 @@ from .offline_broadcast_schedule import BroadcastScheduleDraft, KST
 from .offline_broadcast_duration import BroadcastDurationRules
 from .original_plan_obs import OfficialObsWebsocket
 from .obs_live2d_frame_link import active_official_window_capture
+from .obs_stream_health import ObsStreamHealthMonitor
 
 
 @dataclass(frozen=True)
@@ -39,6 +40,7 @@ class ApprovedLiveSnapshot:
     live_chat: str = "미설정"
     journal_error: str = ""
     pre_notice: str = "미설정"
+    stream_health: str = "실제 OBS 출력 통계 미관측"
 
 
 class ApprovedLiveScheduler:
@@ -167,6 +169,8 @@ class ApprovedLiveScheduler:
         self._start_notice = "대기" if on_started_notice is not None else "미설정"
         self._end_notice = "대기" if on_finished_notice is not None else "미설정"
         self._client = None
+        self._health_monitor = ObsStreamHealthMonitor()
+        self._last_health_observation: float | None = None
         self._running = False
 
     def snapshot(self) -> ApprovedLiveSnapshot:
@@ -177,7 +181,8 @@ class ApprovedLiveScheduler:
                 self._stop_confirmed, self._closing_attempted,
                 self._closing_delivered_candidate, self._start_notice,
                 self._end_notice, self._live_chat, self._journal_error,
-                self._pre_notice)
+                self._pre_notice,
+                self._health_monitor.snapshot().description)
 
     def _record_event(self, state: str) -> None:
         """영구 상태 기록 실패가 이미 진행 중인 OBS 종료를 막지 않게 한다."""
@@ -295,6 +300,8 @@ class ApprovedLiveScheduler:
         self._start_notice = "대기" if self._on_started_notice else "미설정"
         self._end_notice = "대기" if self._on_finished_notice else "미설정"
         self._live_chat = "대기" if self._begin_live_chat else "미설정"
+        self._health_monitor = ObsStreamHealthMonitor()
+        self._last_health_observation = None
         self._set("방송 시작 준비", "OBS 현재 장면·녹화·공식 Live2D·실제 음성 구성을 확인합니다.")
         try:
             if self._media_preflight() is not True:
@@ -435,8 +442,17 @@ class ApprovedLiveScheduler:
                     self._set("방송 상태 이탈", "외부 OBS 종료 또는 장면 변경 · 재시작 금지")
                     self._owns_stream = False
                     self._stop.set()
-                elif monotonic_now - self._started_at >= self._rules.maximum_minutes * 60:
-                    self._finish_owned(normal_maximum=True)
+                else:
+                    # 승인된 기존 OBS 연결만 읽어 5초 간격 실제
+                    # 프레임/혼잡/재연결 통계를 메모리에 갱신한다.
+                    # 관찰 오류만으로 사용자 방송을 임의 종료하지 않는다.
+                    if (self._last_health_observation is None or
+                            monotonic_now - self._last_health_observation >= 5.0):
+                        self._health_monitor.observe(
+                            self._client, monotonic_now=monotonic_now)
+                        self._last_health_observation = monotonic_now
+                    if monotonic_now - self._started_at >= self._rules.maximum_minutes * 60:
+                        self._finish_owned(normal_maximum=True)
             except Exception as exc:
                 # A failing status does not prove output stopped.
                 self._set("송출 상태 미확인", type(exc).__name__ +
