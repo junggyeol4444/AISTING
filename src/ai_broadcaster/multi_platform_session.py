@@ -384,10 +384,9 @@ class MultiPlatformReadOnlySession:
         if platform not in self._sqlite_deferred_count:
             raise ValueError("복구된 채팅의 플랫폼 종류 오류")
         with self._emit_lock:
-            if (self._sqlite_deferred_enqueued_count[platform]
-                    >= self._sqlite_deferred_count[platform]):
-                # 실제 콜백의 계측보다 먼저 재등록됐다고 가정하지 않는다.
-                return
+            # 재등록이 완료된 직후 아직 같은 수신 콜백이 영속 성공을
+            # 통계에 반영 중일 수 있다. 잠시 앞서 기록돼도 후속 콜백과
+            # 합쳐 정산되므로 재등록 사실을 버리지 않는다.
             self._sqlite_deferred_enqueued_count[platform] += 1
 
     def _emit_status_safely(self, code: str, kind: str, detail: str) -> bool:
