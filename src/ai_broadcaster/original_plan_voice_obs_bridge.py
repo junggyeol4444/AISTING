@@ -187,6 +187,7 @@ def verify_gpt_sovits_to_obs(
     mouth_start_call_end_at = None
     program_frame_observed = False
     program_frames: list[tuple[float, str, str]] = []
+    program_sampler = None
 
     def confirm_owned_input():
         # 같은 이름이라도 다른 UUID로 교체된 입력은 절대로 재생·삭제하지 않는다.
@@ -276,41 +277,45 @@ def verify_gpt_sovits_to_obs(
                     # 사용자 기존 장면이나 소스의 on/off는 변경하지 않는다.
                     client.set_scene_item_enabled(
                         state.scene, owned_scene_item_id, True)
+                if couple_live2d and program_sampler is not None:
+                    # 실제 OBS 프로그램 캡처를 독립 연결에서 관찰해
+                    # 선택 입력의 오디오 미터 수신을 차단하지 않는다.
+                    program_sampler.begin()
                 restart_requested_at = time.monotonic()
                 client.trigger_media_input_action(
                     input_name, "OBS_WEBSOCKET_MEDIA_INPUT_ACTION_RESTART")
                 restart_returned_at = time.monotonic()
 
-            def capture_actual_program_frame():
-                # 승인된 실제 OBS의 현재 프로그램 PNG를 메모리에서만
-                # SHA256으로 변환. PNG 원본·개인 화면을 기록/저장하지 않는다.
-                frame = obs.read_current_scene_frame(operator_approved=True)
-                program_frames.append((
-                    time.monotonic(), frame.scene,
-                    hashlib.sha256(frame.png_data).hexdigest(),
-                ))
-
             if couple_live2d:
-                capture_actual_program_frame()
+                from .obs_live2d_frame_link import OfficialProgramFrameSampler
+                program_sampler = OfficialProgramFrameSampler(
+                    obs_password, port=obs_port, scene=state.scene)
+                # 임시 WAV 미디어 입력은 아직 비활성 상태. 실제 OBS
+                # 공식 Live2D 창 캡처의 기준 영상을 사전에 확보한다.
+                program_sampler.start()
             meter_probe_started_at = time.monotonic()
             try:
                 meters = obs.read_actual_audio_meters(
                     operator_approved=True, input_name=input_name,
                     duration=meter_duration,
-                    start_action=start_exact_created_media_after_meter_subscription,
-                    **({"program_frame_probe": capture_actual_program_frame}
-                       if couple_live2d else {}))
+                    start_action=start_exact_created_media_after_meter_subscription)
             finally:
-                if mouth_token is not None:
-                    # 오디오 미터 성공/예외와 무관하게 원래 Cubism getRms를 복원.
-                    mouth_summary = frontend.finish_authorized_pcm_live2d_mouth(
-                        mouth_token, operator_approved=True)
-                    mouth_token = None
+                try:
+                    if mouth_token is not None:
+                        # 미터 실패 시에도 실제 Cubism 원래 함수를 복원.
+                        mouth_summary = frontend.finish_authorized_pcm_live2d_mouth(
+                            mouth_token, operator_approved=True)
+                        mouth_token = None
+                finally:
+                    if program_sampler is not None:
+                        # 이미지 저장 없는 전용 연결을 항상 종료.
+                        # 프레임이 부족하거나 관찰 실패면 성공이 아닌 오류.
+                        program_frames = list(program_sampler.finish())
+                        program_sampler = None
             meter_probe_ended_at = time.monotonic()
             if couple_live2d:
-                # 실제 WAV 전/중/후 프레임: 입술의 영상 인과성·OBS
-                # 인코딩·시청자 수신을 증명하지 않는 약한 변화 후보.
-                capture_actual_program_frame()
+                # 실제 시작 전 1프레임 + WAV 중 여러 OBS 프레임.
+                # 영상 인코더/시청자에게 송출된 증거는 아니다.
                 program_frame_observed = len(program_frames) >= 3
             # OBS 서버는 미터 이벤트를 비동기로 전달한다. 재생 명령을
             # 보내기 이전의 양성 신호를 이번 WAV의 증거로 세지 않는다.
@@ -450,7 +455,7 @@ def verify_gpt_sovits_to_obs(
                 obs_program_frame_observed=program_frame_observed,
                 obs_program_capture_candidate=obs_capture_candidate,
                 obs_program_frames_during_wav=(
-                    max(0, len(program_frames) - 2) if couple_live2d else 0),
+                    max(0, len(program_frames) - 1) if couple_live2d else 0),
                 obs_program_motion_near_wav_candidate=observed_program_motion,
                 same_wav_cubism_obs_candidate=bool(
                     couple_live2d and obs_capture_candidate
@@ -475,6 +480,15 @@ def verify_gpt_sovits_to_obs(
             ensure_not_recording()
             return result
         finally:
+            # OBS 준비·WAV 재생 중 어느 단계에서 실패해도 영상 관측
+            # 전용 작업자를 종료해 실행 창/연결 상태를 계속 점유하지 않는다.
+            sampler_cleanup_error = None
+            if program_sampler is not None:
+                try:
+                    program_sampler.finish()
+                except Exception as exc:
+                    sampler_cleanup_error = exc
+                program_sampler = None
             # 공식 모델 복원 실패가 나더라도 임시 OBS 소스 제거를 건너뛰지 않는다.
             restore_error = None
             if mouth_token is not None:
@@ -522,3 +536,7 @@ def verify_gpt_sovits_to_obs(
                 raise RuntimeError(
                     "공식 Cubism 원래 음성 입 구동을 복원하지 못했습니다."
                 ) from restore_error
+            if sampler_cleanup_error is not None:
+                raise RuntimeError(
+                    "공식 Live2D OBS 프로그램 관측 작업자를 종료하지 못했습니다."
+                ) from sampler_cleanup_error
