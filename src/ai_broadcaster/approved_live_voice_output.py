@@ -179,7 +179,7 @@ class ApprovedLiveVoiceOutput:
             finally:
                 self._inbox.task_done()
 
-    def _speak_segment(self, text: str) -> float:
+    def _speak_segment(self, text: str, *, depth: int = 0) -> float:
         """실제 OBS의 '이미 송출 중' 상태에서만 동일 PCM을 재생·입 구동."""
         from . import original_plan_frontend as frontend
         if self._stop.is_set():
@@ -209,9 +209,26 @@ class ApprovedLiveVoiceOutput:
         if not raw or actual.sample_rate <= 0 or actual.frame_count <= 0:
             raise RuntimeError("실제 한국어 음성 PCM이 반환되지 않았습니다.")
         wav_seconds = actual.frame_count / actual.sample_rate
-        if not 0.4 <= wav_seconds <= 8:
-            # 임의 시간 배속·원문 생략 없이 실제 WAV 길이 그대로 판단.
-            raise RuntimeError("공식 Cubism 동일 PCM 구동 길이 0.4~8초를 초과했습니다.")
+        if wav_seconds > 8.0:
+            # 실제 GPT-SoVITS가 문장 길이를 오래 읽으면 무단
+            # 배속/누락 대신 같은 원문의 더 작은 문장 둘로 다시 합성.
+            # 원래 8초 제한은 공식 Cubism PCM 구동 범위이므로 유지.
+            if len(text) < 15 or depth >= 5:
+                raise RuntimeError(
+                    "공식 Cubism 8초 제한을 만족하도록 더 분절할 수 없습니다.")
+            middle = len(text) // 2
+            boundary = text.rfind(" ", 8, middle + 1)
+            if boundary <= 0:
+                boundary = middle
+            left = text[:boundary].strip()
+            right = text[boundary:].strip()
+            if not left or not right or self._stop.is_set():
+                raise RuntimeError("한국어 음성 문장 재분절을 중단했습니다.")
+            # 원래 문장의 각 글자를 순서대로 읽고 매번 같은 권리 모델 사용.
+            return (self._speak_segment(left, depth=depth + 1)
+                    + self._speak_segment(right, depth=depth + 1))
+        if wav_seconds < 0.4:
+            raise RuntimeError("공식 Cubism 최소 0.4초 미만의 실제 음성입니다.")
         envelope = authorized_pcm_envelope(raw)
         client = obs._client
         if "ffmpeg_source" not in client.get_input_kind_list(False).input_kinds:
