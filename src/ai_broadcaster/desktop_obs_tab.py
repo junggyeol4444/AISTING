@@ -580,6 +580,7 @@ class ObsStatusTab(ttk.Frame):
                 " · 공지 시작 " + snap.start_notice +
                 " / 종료 " + snap.end_notice +
                 " · 채팅/AI " + snap.live_chat +
+                " · " + snap.stream_health +
                 (" · " + snap.journal_error if snap.journal_error else ""))
         self.after(150,self._poll)
 
