@@ -23,7 +23,7 @@ from .avatar_animation import SpeechActivity
 from .twitch_readonly import TwitchReadOnlySession, TwitchReadError
 from .multiplatform_readonly import ChzzkReadOnlySession, SoopReadOnlySession, YouTubeReadOnlySession
 from .multi_platform_session import MultiPlatformReadOnlySession
-from .live_runtime_metrics import LiveLatencyMetrics
+from .live_runtime_metrics import LiveLatencyMetrics, LiveParseReplyMetrics
 from .live_queue_wait_observation import LiveQueueWaitTracker
 from .offline_settings import load_settings
 
@@ -106,6 +106,7 @@ class LocalChatTab(ttk.Frame):
         # 4플랫폼별 실제 AI FIFO 등록·종결·대기/추론 시간을 분리한다.
         # 본문/닉네임/계정 정보는 별도 저장하지 않으며 시청자 E2E와 다르다.
         self._platform_live_metrics: dict[str, LiveLatencyMetrics] = {}
+        self._platform_parse_reply_metrics: dict[str, LiveParseReplyMetrics] = {}
         # 로컬 수신큐 백프레셔와 AI·GUI 적체의 실측값만 메모리에 보관한다.
         self._live_queue_block_events = 0
         self._live_queue_block_total_seconds = 0.0
@@ -803,6 +804,9 @@ class LocalChatTab(ttk.Frame):
             name: LiveLatencyMetrics(started_at)
             for name in session._channels
         }
+        self._platform_parse_reply_metrics = {
+            name: LiveParseReplyMetrics() for name in session._channels
+        }
         with self._live_ingress_lock:
             self._live_queue_block_events = 0
             self._live_queue_block_total_seconds = 0.0
@@ -984,6 +988,13 @@ class LocalChatTab(ttk.Frame):
                                     report("twitch_ai_platform_timing", (
                                         getattr(chat, "platform", "twitch"),
                                         wait, inference, elapsed, attempt_failed))
+                                if isinstance(session, MultiPlatformReadOnlySession):
+                                    # 파싱 시각이 없는 가상 채팅은 성공 표본에서 제외.
+                                    report("twitch_ai_parse_terminal", (
+                                        getattr(chat, "platform", "twitch"),
+                                        getattr(chat, "parsed_at_monotonic", None),
+                                        accepted_at, model_started_at,
+                                        ended_at, attempt_failed))
                 if official:
                     # Official WebView2 owns the AI, GPT-SoVITS audio and Cubism
                     # model in ONE upstream conversation. Never duplicate this
@@ -1208,6 +1219,23 @@ class LocalChatTab(ttk.Frame):
                     f" / 최근 p95 {p95}(대기 {wait_p95}, 처리 {model_p95})")
             else:
                 ai_status = " / AI 플랫폼별 실측 미시작"
+            parse_meter = getattr(
+                self, "_platform_parse_reply_metrics", {}).get(code)
+            if parse_meter is not None:
+                parsed = parse_meter.snapshot()
+                parse_p95 = ("미측정" if parsed["최근p95초"] is None
+                             else f'{parsed["최근p95초"]:.2f}초')
+                parse_wait = ("미측정" if parsed["대기p95초"] is None
+                              else f'{parsed["대기p95초"]:.2f}초')
+                parse_model = ("미측정" if parsed["AIp95초"] is None
+                               else f'{parsed["AIp95초"]:.2f}초')
+                ai_status += (
+                    f" / 파싱→AI 종결 {parsed['종결']}건"
+                    f"(실패 {parsed['실패']}건, 시각누락 {parsed['파싱시각누락']}건,"
+                    f" 오류 {parsed['시각오류']}건)"
+                    f" / 파싱→AI 3초 초과 {parsed['3초초과']}건"
+                    f" / 최근 p95 {parse_p95}(대기 {parse_wait}, 작업 {parse_model})"
+                    " · 시청자 전달·WAV/OBS 지연 미포함")
             lines.append(
                 f"{labels.get(code, code)} {phase} · 콜백 {state['콜백수신']}건"
                 f" / GUI 전달 {state['콜백전달완료']}건"
@@ -1461,6 +1489,13 @@ class LocalChatTab(ttk.Frame):
                         self._twitch_status.set(
                             "AI 처리 실패 " + str(self._twitch_ai_failures)
                             + "건 · 성공 응답으로 계산하지 않음")
+                    elif kind == "twitch_ai_parse_terminal":
+                        code, parsed, accepted, started, ended, failed = payload
+                        parse_meter = getattr(
+                            self, "_platform_parse_reply_metrics", {}).get(code)
+                        if parse_meter is not None:
+                            parse_meter.terminal(
+                                parsed, accepted, started, ended, failed)
                     elif kind == "twitch_ai_platform_timing":
                         # 실제 단일 AI FIFO에서 종결된 플랫폼별 사건만 계수.
                         # GUI 결과 처리 이전 대기나 서버 게시 누락은 증명하지 않는다.

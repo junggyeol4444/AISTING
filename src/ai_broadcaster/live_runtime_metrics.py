@@ -140,3 +140,49 @@ class LiveLatencyMetrics:
             local_running_seconds=max(0, observed_until - self.started_at),
             reader_faults=self.reader_faults, stopped=self.stopped_at is not None,
         )
+
+class LiveParseReplyMetrics:
+    """실제 4플랫폼 파싱→로컬 AI 작업 종결의 시간차만 메모리에 보존.
+
+    실패한 작업도 종결로 기록하며 성공·시청자 전달·WAV/OBS 증거로 보지 않는다.
+    """
+    def __init__(self, *, capacity: int = 512):
+        if type(capacity) is not int or not 1 <= capacity <= 10000:
+            raise ValueError("파싱→AI 종결 표본 한도가 올바르지 않습니다.")
+        self._samples: deque[tuple[float, float, float]] = deque(maxlen=capacity)
+        self.completed = self.failed = self.missing = self.invalid = 0
+        self.over_three_seconds = 0
+        self.longest_seconds = 0.0
+
+    def terminal(self, parsed_at, accepted_at, model_started_at, ended_at,
+                 failed: bool = False) -> bool:
+        if parsed_at is None:
+            self.missing += 1
+            return False
+        stamps = (parsed_at, accepted_at, model_started_at, ended_at)
+        if (type(failed) is not bool or any(
+                type(x) not in (int, float) or not isfinite(x) for x in stamps)):
+            self.invalid += 1
+            return False
+        parsed, accepted, started, ended = (float(x) for x in stamps)
+        if not 0 < parsed <= accepted <= started <= ended:
+            self.invalid += 1
+            return False
+        wait, inference, total = started-parsed, ended-started, ended-parsed
+        self.completed += 1
+        self.failed += int(failed)
+        self.over_three_seconds += int(total > 3.0)
+        self.longest_seconds = max(self.longest_seconds, total)
+        self._samples.append((wait, inference, total))
+        return True
+
+    def snapshot(self) -> dict[str, int | float | None]:
+        return {
+            "종결": self.completed, "실패": self.failed,
+            "파싱시각누락": self.missing, "시각오류": self.invalid,
+            "3초초과": self.over_three_seconds, "최근표본": len(self._samples),
+            "최근p95초": _p95([x[2] for x in self._samples]),
+            "대기p95초": _p95([x[0] for x in self._samples]),
+            "AIp95초": _p95([x[1] for x in self._samples]),
+            "최장초": self.longest_seconds,
+        }
