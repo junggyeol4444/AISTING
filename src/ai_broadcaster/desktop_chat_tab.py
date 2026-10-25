@@ -796,6 +796,18 @@ class LocalChatTab(ttk.Frame):
                 message += (
                     "\n\n영구 음성 대기함 조회 불가 (" +
                     type(exc).__name__ + ")")
+        try:
+            from .approved_live_voice_causal_journal import ApprovedVoiceCausalJournal
+            segments = ApprovedVoiceCausalJournal().recent(limit=10)
+            if segments:
+                message += "\n\n[동일 WAV→공식 Cubism 입→OBS 재생 요청]"
+                for key, part, wav, seconds, state, gap in segments:
+                    delay = "미요청" if gap is None else f"{gap:.3f}초"
+                    message += (
+                        f"\n발화 {key} 구간 {part} WAV {wav} "
+                        f"({seconds:.2f}초) · {state} · 입→OBS {delay}")
+        except Exception as exc:
+            message += "\n\n동일 WAV 인과 기록 조회 불가 (" + type(exc).__name__ + ")"
         messagebox.showinfo(
             "한국어 GPT-SoVITS·Cubism·OBS 발화 기록",
             message + "\n\n※ 재생요청완료는 실제 시청자 수신 증명이 아닙니다. "
