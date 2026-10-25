@@ -441,6 +441,12 @@ class ApprovedLiveScheduler:
             try:
                 current = self._client.status()
                 if current.streaming is not True or current.scene != self._scene:
+                    # 실제 OBS 상태 이탈은 단순 GUI 문구로만 남기지 않고
+                    # 승인된 방송 슬롯의 기존 영구 사건 장부에도 기록한다.
+                    # 송출을 다시 시작하거나 다른 소유자의 방송을 종료하지 않는다.
+                    self._record_event(
+                        "OBS송출예기치않은중단"
+                        if current.streaming is not True else "OBS장면변경감지")
                     self._set("방송 상태 이탈", "외부 OBS 종료 또는 장면 변경 · 재시작 금지")
                     self._owns_stream = False
                     self._stop.set()
@@ -463,6 +469,9 @@ class ApprovedLiveScheduler:
                     if monotonic_now - self._started_at >= self._rules.maximum_minutes * 60:
                         self._finish_owned(normal_maximum=True)
             except Exception as exc:
+                # 관측 실패는 실제 종료와 구분하여 기록한다.
+                # OBS 상태가 불명확하므로 재시작/임의 종료는 수행하지 않는다.
+                self._record_event("OBS상태관측실패")
                 # A failing status does not prove output stopped.
                 self._set("송출 상태 미확인", type(exc).__name__ +
                           " · 방송 중인지 수동 확인 필요 · 새 송출 금지")
