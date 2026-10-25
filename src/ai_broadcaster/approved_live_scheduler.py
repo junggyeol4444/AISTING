@@ -45,6 +45,8 @@ class ApprovedLiveSnapshot:
     stream_health: str = "실제 OBS 출력 통계 미관측"
     chat_recovery: str = "채팅 자동 복구 비활성"
     obs_recovery: str = "OBS 연결 복구 비활성"
+    cafe_start_notice: str = "미설정"
+    cafe_end_notice: str = "미설정"
 
 
 class ApprovedLiveScheduler:
@@ -83,6 +85,9 @@ class ApprovedLiveScheduler:
         pre_notice_lead_minutes: int = 0,
         chat_alive: Callable[[], bool] | None = None,
         chat_recovery_limit: int = 3,
+        on_cafe_started: Callable[[str], bool] | None = None,
+        on_cafe_finished: Callable[[str], bool] | None = None,
+        cafe_notice_approved: bool = False,
     ) -> None:
         if operator_approved is not True or rights_confirmed is not True:
             raise PermissionError("운영자 방송 자동 시작/종료와 한국어 음성 권리 승인이 필요합니다.")
@@ -138,6 +143,16 @@ class ApprovedLiveScheduler:
                 "4플랫폼 자동 복구는 이미 승인된 시작·종료·상태 확인 연결이 필요합니다.")
         if type(chat_recovery_limit) is not int or not 1 <= chat_recovery_limit <= 5:
             raise ValueError("실제 채팅 복구 횟수는 1~5회만 허용됩니다.")
+        if (on_cafe_started is not None or on_cafe_finished is not None):
+            if cafe_notice_approved is not True:
+                raise PermissionError("네이버 카페 실제 글쓰기 별도 승인이 필요합니다.")
+            if (on_cafe_started is not None and not callable(on_cafe_started)
+                    or on_cafe_finished is not None and not callable(on_cafe_finished)):
+                raise ValueError("네이버 카페 글쓰기 콜백이 올바르지 않습니다.")
+        self._on_cafe_started = on_cafe_started
+        self._on_cafe_finished = on_cafe_finished
+        self._cafe_start_notice = "대기" if on_cafe_started else "미설정"
+        self._cafe_end_notice = "대기" if on_cafe_finished else "미설정"
         self._chat_alive = chat_alive
         self._chat_recovery_limit = chat_recovery_limit
         self._chat_recovery_attempts = 0
@@ -206,7 +221,8 @@ class ApprovedLiveScheduler:
                 self._end_notice, self._live_chat, self._journal_error,
                 self._pre_notice,
                 self._health_monitor.snapshot().description,
-                self._chat_recovery, self._obs_recovery)
+                self._chat_recovery, self._obs_recovery,
+                self._cafe_start_notice, self._cafe_end_notice)
 
     def _record_event(self, state: str) -> None:
         """영구 상태 기록 실패가 이미 진행 중인 OBS 종료를 막지 않게 한다."""
@@ -323,6 +339,8 @@ class ApprovedLiveScheduler:
         self._closing_delivered_candidate = False
         self._start_notice = "대기" if self._on_started_notice else "미설정"
         self._end_notice = "대기" if self._on_finished_notice else "미설정"
+        self._cafe_start_notice = "대기" if self._on_cafe_started else "미설정"
+        self._cafe_end_notice = "대기" if self._on_cafe_finished else "미설정"
         self._live_chat = "대기" if self._begin_live_chat else "미설정"
         self._health_monitor = ObsStreamHealthMonitor()
         self._obs_reconnector = None
@@ -386,6 +404,16 @@ class ApprovedLiveScheduler:
                         else "서버 완료 미확인")
                 except Exception:
                     self._start_notice = "전송 실패 · 자동 재발신 없음"
+            if self._on_cafe_started is not None:
+                # 방송 시작 실제 확인 뒤에만 네이버 카페 독립 발신.
+                # 콜백 내부 SQLite에서 HTTP 이전 슬롯을 청구한다.
+                try:
+                    self._cafe_start_notice = (
+                        "공식 API 게시 확인"
+                        if self._on_cafe_started(occurrence) is True
+                        else "기존 시도/서버 확인 불가 · 자동 재게시 없음")
+                except Exception:
+                    self._cafe_start_notice = "전송 불명 · 자동 재게시 없음"
         except Exception as exc:
             # 송출 시작을 실제 확인한 뒤 채팅 연결이 실패한 경우에는
             # 이미 기록한 시작 성공·소유 방송 종료 결과를 보존한다.
@@ -449,6 +477,15 @@ class ApprovedLiveScheduler:
                         else "서버 완료 미확인")
                 except Exception:
                     self._end_notice = "전송 실패 · 자동 재발신 없음"
+            if self._on_cafe_finished is not None:
+                # 내가 소유한 OBS 종료 확인 뒤에만 카페 종료 글 발신.
+                try:
+                    self._cafe_end_notice = (
+                        "공식 API 게시 확인"
+                        if self._on_cafe_finished(self._occurrence) is True
+                        else "기존 시도/서버 확인 불가 · 자동 재게시 없음")
+                except Exception:
+                    self._cafe_end_notice = "전송 불명 · 자동 재게시 없음"
         except Exception as exc:
             self._record_event("송출종료실패")
             self._set("종료 확인 실패", type(exc).__name__ +
