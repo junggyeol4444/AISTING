@@ -32,6 +32,7 @@ from .live_pcm_cubism_alignment import (
     analyze_pcm_cubism_alignment, LivePcmCubismAlignmentMetrics)
 from .offline_settings import load_settings
 from .durable_public_chat_queue import DurablePublicChatQueue, PendingChat
+from .live_ai_recovery import run_local_fifo_with_recovery
 
 
 @dataclass(frozen=True)
@@ -1376,6 +1377,17 @@ class LocalChatTab(ttk.Frame):
                                 ))
                     finally:
                         report_measured_elapsed()
+                    # 실제 공식 서버는 요청이 접수된 뒤 연결 오류를
+                    # 냈을 수도 있다. 무단 중복 발화를 시도하지 않고
+                    # 이후 채팅을 보내기 전에 전체 수신을 중단한다.
+                    if (attempt_failed and pending_sequence is not None
+                            and isinstance(session, MultiPlatformReadOnlySession)
+                            and not session._stop.is_set()):
+                        report("twitch_ai_fifo_paused", (
+                            getattr(chat, "platform", "twitch"), pending_sequence,
+                            "공식 AI 발화 상태 불확실 · 원본 SQLite 보존"))
+                        session.stop()
+                        break
                     continue
                 try:
                     actor = "[" + {"twitch":"트위치","chzzk":"치지직",
@@ -1407,18 +1419,40 @@ class LocalChatTab(ttk.Frame):
                                     report("twitch_ai_stream_preview", (
                                         partial_preview, received_chars,
                                         max(0.0, now - model_started_at)))
-                            result = local_runner.reply(
-                                chat.text, sender=actor,
-                                on_stream_chunk=on_stream_chunk,
-                                should_cancel=(
-                                    (lambda: session._stop.is_set())
-                                    if session is not None else None))
+                            def _generate_stream_reply():
+                                return local_runner.reply(
+                                    chat.text, sender=actor,
+                                    on_stream_chunk=on_stream_chunk,
+                                    should_cancel=(
+                                        (lambda: session._stop.is_set())
+                                        if session is not None else None))
+                            if isinstance(session, MultiPlatformReadOnlySession):
+                                def _stream_retry(attempt, delay):
+                                    nonlocal partial_preview, received_chars, last_progress_at
+                                    partial_preview, received_chars, last_progress_at = "", 0, 0.0
+                                    report("twitch_ai_retry", (
+                                        getattr(chat, "platform", "twitch"), attempt, delay))
+                                result = run_local_fifo_with_recovery(
+                                    _generate_stream_reply, stop=session._stop,
+                                    on_retry=_stream_retry)
+                            else:
+                                result = _generate_stream_reply()
                         else:
-                            result = local_runner.reply(
-                                chat.text, sender=actor,
-                                should_cancel=(
-                                    (lambda: session._stop.is_set())
-                                    if session is not None else None))
+                            def _generate_full_reply():
+                                return local_runner.reply(
+                                    chat.text, sender=actor,
+                                    should_cancel=(
+                                        (lambda: session._stop.is_set())
+                                        if session is not None else None))
+                            if isinstance(session, MultiPlatformReadOnlySession):
+                                result = run_local_fifo_with_recovery(
+                                    _generate_full_reply, stop=session._stop,
+                                    on_retry=lambda attempt, delay: report(
+                                        "twitch_ai_retry", (
+                                            getattr(chat, "platform", "twitch"),
+                                            attempt, delay)))
+                            else:
+                                result = _generate_full_reply()
                     else:
                         result = reply_function(
                             model, chat.text, sender=actor,
@@ -1431,6 +1465,17 @@ class LocalChatTab(ttk.Frame):
                     confirm_durable_after_success()
                 finally:
                     report_measured_elapsed()
+                if (attempt_failed and pending_sequence is not None
+                        and isinstance(session, MultiPlatformReadOnlySession)
+                        and not session._stop.is_set()):
+                    # 실패한 이전 sequence를 SQLite에 남긴 채 다음
+                    # 채팅으로 넘어가면 FIFO 원순서가 훼손된다. 모델
+                    # 복구 한도 초과/기타 확정 실패 시 안전하게 수신 종료.
+                    report("twitch_ai_fifo_paused", (
+                        getattr(chat, "platform", "twitch"), pending_sequence,
+                        "로컬 모델 연속 실패 · 원본 SQLite 보존"))
+                    session.stop()
+                    break
             # The reader can reach EOF while the serial model is still replying.
             # This marker follows EVERY accepted AI result in the same results FIFO.
             if session is not None and not session._stop.is_set():
@@ -1962,6 +2007,22 @@ class LocalChatTab(ttk.Frame):
                         self._twitch_status.set(
                             "공식 Live2D 성공 " + str(self._twitch_replied) +
                             "건 · 미검증/오류 " + str(self._twitch_ai_failures) + "건")
+                    elif kind == "twitch_ai_retry":
+                        platform, attempt, wait_seconds = payload
+                        # 실패한 한 채팅만 같은 FIFO 자리에서 재시도.
+                        # 성공으로 계산하거나 다음 메시지부터 보내지 않는다.
+                        self._twitch_status.set(
+                            f"[{platform}] 로컬 AI 응답 복구 {attempt}회 실패 "
+                            f"· {wait_seconds:.1f}초 뒤 동일 채팅 재시도 "
+                            "· SQLite 미처리 보존 · 1~3초 미달")
+                    elif kind == "twitch_ai_fifo_paused":
+                        platform, sequence, reason = payload
+                        self._append(
+                            f"[FIFO 중단] {platform} 미완료 순번 {sequence} "
+                            f"· {reason} · 재연결/원인 확인 필요")
+                        self._twitch_status.set(
+                            "AI 확정 실패 · 이후 채팅 응답 중단 · "
+                            "SQLite 미처리 채팅 보존, 성공/무누락 판정 금지")
                     elif kind == "twitch_ai_error":
                         chat, detail = payload
                         self._twitch_ai_failures += 1
