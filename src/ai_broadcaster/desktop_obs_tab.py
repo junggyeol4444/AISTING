@@ -30,6 +30,7 @@ class ObsStatusTab(ttk.Frame):
         self._game_title=tk.StringVar()
         self._game_goal=tk.StringVar()
         self._game_steps=tk.StringVar(value="10")
+        self._game_progress_interval=tk.StringVar(value="3")
         self._game_status=tk.StringVar(value="게임 자동 조작: 비활성 · 별도 승인 필요")
         self._vision_status=tk.StringVar(
             value="게임 화면 이해: 미실행 · 사용자 승인 전에는 실제 화면 읽지 않음")
@@ -106,6 +107,9 @@ class ObsStatusTab(ttk.Frame):
         ttk.Label(game_row, text="최대 행동 수 (1~100)").pack(side="left")
         ttk.Entry(game_row, textvariable=self._game_steps, width=7).pack(
             side="left", padx=(4,8))
+        ttk.Label(game_row, text="목표 진행 판정 간격 (1~10)").pack(side="left")
+        ttk.Entry(game_row, textvariable=self._game_progress_interval,
+                  width=5).pack(side="left", padx=(4,8))
         self._game_start_button=ttk.Button(
             game_row, text="게임 자동 진행 별도 승인 후 시작",
             command=self._start_approved_game)
@@ -307,18 +311,23 @@ class ObsStatusTab(ttk.Frame):
             title=self._game_title.get().strip()
             goal=self._game_goal.get().strip()
             steps=int(self._game_steps.get())
+            progress_interval=int(self._game_progress_interval.get())
             port=int(self._port.get())
             password=self._password.get()
             if not model or not title or not goal or not password:
                 raise ValueError("게임 창 제목·목표·로컬 AI 모델·OBS 암호가 필요합니다.")
             if not 1 <= steps <= 100:
                 raise ValueError("최대 게임 행동은 1~100회입니다.")
+            if not 1 <= progress_interval <= 10:
+                raise ValueError("게임 목표 판정 간격은 1~10회입니다.")
             if not messagebox.askyesno(
                 "실제 게임 자동 조작 최종 승인",
                 "내 PC의 게임 창 '" + title + "'에 실제 키보드/마우스 입력을 "
                 + str(steps) + "회 이내로 전송합니다. 매 행동 전에 현재 "
                 "OBS 화면을 로컬 Ollama로 분석하며 AI가 행동을 선택합니다. "
-                "포커스가 바뀌거나 중지를 누르면 더 이상 행동하지 않습니다. "
+                + str(progress_interval) +
+                "회 행동마다 후속 화면도 다시 읽어 목표 후보를 확인합니다. "
+                "운영자가 승인한 OBS 장면/게임 창 포커스가 바뀌면 추가 입력을 차단합니다. "
                 "다른 프로그램/채팅/방송 제어는 승인하지 않습니다. " +
                 ("이전 실행의 입력시도는 재실행하지 않고 이력만 참고합니다. "
                  if resume_run_id else "") +
@@ -328,6 +337,7 @@ class ObsStatusTab(ttk.Frame):
             runner=ApprovedLocalGameAutoplay(
                 obs_password=password, obs_port=port, model_name=model,
                 game_window_title=title, goal=goal, max_steps=steps,
+                progress_check_every=progress_interval,
                 operator_approved=True, resume_run_id=resume_run_id,
                 on_event=lambda kind, value: self._events.put((
                     "approved_game_" + kind, value)))
@@ -959,6 +969,12 @@ class ObsStatusTab(ttk.Frame):
                     self._game_status.set(
                         "게임 목표 화면 추정: " + item.status + " · " +
                         item.evidence[:160] + " · 실제 게임 내부 결과 미확인")
+                    continue
+                if kind == "approved_game_게임장면변경":
+                    self._game_status.set(
+                        "승인 시작 OBS 장면과 현재 장면이 다릅니다 · "
+                        "다른 화면 키/마우스 조작 중단 · 원래 OBS 장면 " +
+                        str(item)[:100])
                     continue
                 if kind == "approved_game_목표판정불가":
                     self._game_status.set(
