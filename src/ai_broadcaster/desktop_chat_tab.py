@@ -101,6 +101,8 @@ class LocalChatTab(ttk.Frame):
         self._idle_live_threshold = tk.StringVar(value="90")
         self._idle_live_words = tk.StringVar()
         self._broadcast_memory_enabled = tk.BooleanVar(value=False)
+        # 직접 달성 확인한 게임 목표만 별도 선택 시 다음 로컬 대화에 참고.
+        self._confirmed_game_memory_enabled = tk.BooleanVar(value=False)
         self._relevant_memory_enabled = tk.BooleanVar(value=False)
         self._long_term_memory_enabled = tk.BooleanVar(value=False)
         self._parallel_local_ai_enabled = tk.BooleanVar(value=False)
@@ -368,6 +370,11 @@ class LocalChatTab(ttk.Frame):
             self, text="이전 실제 OBS 시작·종료 및 승인 주제 전달 기록을 내 로컬 AI가 참고"
                  " (선택 시에만 · 기본 꺼짐 · 채팅/닉네임 저장 없음)",
             variable=self._broadcast_memory_enabled,
+        ).pack(anchor="w", before=model_row, pady=(2,1))
+        ttk.Checkbutton(
+            self, text="운영자 직접 달성 확인한 과거 게임 목표만 로컬 AI에 참고"
+                  " (기본 꺼짐 · AI 달성후보 제외 · 별도 SQLite 읽기)",
+            variable=self._confirmed_game_memory_enabled,
         ).pack(anchor="w", before=model_row, pady=(2,1))
         ttk.Label(self, textvariable=self._twitch_status, wraplength=600).pack(
             anchor="w", pady=(2, 5), before=model_row)
@@ -1170,6 +1177,27 @@ class LocalChatTab(ttk.Frame):
                 approval_dialog.showwarning(
                     "이전 방송 사건 기억",
                     "실제 OBS 사건 장부를 안전하게 읽지 못했습니다 ("
+                    + type(exc).__name__ + ")", parent=self)
+                return
+        if (self._confirmed_game_memory_enabled.get()
+                and scheduled_approval is None):
+            if official:
+                approval_dialog.showwarning(
+                    "게임 목표 로컬 기억",
+                    "운영자 확인 게임 목표는 로컬 Ollama 응답에서만 선택해 참고합니다. "
+                    "공식 Live2D 서버의 기억은 변경하지 않습니다.", parent=self)
+                return
+            try:
+                from .approved_live_memory import approved_game_goal_memory_context
+                confirmed_game_facts = approved_game_goal_memory_context(limit=5)
+                if confirmed_game_facts:
+                    broadcast_facts = (
+                        broadcast_facts + "\n" + confirmed_game_facts
+                        if broadcast_facts else confirmed_game_facts)
+            except (ValueError, OSError, RuntimeError) as exc:
+                approval_dialog.showwarning(
+                    "게임 목표 로컬 기억",
+                    "운영자가 확인한 게임 기록을 읽지 못했습니다 ("
                     + type(exc).__name__ + ")", parent=self)
                 return
         relevant_memory = bool(self._relevant_memory_enabled.get())
