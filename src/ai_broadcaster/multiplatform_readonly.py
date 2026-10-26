@@ -813,6 +813,31 @@ class YouTubeReadOnlySession(ReadOnlySession):
                         self.emit("server_replay", None)
                         resume.pending_page_chats.popleft()
                         continue
+                    if getattr(self, "_batch_ingress", False):
+                        # 기존 YouTube 재연결/서버 커서 위치는 바꾸지 않고,
+                        # 이미 수신·파싱된 페이지를 256건씩 로컬 SQLite에
+                        # 먼저 원자 확정한다. 이미 수용된 서버 ID의 중복은
+                        # 같은 묶음 앞에서 끊어 원래 replay 기록을 유지.
+                        chunk = []
+                        for pending in itertools.islice(
+                                resume.pending_page_chats, 256):
+                            if (pending.event_id is not None
+                                    and pending.event_id in seen_message_ids):
+                                break
+                            chunk.append(pending)
+                        if not chunk:
+                            raise RuntimeError("유튜브 페이지 일괄 수신 상태가 잘못되었습니다.")
+                        if self.emit("chat_batch", tuple(chunk)) is False:
+                            raise RuntimeError(
+                                "유튜브 채팅 페이지 SQLite 묶음 확정 실패 · "
+                                "미수용 페이지/커서 원위치 보존")
+                        # SQL COMMIT 성공이 확인된 구간만 완료로 기록.
+                        # 현재 페이지가 끝나기 전에는 영구 페이지 커서가
+                        # 절대 이동하지 않는다. Stop 이후 후속 배치 없음.
+                        for confirmed in chunk:
+                            resume.delivered_event(confirmed.event_id)
+                            resume.pending_page_chats.popleft()
+                        continue
                     if self.emit("chat", item) is False:
                         # 미수용 선두와 같은 페이지의 뒤쪽을 남긴다.
                         # 수용 성공한 앞쪽은 이미 pop했으므로 ID가 없어도
