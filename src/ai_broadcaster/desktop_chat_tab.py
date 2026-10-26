@@ -1374,6 +1374,13 @@ class LocalChatTab(ttk.Frame):
                 for name in session._channels
             }
             self._live_queue_wait_tracker = LiveQueueWaitTracker()
+            # 네트워크 프레임 수와 SQL 원자 커밋을 분리 계수한다.
+            # 실제 서버가 보내지 않은 채팅은 추정하지 않는다.
+            self._durable_ingress_batches = {
+                name: {"커밋묶음": 0, "요청행": 0, "신규영구확정": 0,
+                       "서버ID재수신": 0, "최대묶음": 0, "보류오류": 0}
+                for name in session._channels
+            }
         # 이미 보관된 미처리 채팅을 새 수신보다 먼저 같은 단일 AI FIFO로
         # 넣는다. 장비 재부팅 뒤 과거 monotonic 시각은 그대로 재사용하지
         # 않고 파싱 시각 미확인으로 분리한다. 기존 메시지는 삭제하지 않는다.
@@ -1550,7 +1557,28 @@ class LocalChatTab(ttk.Frame):
                 spool = self._twitch_chat_spool
                 if spool is None:
                     raise RuntimeError("기존 미처리 채팅 SQLite가 연결되지 않았습니다.")
-                sequences = spool.append_batch(item)
+                scope = item[0].platform
+                if (scope not in session._channels or
+                        any(row.platform != scope or
+                            row.channel != session._channels[scope]
+                            for row in item)):
+                    raise ValueError("실제 선택 채널 외부의 프레임 SQLite 등록 차단")
+                try:
+                    sequences = spool.append_batch(item)
+                except Exception:
+                    stats = self._durable_ingress_batches.get(scope)
+                    if stats is not None:
+                        stats["보류오류"] += 1
+                    # 서버 프레임은 소켓 재연결이 끝나도 미수용으로 남는다.
+                    raise
+                stats = self._durable_ingress_batches.get(scope)
+                if stats is not None:
+                    created = sum(seq is not None for seq in sequences)
+                    stats["커밋묶음"] += 1
+                    stats["요청행"] += len(item)
+                    stats["신규영구확정"] += created
+                    stats["서버ID재수신"] += len(item) - created
+                    stats["최대묶음"] = max(stats["최대묶음"], len(item))
                 received_at = time.monotonic()
                 for seq, message in zip(sequences, item):
                     if seq is None:
@@ -2172,6 +2200,11 @@ class LocalChatTab(ttk.Frame):
                 code: dict(stats)
                 for code, stats in self._live_queue_block_by_platform.items()
             }
+            durable_batch_snapshots = {
+                code: dict(stats)
+                for code, stats in getattr(
+                    self, "_durable_ingress_batches", {}).items()
+            }
         wait_snapshots = self._live_queue_wait_tracker.snapshot()
         durable = getattr(self, "_twitch_chat_spool", None)
         disk_snapshot = (durable.pending_capacity_snapshot()
@@ -2193,6 +2226,7 @@ class LocalChatTab(ttk.Frame):
             wait_stats = wait_snapshots.get(code, {
                 "진행중": 0, "진행최장초": 0.0, "중단": 0, "중단누적초": 0.0})
             flow = operating_platforms.get(code, {})
+            persisted_batch = durable_batch_snapshots.get(code, {})
             selected = selected_disk.get(code)
             oldest_age = (selected.get("최장미처리초")
                           if selected is not None
@@ -2298,6 +2332,12 @@ class LocalChatTab(ttk.Frame):
                 f"{selected.get('미처리', 0) if selected is not None else disk_counts.get(code, 0)}건"
                 f" / 플랫폼 전체 미처리 {disk_counts.get(code, 0)}건"
                 f" / {oldest_label}"
+                f" / SQLite 묶음커밋 {persisted_batch.get('커밋묶음', 0)}회"
+                f" / 묶음 요청 {persisted_batch.get('요청행', 0)}건"
+                f" / 신규 영구확정 {persisted_batch.get('신규영구확정', 0)}건"
+                f" / 서버 ID 재수신 {persisted_batch.get('서버ID재수신', 0)}건"
+                f" / 묶음 보류오류 {persisted_batch.get('보류오류', 0)}회"
+                f" / 최대 묶음 {persisted_batch.get('최대묶음', 0)}건"
                 f" / 이번 실행 접수 {flow.get('최근접수', 0)}건"
                 f" / 완료 {flow.get('최근완료', 0)}건"
                 f" / 접수율 {flow.get('접수초당', 0.0):.2f}건/초"
