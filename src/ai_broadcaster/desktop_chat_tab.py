@@ -1363,6 +1363,8 @@ class LocalChatTab(ttk.Frame):
                 session._channels, limit=12)
             previous_session_health = reconnect_journal.previous_session_health_for(
                 session._channels)
+            previous_24h_health = reconnect_journal.last_24h_reconnect_health_for(
+                session._channels)
         except Exception as exc:
             if "durable" in locals():
                 durable.release_exclusive_consumer()
@@ -1409,6 +1411,20 @@ class LocalChatTab(ttk.Frame):
                 + "회 · 완료된 공백 합계 " + f"{observed_gap:.2f}초"
                 + " · UTC " + last_utc
                 + " · 실제 서버 누락/새 연결 성공/24시간 송출은 미확인")
+        for platform, observed in previous_24h_health.items():
+            if not int(observed["기록사건"]):
+                continue
+            self._append(
+                "[선택 채널 지난 24시간 실제 재연결 기록] " + platform
+                + " · 기록된 세션 " + str(observed["기록세션"])
+                + "개/사건 " + str(observed["기록사건"])
+                + "건 · 입장 확인 " + str(observed["입장확인사건"])
+                + "회 · 재연결 시도 " + str(observed["재연결시도"])
+                + "회/완료 " + str(observed["재연결완료"])
+                + "회 · 완료된 공백 합계 "
+                + f'{float(observed["완료공백합계초"]):.2f}초'
+                + " · 마지막 UTC " + str(observed["최종기록UTC"])
+                + " · 24시간 연속 연결/서버 무누락 증거는 아님")
         parallel_ai = None
         if parallel_mode:
             try:
