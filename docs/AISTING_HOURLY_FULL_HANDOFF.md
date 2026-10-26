@@ -5081,3 +5081,13 @@ F) 원본 100단계 roadmap.json status는 completed=9, pending=91이며 **코�
 - **215절 제품 코드 구현 및 기존 main 반영 완료. 그러나 전체 AISTING 개발 미완료. 테스트 NOT_RUN / 전체 회귀 NOT_RUN / CI 미조회·미확인 / Windows 10·11 네이티브 EXE·GUI NOT_RUN / 권리 GPT-SoVITS 한국어 동일 WAV→공식 Cubism 입→OBS 장시간 송출·수백 명 4플랫폼·24시간·시청자 최종 응답 1~3초 NOT_RUN.** 실제 서버 채팅 누락·방송 최종 수신은 입장 관측만으로 검증할 수 없음.
 - 과거 실모델 CI `39720448468` 500/500건 3초 초과 및 FIFO p95 2973.875초, 전체 p95 2979.984초 실패, Windows CI `39722213656` 취소 기록 보존.
 - 다음 회차는 먼저 실제 최신 main HEAD와 215절 이후 원본·인수인계를 확인해 4플랫폼 채팅 내구/재연결, 로컬 모델 실효 FIFO 추론, 권리 WAV→공식 Cubism 입→OBS 24시간 인과, 자율 게임/콘텐츠·공지/기억의 **미완료 핵심 코드부터 개발**한다. 전체 필수 개발 완료 이후에만 Windows EXE·실계정·실방송 통합 검증→오류 일괄 수정→전수 재검증. 원래 AISTING 대화 보고 우선. 새 예약 생성/삭제·다른 대화/프로젝트 강제 이동 금지.
+
+## 216절 — 2026-10-26, 4플랫폼 채팅 재시작/지난 24시간 실제 수신 상태 영구 조회 제품 개발
+- 215절은 이미 기존 main HEAD `aad66fa566ceaef3977ae0fa90dcc8a2b8e8b447`에서 완료됨을 확인. 원래 기획/100단계·215절 부록/실제 제품 코드를 읽고 **216절 실제 제품 소스 4개 main 비강제 커밋을 먼저 반영**한 후 본 원문 끝에만 기록.
+- `1ce7578100f092fc2c0617886b013407514c48b4`: `platform_reconnect_journal.py`에 `previous_session_health_for` 추가. 선택한 플랫폼·채널의 직전 수신 세션 마지막 실제 SQLite 사건·명시적 중지 기록·재연결 시도/완료·완료 공백을 조회. 이전 기록을 현재 연결 성공/채팅 무누락으로 오인하지 않음.
+- `9019ea2f365830a61312796dd2325661cc59c60e`: `desktop_chat_tab.py` 기존 Windows GUI의 실제 채팅 시작 전 직전 세션의 마지막 관측·종료 불명·공백 기록을 표시.
+- `af2a4a0b26091d2c3518ba53c82782bfc09644a1`: `platform_reconnect_journal.py`에 UTC 시각 인덱스와 `last_24h_reconnect_health_for` 추가. 재시작된 여러 세션에 걸친 최근 24시간 실제 연결/재연결 사건·완료 공백만 선택 채널 범위에서 조회.
+- `0b05ae650a6a1bbe11fbeb4aeb4483bf5c61fb47`: `desktop_chat_tab.py` Windows GUI에 지난 24시간 실제 SQLite 재연결 집계·시청자 종단간 성공과 구분한 설명 연결.
+- 상세 부록 `docs/hourly-handoff-appendices/AISTING_20261026_216_PERSISTENT_CHAT_RECONNECT_24H_RESTART_HEALTH.md` 실제 커밋 `6db171934894862b2c653540f09a958f2521482f`. 기존 1~215절 원문·캐릭터/성격/말투·사용자 SQLite/설정·100단계·`num_predict=96`/`keep_alive=10m` 보존. 브랜치/force push/원본 삭제/다른 프로젝트·예약·Drive 변경 및 승인 없는 실제 방송/채팅/공지·OAuth/음성 학습 없음.
+- **216절 실제 제품 소스 main 반영 완료, 전체 AISTING 개발 미완료. 테스트 NOT_RUN / 통합 회귀 NOT_RUN / CI 미조회·미확인 / Windows 10·11 EXE GUI NOT_RUN / 권리 GPT-SoVITS 동일 WAV→공식 Cubism 입→OBS 실제 장시간 출력, 4플랫폼 수백 명·24시간·시청자 1~3초 NOT_RUN.** 과거 실모델 CI `39720448468` 500/500건 3초 초과, FIFO p95 2973.875초/전체 p95 2979.984초 실패 및 Windows CI `39722213656` 취소 기록 그대로 유지. 원래 SQLite 200,000건 보호한도 유지.
+- 다음 실행은 최신 main HEAD 재조회→216절 이후 미개발 원본 핵심 제품 소스 먼저 개발→main 정상 비강제 커밋→원문 보존 append-only 인수인계. 남은 과제: 대량 채팅 내구/FIFO·실제 로컬 AI 1~3초 병목, 권리 WAV·공식 Live2D·OBS 동일 발화 장시간 정합, 24시간 승인 방송/게임·콘텐츠·공지·기억 실사용. 전체 개발 후에만 통합 검증→오류 일괄 수정→재검증. 원래 AISTING 대화 우선/기존 예약 유지, 다른 대화·저장소·예약·Drive 조작 금지.
