@@ -739,6 +739,9 @@ class ObsStatusTab(ttk.Frame):
                 "프로그램을 종료하거나 중지 버튼을 누르면 이 기능이 시작한 방송만 "
                 "종료하도록 시도합니다. OBS WebSocket 연결만 끊기면 최대 90초 "
                 "같은 출력 가동시간·장면을 확인하며 연결 복구를 시도합니다. "
+                "공식 Live2D 창·한국어 음성 준비가 방송 중 5초 간격으로 "
+                "확인되지 않으면 30초 유예 뒤 이 예약이 시작한 OBS 방송만 "
+                "종료하며 자동 재시작하지 않습니다. "
                 "방송을 자동 재시작하지 않으며 출력 소유권이 불확실하면 "
                 "종료 명령도 보내지 않고 수동 확인을 요청합니다. "
                 + ("내가 지정한 Discord 시작/종료 공지를 실제 외부 채널에 "
@@ -815,6 +818,9 @@ class ObsStatusTab(ttk.Frame):
                 scene=scene, closing_text=closing,
                 operator_approved=True, rights_confirmed=True,
                 media_preflight=self._approved_live_preflight,
+                media_alive=self._approved_live_preflight,
+                media_watch_interval_seconds=5.0,
+                media_grace_seconds=30.0,
                 deliver_closing=self._approved_live_closing,
                 on_started_notice=on_started_notice,
                 on_finished_notice=on_finished_notice,
@@ -1090,7 +1096,8 @@ class ObsStatusTab(ttk.Frame):
                             " · 디스코드 시작 공지 " + snap.start_notice +
                             " / 종료 공지 " + snap.end_notice +
                             " / 카페 시작 " + snap.cafe_start_notice +
-                            " / 카페 종료 " + snap.cafe_end_notice)
+                            " / 카페 종료 " + snap.cafe_end_notice +
+                            " / 공식 Live2D·한국어 음성 " + snap.media_health)
                     self._approved_scheduler=None
                     if self._chat_tab is not None and self._scheduled_chat_token is not None:
                         if self._chat_tab._scheduled_chat_permission is self._scheduled_chat_token:
@@ -1140,6 +1147,7 @@ class ObsStatusTab(ttk.Frame):
                 " · 채팅/AI " + snap.live_chat +
                 " · 채팅 복구 " + snap.chat_recovery +
                 " · OBS 연결 " + snap.obs_recovery +
+                " · Live2D·한국어 음성 " + snap.media_health +
                 " · 카페 시작 " + snap.cafe_start_notice +
                 " / 종료 " + snap.cafe_end_notice +
                 " · " + snap.stream_health +
