@@ -1203,7 +1203,8 @@ class LocalChatTab(ttk.Frame):
                 multi_options = {
                     "youtube_api_key": self._youtube_api_key.get(),
                     "youtube_oauth_token": self._youtube_oauth_token.get(),
-                    "reconnect_journal": reconnect_journal}
+                    "reconnect_journal": reconnect_journal,
+                    "batched_frames": True}
                 if "youtube" in saved_platforms:
                     # 사용자 선택 실제 방송의 YouTube API 페이지가 기존
                     # 채팅 SQLite에 전량 수용된 후만 재시작 커서를 기록한다.
@@ -1219,7 +1220,9 @@ class LocalChatTab(ttk.Frame):
                 # 단일 플랫폼도 4플랫폼과 동일한 기존 재연결 관리자에
                 # 연결한다. 채팅 원본은 종류/내용/순서 그대로 AI 단일 FIFO로
                 # 전달하며, 오류 후 커서를 초기화하거나 전체 정지하지 않는다.
-                single_options = {"reconnect_journal": reconnect_journal}
+                single_options = {
+                    "reconnect_journal": reconnect_journal,
+                    "batched_frames": True}
                 if code == "twitch":
                     twitch_token = self._twitch_oauth_token.get()
                     if twitch_token:
@@ -1532,6 +1535,38 @@ class LocalChatTab(ttk.Frame):
         """
         if type(limit) is not int or limit < 1:
             raise ValueError("채팅 이벤트 큐 용량 설정 오류")
+        if kind == "chat_batch":
+            # Twitch/치지직/SOOP 한 서버 프레임을 기존 원본 SQLite에
+            # 한번에 확정한다. 어떤 한 행이라도 실패하면 전량 롤백되어
+            # 소켓 수신기가 같은 보류 프레임을 유지하고 재연결한다.
+            if (not isinstance(session, MultiPlatformReadOnlySession)
+                    or type(item) is not tuple or not 1 <= len(item) <= 256):
+                raise ValueError("승인되지 않은 공개 채팅 일괄 접수입니다.")
+            with self._live_ingress_lock:
+                if (getattr(self, "_recovery_session", None) is not session
+                        or session is not self._twitch_session
+                        or session._stop.is_set() or self._closed):
+                    return False
+                spool = self._twitch_chat_spool
+                if spool is None:
+                    raise RuntimeError("기존 미처리 채팅 SQLite가 연결되지 않았습니다.")
+                sequences = spool.append_batch(item)
+                received_at = time.monotonic()
+                for seq, message in zip(sequences, item):
+                    if seq is None:
+                        # 서버가 실제 부여한 ID의 동일 사건만 기존
+                        # 완료/미처리 장부에서 제거했다. 문장 중복은 보존.
+                        continue
+                    self._recovery_arrival_times[seq] = received_at
+                    parsed = message.parsed_at_monotonic
+                    if (type(parsed) in (int, float)
+                            and math.isfinite(parsed) and 0 < parsed <= received_at):
+                        self._recovery_parsed_times[seq] = parsed
+                if any(seq is not None for seq in sequences):
+                    self._recovery_wakeup.set()
+            # AI FIFO 등록은 기존 독립 복구 작업자가 전역 seq로 수행.
+            # 여기에서 GUI 또는 AI에 동일 메시지를 다시 넣지 않는다.
+            return SQLITE_DEFERRED_CHAT
         # GUI 이벤트 큐 또는 AI FIFO가 밀려도 실제 수신 시작 시각을
         # 나중에 새로 찍지 않는다. 네트워크 수신기 콜백에서 한 번만 찍는다.
         stamped_item = (_ReaderTimestampedChat(item, time.monotonic())
