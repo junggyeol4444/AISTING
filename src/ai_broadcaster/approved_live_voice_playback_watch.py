@@ -35,6 +35,7 @@ class LivePlaybackObservation:
     media_last_cursor_ms: int | None = None
     media_state: str = "미관측"
     media_ended_seen: bool = False
+    media_cursor_sync_updates: int = 0
 
 
 class ApprovedLiveVoicePlaybackWatch:
@@ -53,6 +54,7 @@ class ApprovedLiveVoicePlaybackWatch:
         expected_scene: str, source_is_owned: Callable[[], bool],
         cubism_is_alive: Callable[[], bool],
         media_status: Callable[[], tuple[str, int | None]] | None = None,
+        on_media_cursor: Callable[[int], object] | None = None,
     ) -> LivePlaybackObservation:
         """기존 WAV 시간만 기다리며 주기적으로 실제 출력 소유권을 확인.
 
@@ -68,7 +70,9 @@ class ApprovedLiveVoicePlaybackWatch:
                 or not callable(source_is_owned)
                 or not callable(cubism_is_alive)
                 or type(expected_scene) is not str or not expected_scene
-                or (media_status is not None and not callable(media_status))):
+                or (media_status is not None and not callable(media_status))
+                 or (on_media_cursor is not None and
+                     (media_status is None or not callable(on_media_cursor)))):
             raise TypeError("기존 승인된 OBS·Cubism·음성 출력 관찰 대상 오류")
         started = time.monotonic()
         deadline = started + float(seconds) + 0.2
@@ -80,10 +84,13 @@ class ApprovedLiveVoicePlaybackWatch:
         first_playing = None
         observed_media_state = "미관측"
         ended_seen = False
+        cursor_sync_updates = 0
+        last_progress_at = None
 
         def observe_media() -> None:
             nonlocal media_samples, playing_samples, cursor_advances
             nonlocal last_cursor, first_playing, observed_media_state, ended_seen
+            nonlocal cursor_sync_updates, last_progress_at
             if media_status is None:
                 return
             # 상태·커서는 OBS WebSocket GetMediaInputStatus 실제 응답만.
@@ -112,9 +119,19 @@ class ApprovedLiveVoicePlaybackWatch:
                 if first_playing is None:
                     first_playing = max(0.0, time.monotonic() - started)
             if cursor is not None and state == "OBS_MEDIA_STATE_PLAYING":
-                if last_cursor is not None and cursor > last_cursor:
-                    cursor_advances += 1
+                if last_cursor is not None and cursor < last_cursor:
+                    raise RuntimeError("같은 WAV의 OBS 재생 커서 역행")
+                if last_cursor is None or cursor > last_cursor:
+                    if last_cursor is not None:
+                        cursor_advances += 1
+                    last_progress_at = time.monotonic()
+                elif (last_progress_at is not None
+                      and time.monotonic() - last_progress_at > 0.8):
+                    raise RuntimeError("OBS WAV 재생 커서가 0.8초 이상 정지")
                 last_cursor = cursor
+                if on_media_cursor is not None:
+                    on_media_cursor(cursor)
+                    cursor_sync_updates += 1
 
         # 재생 요청 직후 최초 상태 조회. 미디어 시작 전 OPENING도 보존.
         observe_media()
@@ -157,4 +174,5 @@ class ApprovedLiveVoicePlaybackWatch:
             media_first_playing_offset_seconds=first_playing,
             media_last_cursor_ms=last_cursor,
             media_state=observed_media_state,
-            media_ended_seen=ended_seen)
+            media_ended_seen=ended_seen,
+            media_cursor_sync_updates=cursor_sync_updates)

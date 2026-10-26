@@ -518,7 +518,8 @@ class ApprovedLiveVoiceOutput:
                 client.set_scene_item_enabled(original.scene, scene_item_id, True)
                 self._stream_lease.check(obs)
                 mouth_token = frontend.start_authorized_pcm_live2d_mouth(
-                    envelope, operator_approved=True, rights_confirmed=True)
+                    envelope, operator_approved=True, rights_confirmed=True,
+                    obs_cursor_sync=True)
                 causal_row = self._causal_journal.mouth_started(
                     turn_key=effective_turn_key,
                     part_id=part_id, wav_data=raw,
@@ -545,7 +546,10 @@ class ApprovedLiveVoiceOutput:
                         child.poll() is None
                         and frontend._native_viewer is child
                         and frontend._native_bridge is not None),
-                    media_status=current_obs_media_status)
+                    media_status=current_obs_media_status,
+                    on_media_cursor=lambda cursor: (
+                        frontend.sync_authorized_pcm_live2d_mouth_cursor(
+                            mouth_token, cursor, operator_approved=True)))
                 # OBS의 실제 PLAYING·커서 전진을 같은 물리 WAV의 해시/
                 # 소스 UUID에 묶어 별도 SQLite에 보존한 후에만 완료로 진행.
                 # 이 증거는 시청자 전달/인코더 오디오 믹스 성공은 아님.
