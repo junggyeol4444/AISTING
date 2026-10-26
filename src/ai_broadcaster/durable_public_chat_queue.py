@@ -28,6 +28,11 @@ _DEFAULT_PATH = data_dir() / "pending_public_chat.sqlite3"
 _APPLICATION_ID = 0x41535447  # ASTG
 _MAX_RECORDS = 200_000
 _MAX_MESSAGE = 4000
+_FLOW_TABLE = "public_chat_durable_flow"
+_FLOW_COLUMNS = (
+    "platform", "channel", "baseline_pending", "accepted_after_activation",
+    "confirmed_after_activation", "activated_at",
+)
 _INCIDENT_STATES = frozenset(("로컬AI확정실패", "공식AI전달불명"))
 
 
@@ -61,7 +66,7 @@ class DurablePublicChatQueue:
                              or "pending_public_chat" not in tables
                              or not tables.issubset({
                                  "pending_public_chat", "confirmed_server_events",
-                                 "public_chat_processing_incidents"})):
+                                 "public_chat_processing_incidents", _FLOW_TABLE})):
                 raise ValueError("AISTING 미처리 채팅 DB가 아닌 파일을 변경하지 않습니다.")
             if existed_before and not existing:
                 raise ValueError("기존 빈 SQLite 파일의 소유권을 확인할 수 없습니다.")
@@ -108,6 +113,55 @@ class DurablePublicChatQueue:
                 "PRAGMA table_info(public_chat_processing_incidents)").fetchall())
             if incident_columns != ("sequence", "incident_kind", "recorded_at"):
                 raise ValueError("기존 공개 채팅 장애 장부 구조가 일치하지 않습니다.")
+            # 219절: 처리 완료로 원본 보류 행이 삭제된 뒤에도 채널별
+            # 접수/완료 건수를 실제 SQLite 트랜잭션으로 영구 보관한다.
+            # 기존 채팅·개인 기억·완료 ID 테이블은 변경하지 않는다.
+            db.execute(
+                "CREATE TABLE IF NOT EXISTS public_chat_durable_flow("
+                "platform TEXT NOT NULL, channel TEXT NOT NULL,"
+                "baseline_pending INTEGER NOT NULL CHECK(baseline_pending>=0),"
+                "accepted_after_activation INTEGER NOT NULL "
+                "CHECK(accepted_after_activation>=0),"
+                "confirmed_after_activation INTEGER NOT NULL "
+                "CHECK(confirmed_after_activation>=0),"
+                "activated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+                "PRIMARY KEY(platform,channel))")
+            actual_flow = tuple(row[1] for row in db.execute(
+                "PRAGMA table_info(public_chat_durable_flow)"))
+            if actual_flow != _FLOW_COLUMNS:
+                raise ValueError("기존 채팅 영구 집계 장부 구조가 일치하지 않습니다.")
+            # 도입 이전 보류 원본만 baseline으로 기록. 과거 삭제/확정
+            # 건수는 알 수 없으므로 복원했다고 주장하지 않는다.
+            db.execute(
+                "INSERT OR IGNORE INTO public_chat_durable_flow "
+                "(platform,channel,baseline_pending,"
+                "accepted_after_activation,confirmed_after_activation) "
+                "SELECT platform,channel,COUNT(*),0,0 "
+                "FROM pending_public_chat GROUP BY platform,channel")
+            # 기존 append, append_batch, confirm과 동일 트랜잭션으로
+            # 실행. 집계 실패 시 원본 insert/delete도 전부 롤백한다.
+            db.execute(
+                "CREATE TRIGGER IF NOT EXISTS "
+                "aisting_public_chat_flow_insert "
+                "AFTER INSERT ON pending_public_chat BEGIN "
+                "INSERT INTO public_chat_durable_flow "
+                "(platform,channel,baseline_pending,"
+                "accepted_after_activation,confirmed_after_activation)"
+                " VALUES(NEW.platform,NEW.channel,0,1,0) "
+                "ON CONFLICT(platform,channel) DO UPDATE SET "
+                "accepted_after_activation=accepted_after_activation+1; "
+                "END")
+            db.execute(
+                "CREATE TRIGGER IF NOT EXISTS "
+                "aisting_public_chat_flow_confirm "
+                "AFTER DELETE ON pending_public_chat BEGIN "
+                "INSERT INTO public_chat_durable_flow "
+                "(platform,channel,baseline_pending,"
+                "accepted_after_activation,confirmed_after_activation)"
+                " VALUES(OLD.platform,OLD.channel,0,0,1) "
+                "ON CONFLICT(platform,channel) DO UPDATE SET "
+                "confirmed_after_activation=confirmed_after_activation+1; "
+                "END")
             # 동일 본문/사용자의 별개 채팅은 보존. 플랫폼이 실제 발급한
             # 이벤트 ID의 보류 중/처리 완료 재전송만 중복 작업으로 막는다.
             db.execute(
@@ -650,6 +704,44 @@ class DurablePublicChatQueue:
                     "미처리": self._pending_by_channel.get(key, 0),
                     "최장미처리초": age,
                     "최초순번": oldest[0] if oldest is not None else None,
+                }
+            return result
+
+    def durable_flow_snapshot(
+            self, channels: dict[str, str]) -> dict[str, dict[str, object]]:
+        """채널별 재시작 이후에도 유지되는 SQLite 원자 접수/확정 기록.
+
+        집계 도입 전에 이미 확정/삭제된 사건은 알려져 있지 않다.
+        처음 활성화 당시 기존 보류는 별도 baseline에만 계산한다.
+        서버에서 수신하지 못한 메시지·최종 시청자 수신 증명이 아니다.
+        """
+        if (type(channels) is not dict or not channels
+                or any(code not in ("twitch", "chzzk", "soop", "youtube")
+                       or type(channel) is not str or not channel.strip()
+                       for code, channel in channels.items())):
+            raise ValueError("영구 채팅 집계의 선택 방송 정보가 올바르지 않습니다.")
+        with self._lock, self._connection() as db:
+            result = {}
+            for code, channel in channels.items():
+                row = db.execute(
+                    "SELECT baseline_pending,accepted_after_activation,"
+                    "confirmed_after_activation,activated_at "
+                    "FROM public_chat_durable_flow "
+                    "WHERE platform=? AND channel=?", (code, channel)).fetchone()
+                baseline, accepted, confirmed, since = (
+                    (int(row[0]), int(row[1]), int(row[2]), str(row[3]))
+                    if row is not None else (0, 0, 0, None))
+                actual = self._pending_by_channel.get((code, channel), 0)
+                expected = baseline + accepted - confirmed
+                result[code] = {
+                    "도입시보류": baseline,
+                    "도입후접수": accepted,
+                    "도입후확정": confirmed,
+                    "원장추정잔여": expected,
+                    "실제미처리": actual,
+                    "집계일치": expected == actual,
+                    "집계시작UTC": since,
+                    "범위": "집계 도입 이후 및 도입 당시 기존 보류만",
                 }
             return result
 
