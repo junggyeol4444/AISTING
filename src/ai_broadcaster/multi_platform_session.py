@@ -16,6 +16,7 @@ from .multiplatform_readonly import (
 )
 from .twitch_readonly import TwitchChatLine, TwitchReadOnlySession, TwitchServerReconnect
 from .youtube_page_checkpoint import YouTubePageCheckpoint
+from .platform_reconnect_journal import DurablePlatformReconnectJournal
 
 SUPPORTED = ("twitch", "chzzk", "soop", "youtube")
 
@@ -30,7 +31,8 @@ class MultiPlatformReadOnlySession:
     def __init__(self, channels: dict[str, str], emit, *, youtube_api_key: str = "",
                  youtube_oauth_token: str = "",
                  twitch_oauth_token: str = "", twitch_oauth_login: str = "",
-                 youtube_cursor_journal: YouTubePageCheckpoint | None = None):
+                 youtube_cursor_journal: YouTubePageCheckpoint | None = None,
+                 reconnect_journal: DurablePlatformReconnectJournal | None = None):
         if (type(channels) is not dict or not channels or len(channels) > 4
                 or not callable(emit)):
             raise ValueError("동시 채팅 플랫폼과 채널을 확인하세요.")
@@ -53,6 +55,13 @@ class MultiPlatformReadOnlySession:
         # 정상 검사 종료를 재연결 장애로 기록하지 않는다.
         self._run_max_seconds = None
         self._emit = emit
+        if (reconnect_journal is not None
+                and not isinstance(reconnect_journal, DurablePlatformReconnectJournal)):
+            raise ValueError("실제 채팅 재연결 영구 장부 연결이 올바르지 않습니다.")
+        self._reconnect_journal = reconnect_journal
+        self._reconnect_session_id = (
+            reconnect_journal.new_session_id() if reconnect_journal is not None else None)
+        self._reconnect_journal_failures: set[str] = set()
         self._readers = {}
         self._finished_readers = set()
         # 장시간 수신에서 플랫폼별 재연결 횟수와 관측된 공백을
@@ -336,6 +345,9 @@ class MultiPlatformReadOnlySession:
                                 self._completed_gap_over_three[code] += int(gap > 3)
                             else:
                                 gap = None
+                        self._record_reconnect_event(
+                            code, "재연결완료" if gap is not None else "연결확인",
+                            gap_seconds=gap)
                         if gap is None:
                             self._emit_status_safely(code, kind, code + " 공개 채팅 연결")
                         else:
@@ -383,6 +395,30 @@ class MultiPlatformReadOnlySession:
             if code in self._prejoin_resume_states:
                 reader._prejoin_resume = self._prejoin_resume_states[code]
             self._readers[code] = reader
+
+    def _record_reconnect_event(
+            self, code: str, state: str, *, attempt: int = 0,
+            gap_seconds: float | None = None) -> None:
+        """계정·본문 없는 실제 수신 전환을 별도 SQLite에 기록한다.
+
+        장부 오류는 수신 성공으로 위장하지 않고 GUI에 경고하되, 기존
+        공개 채팅 SQLite 보존과 다른 플랫폼의 수신을 임의로 중지하지 않는다.
+        """
+        journal = self._reconnect_journal
+        if journal is None:
+            return
+        try:
+            journal.record(
+                self._reconnect_session_id, code, self._channels[code], state,
+                attempt=attempt, gap_seconds=gap_seconds)
+        except Exception:
+            with self._emit_lock:
+                first = code not in self._reconnect_journal_failures
+                self._reconnect_journal_failures.add(code)
+            if first:
+                self._emit_status_safely(
+                    code, "error", code + " 재연결 상태 SQLite 영구 기록 실패 · "
+                    "채팅 원본 저장 성공 여부와 별도 확인 필요")
 
     def note_deferred_sqlite_chat_enqueued(self, platform: str) -> None:
         """같은 실행 중 SQLite에만 저장됐던 채팅의 AI FIFO 등록 실측.
@@ -691,6 +727,8 @@ class MultiPlatformReadOnlySession:
         with self._emit_lock:
             for code in self._channels:
                 self._end_ready_interval_locked(code, self._stop_started_at)
+        for code in self._channels:
+            self._record_reconnect_event(code, "세션중지")
         def close_one(reader):
             try:
                 reader.stop()
@@ -731,6 +769,8 @@ class MultiPlatformReadOnlySession:
         started_at = time.monotonic()
         with self._emit_lock:
             self._session_started_at = started_at
+        for code in self._channels:
+            self._record_reconnect_event(code, "수신시작")
         run_deadline = (started_at + max_seconds
                         if max_seconds is not None else None)
         try:
@@ -768,6 +808,8 @@ class MultiPlatformReadOnlySession:
                                         code, time.monotonic())
                                     self._disconnect_started.setdefault(
                                         code, time.monotonic())
+                            self._record_reconnect_event(
+                                code, "재연결시도", attempt=self._reader_failures[code])
                             # 오류 알림은 플랫폼 공용 상태 잠금 밖에서
                             # GUI 큐로 전달한다. 다른 수신기의 진행을 막지 않는다.
                             if not self._stop.is_set():
@@ -831,6 +873,7 @@ class MultiPlatformReadOnlySession:
                             self._finished_readers.add(code)
                             self._end_ready_interval_locked(code, time.monotonic())
                             remaining = len(self._readers) - len(self._finished_readers)
+                        self._record_reconnect_event(code, "읽기종료")
                         # 마지막 수신기 종료 알림도 상태 잠금 밖에서 전달한다.
                         if not self._stop.is_set():
                             detail = (f" · 나머지 {remaining}개 채널은 상태 개별 확인"
