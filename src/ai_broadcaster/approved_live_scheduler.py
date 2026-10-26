@@ -23,6 +23,7 @@ from .offline_broadcast_duration import BroadcastDurationRules
 from .original_plan_obs import OfficialObsWebsocket
 from .obs_live2d_frame_link import active_official_window_capture
 from .obs_stream_health import ObsStreamHealthMonitor
+from .approved_live_media_watchdog import ApprovedLiveMediaWatchdog
 from .approved_obs_reconnect import (
     ApprovedObsReconnector, ObsStreamIdentityLost, ObsReconnectExhausted)
 
@@ -47,6 +48,7 @@ class ApprovedLiveSnapshot:
     obs_recovery: str = "OBS 연결 복구 비활성"
     cafe_start_notice: str = "미설정"
     cafe_end_notice: str = "미설정"
+    media_health: str = "승인 방송 매체 관측 미시작"
 
 
 class ApprovedLiveScheduler:
@@ -88,6 +90,9 @@ class ApprovedLiveScheduler:
         on_cafe_started: Callable[[str], bool] | None = None,
         on_cafe_finished: Callable[[str], bool] | None = None,
         cafe_notice_approved: bool = False,
+        media_alive: Callable[[], bool] | None = None,
+        media_watch_interval_seconds: float = 5.0,
+        media_grace_seconds: float = 30.0,
     ) -> None:
         if operator_approved is not True or rights_confirmed is not True:
             raise PermissionError("운영자 방송 자동 시작/종료와 한국어 음성 권리 승인이 필요합니다.")
@@ -149,6 +154,20 @@ class ApprovedLiveScheduler:
             if (on_cafe_started is not None and not callable(on_cafe_started)
                     or on_cafe_finished is not None and not callable(on_cafe_finished)):
                 raise ValueError("네이버 카페 글쓰기 콜백이 올바르지 않습니다.")
+        if media_alive is not None and not callable(media_alive):
+            raise ValueError("공식 Live2D·한국어 음성 생존 확인 함수가 올바르지 않습니다.")
+        if (type(media_watch_interval_seconds) not in (int, float)
+                or not 1.0 <= media_watch_interval_seconds <= 30.0):
+            raise ValueError("실제 방송 매체 확인 간격은 1~30초입니다.")
+        if media_alive is not None and media_grace_seconds < media_watch_interval_seconds * 2:
+            raise ValueError("매체 장애 유예는 실제 확인 간격의 두 배 이상이어야 합니다.")
+        self._media_alive = media_alive
+        self._media_watch_interval_seconds = float(media_watch_interval_seconds)
+        self._media_watchdog = ApprovedLiveMediaWatchdog(grace_seconds=media_grace_seconds)
+        self._last_media_observation: float | None = None
+        self._media_health = (
+            "운영자 승인 방송 시작 후 5초 간격 한국어 음성·Cubism 생존 관측 대기"
+            if media_alive is not None else "실제 방송 매체 감시 미설정")
         self._on_cafe_started = on_cafe_started
         self._on_cafe_finished = on_cafe_finished
         self._cafe_start_notice = "대기" if on_cafe_started else "미설정"
@@ -222,7 +241,8 @@ class ApprovedLiveScheduler:
                 self._pre_notice,
                 self._health_monitor.snapshot().description,
                 self._chat_recovery, self._obs_recovery,
-                self._cafe_start_notice, self._cafe_end_notice)
+                self._cafe_start_notice, self._cafe_end_notice,
+                self._media_health)
 
     def _record_event(self, state: str) -> None:
         """영구 상태 기록 실패가 이미 진행 중인 OBS 종료를 막지 않게 한다."""
@@ -343,6 +363,11 @@ class ApprovedLiveScheduler:
         self._cafe_end_notice = "대기" if self._on_cafe_finished else "미설정"
         self._live_chat = "대기" if self._begin_live_chat else "미설정"
         self._health_monitor = ObsStreamHealthMonitor()
+        self._media_watchdog.reset()
+        self._last_media_observation = None
+        self._media_health = (
+            "공식 Cubism·한국어 음성 로컬 생존 첫 점검 대기"
+            if self._media_alive is not None else "실제 방송 매체 감시 미설정")
         self._obs_reconnector = None
         self._obs_recovery = "방송 시작 전 · OBS 연결 복구 대기"
         self._last_health_observation = None
@@ -614,6 +639,31 @@ class ApprovedLiveScheduler:
                             if warning not in self._health_event_recorded:
                                 self._health_event_recorded.add(warning)
                                 self._record_event(warning)
+                    # 이미 사용자가 승인한 동일 OBS 출력에서만 기존 공식
+                    # Windows Live2D 창 및 권리 한국어 TTS 준비를 주기 확인.
+                    # 소켓이 아닌 매체 준비 실패는 OBS 재연결과 별개로 취급.
+                    if (self._media_alive is not None
+                            and (self._last_media_observation is None
+                                 or monotonic_now - self._last_media_observation
+                                    >= self._media_watch_interval_seconds)):
+                        self._last_media_observation = monotonic_now
+                        try:
+                            media_ok = self._media_alive() is True
+                        except Exception:
+                            media_ok = False
+                        observed_media = self._media_watchdog.observe(
+                            at=monotonic_now, healthy=media_ok)
+                        self._media_health = observed_media.state
+                        if observed_media.recovered:
+                            self._record_event("공식Live2D음성연결복구확인")
+                        if observed_media.expired:
+                            self._record_event("공식Live2D음성연결지속실패")
+                            self._set("실제 방송 매체 연결 이탈",
+                                      "공식 Live2D·한국어 음성 생존을 장시간 확인하지 못함"
+                                      " · 기존 소유 OBS만 안전 종료, 자동 재시작 금지")
+                            self._finish_owned(normal_maximum=False)
+                            self._stop.set()
+                            return self.snapshot()
                     self._recover_live_chat_if_needed(monotonic_now)
                     if (self._owns_stream and not self._stop.is_set()
                             and monotonic_now - self._started_at
