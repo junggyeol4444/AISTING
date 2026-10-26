@@ -251,6 +251,9 @@ class ObsStatusTab(ttk.Frame):
                    command=self._show_live_history).pack(anchor="w", pady=(3,2))
         ttk.Label(self, textvariable=self._live_schedule_status, wraplength=560).pack(
             anchor="w", pady=(2,5))
+        ttk.Button(
+            self, text="24시간 실제 방송 매체·채팅 관측 이력 (읽기 전용)",
+            command=self._show_live_runtime_checkpoints).pack(anchor="w", pady=(2,1))
         self._scenes.bind("<<ListboxSelect>>",lambda _event:self._update_inspect_button())
         self.after(150,self._poll)
 
@@ -474,6 +477,40 @@ class ObsStatusTab(ttk.Frame):
             self._live_schedule_status.set(
                 "자율 콘텐츠 장부 조회 불가 (" + type(exc).__name__
                 + ") · 원본 파일을 변경하지 않았습니다.")
+
+    def _show_live_runtime_checkpoints(self) -> None:
+        """수동 조회만 수행. 실제 OBS/계정 접속·방송 변경 없음."""
+        from .approved_live_runtime_checkpoint import ApprovedLiveRuntimeCheckpoint
+        from .offline_settings import data_dir
+        path = data_dir() / "approved_live_runtime_checkpoints.sqlite3"
+        if not path.is_file() or path.is_symlink() or path.parent.is_symlink():
+            messagebox.showinfo(
+                "장시간 방송 관측", "아직 승인 방송의 상태 관측 기록이 없습니다.",
+                parent=self)
+            return
+        try:
+            checkpoints = ApprovedLiveRuntimeCheckpoint(path).recent(limit=25)
+            lines = [
+                item.observed_at + " · " + item.occurrence
+                + " · " + item.state
+                + " / OBS " + ("확인" if item.obs_streaming else "미확인")
+                + " / 공식 매체 " + (
+                    "관측없음" if item.media_alive is None else
+                    "생존" if item.media_alive else "불명")
+                + " / 채팅 " + (
+                    "미사용" if item.chat_alive is None else
+                    "정상" if item.chat_alive else "불명")
+                for item in checkpoints]
+            messagebox.showinfo(
+                "24시간 실제 OBS·AI·채팅 상태 관측 장부",
+                ("\n".join(lines) if lines else "기록 없음")[:7500]
+                + "\n\n로컬 상태 관측일 뿐 실제 플랫폼·시청자 최종 수신 증거가 아닙니다.",
+                parent=self)
+        except Exception as exc:
+            messagebox.showwarning(
+                "방송 관측 기록 읽기 실패",
+                "기존 독립 SQLite 장부를 변경하지 않았습니다 ("
+                + type(exc).__name__ + ")", parent=self)
 
     def _show_live_history(self) -> None:
         """로컬 시작/종료 이력만 표시. OBS 연결·송출·파일 삭제 없음."""
