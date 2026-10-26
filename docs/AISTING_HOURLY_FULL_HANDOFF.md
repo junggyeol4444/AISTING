@@ -5091,3 +5091,11 @@ F) 원본 100단계 roadmap.json status는 completed=9, pending=91이며 **코�
 - 상세 부록 `docs/hourly-handoff-appendices/AISTING_20261026_216_PERSISTENT_CHAT_RECONNECT_24H_RESTART_HEALTH.md` 실제 커밋 `6db171934894862b2c653540f09a958f2521482f`. 기존 1~215절 원문·캐릭터/성격/말투·사용자 SQLite/설정·100단계·`num_predict=96`/`keep_alive=10m` 보존. 브랜치/force push/원본 삭제/다른 프로젝트·예약·Drive 변경 및 승인 없는 실제 방송/채팅/공지·OAuth/음성 학습 없음.
 - **216절 실제 제품 소스 main 반영 완료, 전체 AISTING 개발 미완료. 테스트 NOT_RUN / 통합 회귀 NOT_RUN / CI 미조회·미확인 / Windows 10·11 EXE GUI NOT_RUN / 권리 GPT-SoVITS 동일 WAV→공식 Cubism 입→OBS 실제 장시간 출력, 4플랫폼 수백 명·24시간·시청자 1~3초 NOT_RUN.** 과거 실모델 CI `39720448468` 500/500건 3초 초과, FIFO p95 2973.875초/전체 p95 2979.984초 실패 및 Windows CI `39722213656` 취소 기록 그대로 유지. 원래 SQLite 200,000건 보호한도 유지.
 - 다음 실행은 최신 main HEAD 재조회→216절 이후 미개발 원본 핵심 제품 소스 먼저 개발→main 정상 비강제 커밋→원문 보존 append-only 인수인계. 남은 과제: 대량 채팅 내구/FIFO·실제 로컬 AI 1~3초 병목, 권리 WAV·공식 Live2D·OBS 동일 발화 장시간 정합, 24시간 승인 방송/게임·콘텐츠·공지·기억 실사용. 전체 개발 후에만 통합 검증→오류 일괄 수정→재검증. 원래 AISTING 대화 우선/기존 예약 유지, 다른 대화·저장소·예약·Drive 조작 금지.
+
+
+## 217절 — 2026-10-26, 운영자 확인형 게임 목표 결과·로컬 AI 선택적 기억 실제 제품 개발
+- 시작 `main` HEAD `32e16d62764ca08c62deae61b0dd3c25bc7a9865` 확인, 216절 이후 원본 기획/로드맵/인수인계/실제 제품 코드 재조회. 전체 개발 완료 이전 통합 검증·오류수정 없음.
+- 실제 제품 파일 4개 직접 수정 및 기존 `main` 6개 커밋: `3f7816cfb815c460669fb6e236cc8e9faa0c1e1e`, `2a0c2054099cd07fde80c5fb06576b4d03a74716`, `77edf71cf124d03172f237827b960b4ff3c05e6b`, `da119c2bc03cdce7200495f8546128cda06bb7b2`, `51bb192c4ad14bf08e4c9a801b55b73b5b0e2ca8`, `af6d53f2fd0054716e340b642a91502f74bd47e6`. AI `목표후보`와 운영자 직접 달성/미달성 표시 분리, SQLite 별도 1회 확인, Windows GUI 선택/기록 조회, 운영자 확인 달성만 다음 로컬 Ollama에 기본 OFF 선택형 참고. 게임·송출/OBS/공지 외부 동작 없음.
+- 세부 변경·현재 제한은 `docs/hourly-handoff-appendices/AISTING_20261026_217_OPERATOR_GAME_CONFIRMATION_AND_OPT_IN_MEMORY.md` 참고. 기존 문서 앞부분 원문 삭제·축약 없음. 기존 설정/캐릭터/SQLite 사건/모델 96토큰·10분 설정·100단계/9 완료 91 pending 유지.
+- **전체 AISTING 개발 미완료, 테스트 NOT_RUN, 통합 NOT_RUN, CI 미조회, Windows EXE/GUI 실사용 NOT_RUN, 실계정 4플랫폼·권리 TTS·공식 Live2D·OBS·24시간 방송·시청자 1~3초 미검증.** 과거 실모델 CI `39720448468` 500/500 3초 초과, FIFO p95 2973.875초·전체 p95 2979.984초 실패, Windows CI `39722213656` 취소 유지.
+- 다음 실행: 기존 최신 `main` 읽고 미개발 필수 제품 기능 소스 개발·정상 비강제 `main` 반영 우선, 전부 개발 후 통합 검증→일괄 수정→재검증. 동일 AISTING 대화 우선, 기존 예약 보존, 다른 저장소/예약/Drive/브랜치 무단 조작·force push/원본 삭제·무승인 실제 연결/송출 금지.
