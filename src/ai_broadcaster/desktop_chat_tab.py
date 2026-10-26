@@ -1830,13 +1830,44 @@ class LocalChatTab(ttk.Frame):
                         except Exception:
                             # DB 상태를 알 수 없으면 자발 발화만 차단.
                             continue
-                        if ((speech is None and content_turn is None)
-                                or session._stop.is_set() or not inbox.empty()
-                                or (content_turn is not None and (
-                                    self._twitch_reader_finished
-                                    or not content_agenda.broadcast_is_active()))):
-                            # 콘텐츠 발화는 위 장부에 이미 '시도'로 확정됨.
-                            # 채팅이 끼어들어 발화를 보류해도 자동 재전송 금지.
+                        aborted = (
+                            (speech is None and content_turn is None)
+                            or session._stop.is_set() or not inbox.empty()
+                            or (content_turn is not None and (
+                                self._twitch_reader_finished
+                                or not content_agenda.broadcast_is_active())))
+                        # 초기 확인과 공식 AI 전송 사이에 들어온 실제
+                        # 4플랫폼 신규 채팅을 콘텐츠가 앞지르지 않도록
+                        # 기존 SQLite 선택 채널의 미처리 순서를 재확인한다.
+                        # 새 메시지 본문·닉네임은 추가 복사/기록하지 않는다.
+                        if content_turn is not None and not aborted:
+                            try:
+                                with self._live_ingress_lock:
+                                    if (session is not self._twitch_session
+                                            or session._stop.is_set()
+                                            or not inbox.empty()):
+                                        aborted = True
+                                    else:
+                                        latest = spool.pending_selected_channels_snapshot(
+                                            session._channels)
+                                        aborted = any(int(scope["미처리"]) > 0
+                                                      for scope in latest.values())
+                            except Exception:
+                                # SQLite를 확인할 수 없으면 허위 '조용함'
+                                # 판단 대신 자율 발화만 막는다.
+                                aborted = True
+                        if aborted:
+                            # 장부의 확정된 발화 시도는 절대 재송신하지 않고
+                            # 요청을 보내지 않은 경우도 종료된 미확인 상태로
+                            # 기록해 재시작 중복 방송 발화를 차단한다.
+                            if content_turn is not None:
+                                try:
+                                    content_agenda.record_delivery(
+                                        content_turn, delivered=False)
+                                except Exception:
+                                    report("twitch_content_turn", (
+                                        content_turn.sequence,
+                                        "채팅 우선·콘텐츠 장부 확인 실패 · 재전송 금지"))
                             continue
                         delivered = False
                         try:
