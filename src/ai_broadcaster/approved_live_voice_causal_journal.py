@@ -125,6 +125,28 @@ class ApprovedVoiceCausalJournal:
             if updated.rowcount != 1:
                 raise RuntimeError("동일 WAV 입·OBS 요청 종료 상태가 일치하지 않습니다.")
 
+    def actual_obs_request_gap(self, row_id: int) -> float | None:
+        """동일 WAV 구간의 입 시작 요청→OBS 재생 요청 단조시간 차.
+
+        별도 Cubism JS 성능시계의 입 변화 시점과 대조하는 참고값.
+        시청자 출력의 A/V 동기화 검증값은 아니다.
+        """
+        if type(row_id) is not int or row_id < 1:
+            raise ValueError("실제 WAV 인과 기록 ID가 잘못됐습니다.")
+        with self._connect() as db:
+            row = db.execute(
+                f"SELECT mouth_started_at,obs_triggered_at FROM {_TABLE} "
+                "WHERE id=?", (row_id,)).fetchone()
+        if row is None:
+            raise ValueError("해당 실제 WAV 인과 기록이 존재하지 않습니다.")
+        mouth_at, obs_at = row
+        if obs_at is None:
+            return None
+        gap = float(obs_at) - float(mouth_at)
+        if not math.isfinite(gap) or gap < 0 or gap > 30:
+            raise RuntimeError("OBS 재생 요청과 공식 Cubism 입 시작 시각이 일치하지 않습니다.")
+        return gap
+
     def recent(self, *, limit: int = 30) -> tuple[tuple, ...]:
         if type(limit) is not int or not 1 <= limit <= 100:
             raise ValueError("동일 WAV 발화 인과 기록 조회 범위 오류")
