@@ -193,7 +193,7 @@ class MultiPlatformReadOnlySession:
                     if kind == "chat_batch":
                         # 배치 수신은 운영자가 GUI에서 시작한 실제 SQLite
                         # 채팅 경로에만 사용하고, 기존 단건 콜백은 불변.
-                        if not self._batched_frames or code == "youtube":
+                        if not self._batched_frames:
                             raise ValueError("승인되지 않은 배치 수신")
                         if type(item) is not tuple or not 1 <= len(item) <= 256:
                             raise ValueError("배치 채팅 형식 또는 크기 오류")
@@ -474,7 +474,7 @@ class MultiPlatformReadOnlySession:
         # Construct and validate every reader before starting any network I/O.
         for code, channel in channels.items():
             reader = factories[code](channel.strip(), self._callbacks[code])
-            if self._batched_frames and code in ("twitch", "chzzk", "soop"):
+            if self._batched_frames and code in ("twitch", "chzzk", "soop", "youtube"):
                 reader._batch_ingress = True
             if code in self._pending_websocket_chats and hasattr(
                     reader, "_pending_chats"):
@@ -929,7 +929,7 @@ class MultiPlatformReadOnlySession:
                                 try:
                                     replacement = self._factories[code](
                                         self._channels[code], self._callbacks[code])
-                                    if self._batched_frames and code in ("twitch", "chzzk", "soop"):
+                                    if self._batched_frames and code in ("twitch", "chzzk", "soop", "youtube"):
                                         replacement._batch_ingress = True
                                     if (code in self._pending_websocket_chats
                                             and hasattr(replacement, "_pending_chats")):
