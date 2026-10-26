@@ -1361,6 +1361,8 @@ class LocalChatTab(ttk.Frame):
             prior_ai_incidents = durable.recent_processing_incidents(limit=25)
             prior_reconnect_events = reconnect_journal.recent_for(
                 session._channels, limit=12)
+            previous_session_health = reconnect_journal.previous_session_health_for(
+                session._channels)
         except Exception as exc:
             if "durable" in locals():
                 durable.release_exclusive_consumer()
@@ -1388,6 +1390,25 @@ class LocalChatTab(ttk.Frame):
                     "[수신 이력] " + platform + " / " + state
                     + (f" / 재연결 시도 {attempt}" if attempt else "")
                     + detail + " / UTC " + recorded_at)
+        # 직전 실행의 선택 채널별 실제 마지막 수신 상태를 SQLite에서
+        # 읽는다. 현재 새 세션의 JOIN/채팅 수신 성공으로 오인하지 않는다.
+        for platform, prior in previous_session_health.items():
+            status = str(prior["마지막상태"])
+            last_utc = str(prior["마지막기록UTC"])
+            explicit_stop = bool(prior["명시적중지기록"])
+            attempts = int(prior["재연결시도기록"])
+            recovered = int(prior["재연결완료기록"])
+            observed_gap = float(prior["완료공백합계초"])
+            self._append(
+                "[이전 수신 세션] " + platform
+                + " · 마지막 실제 관측 " + status
+                + " · " + ("명시적 중지 요청 기록 있음"
+                           if explicit_stop else "명시적 중지 기록 없음/종료 원인 미확인")
+                + " · 재연결 시도 " + str(attempts)
+                + "회/완료 " + str(recovered)
+                + "회 · 완료된 공백 합계 " + f"{observed_gap:.2f}초"
+                + " · UTC " + last_utc
+                + " · 실제 서버 누락/새 연결 성공/24시간 송출은 미확인")
         parallel_ai = None
         if parallel_mode:
             try:
