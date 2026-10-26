@@ -661,15 +661,55 @@ class ObsStatusTab(ttk.Frame):
         return observation.verified_signal is True
 
     def _approved_chat_alive(self) -> bool:
-        """예약이 실제로 소유한 기존 4플랫폼 수신 세션의 상태만 확인."""
-        session=self._owned_chat_session
-        chat=self._chat_tab
+        """승인 OBS 방송이 소유한 **선택 플랫폼별 실제 방 입장**을 확인.
+
+        예전에는 수신 세션이 Stop되지 않았다는 이유만으로 4플랫폼
+        채팅이 정상이라고 판단했다. 이제 적어도 선택된 모든 방에
+        실제 입장 완료됐는지 관측한다. 원래 수신기의 자동 재연결이
+        짧은 오류를 먼저 회복하며, 15초 이상 지속되면 기존 예약
+        방송 복구/안전 종료 흐름으로 전달된다.
+        """
+        session = self._owned_chat_session
+        chat = self._chat_tab
         if (session is None or chat is None
                 or chat._twitch_session is not session
                 or chat._twitch_reader_finished):
+            self._approved_chat_health_detail = (
+                "승인된 채팅 세션이 없거나 수신기가 종료됨")
             return False
-        stopped=getattr(session, "_stop", None)
-        return stopped is not None and not stopped.is_set()
+        stopped = getattr(session, "_stop", None)
+        if stopped is None or stopped.is_set():
+            self._approved_chat_health_detail = "선택 채팅 세션 중지됨"
+            return False
+        try:
+            observed = session.try_reconnect_snapshot()
+            if observed is None:
+                # 상태 콜백과 충돌했을 땐 다음 예약 점검에서 재확인,
+                # 확인 실패를 임의의 정상 상태로 간주하지 않는다.
+                self._approved_chat_health_detail = "현재 채팅 입장 관측 잠금 중"
+                return False
+            selected = tuple(session._channels)
+            if not selected or set(observed) != set(selected):
+                self._approved_chat_health_detail = "선택 채팅 플랫폼 관측 누락"
+                return False
+            missing = tuple(
+                code for code in selected
+                if observed[code].get("채팅방입장") is not True
+                or observed[code].get("수신기종료") is True
+                or observed[code].get("현재공백") is True)
+            if missing:
+                self._approved_chat_health_detail = (
+                    "실제 채팅방 입장 미확인: " + ", ".join(missing)
+                    + " · 기존 수신기 내부 자동 재연결 대기")
+                return False
+        except (AttributeError, RuntimeError, TypeError, ValueError):
+            self._approved_chat_health_detail = "채팅방 실제 입장 관측 불가"
+            return False
+        self._approved_chat_health_detail = (
+            "운영자가 선택한 " + str(len(selected))
+            + "개 플랫폼의 실제 채팅방 입장 관측"
+            " · 서버 공백 중 채팅 무누락은 미검증")
+        return True
 
     def _request_live_chat_start(self, token: object) -> bool:
         reply=queue.Queue(maxsize=1)
