@@ -404,6 +404,10 @@ class ApprovedLiveVoiceOutput:
         if not active_official_window_capture(media_path.capture_sources):
             raise RuntimeError("현재 OBS 장면에 공식 Live2D 활성 창 캡처가 없습니다.")
 
+        # 내부 직접 발화에서 호출자가 turn_key를 제공하지 않아도
+        # 같은 물리 WAV의 기존 인과·입 관측 두 독립 장부가 반드시
+        # 똑같은 식별자를 사용하게 한다. 원문/채팅 ID 영구 저장 없음.
+        effective_turn_key = turn_key or secrets.token_hex(32)
         actual = (prepared_audio if prepared_audio is not None
                   else self._synthesize_segment(text))
         if self._stop.is_set():
@@ -491,7 +495,7 @@ class ApprovedLiveVoiceOutput:
                 mouth_token = frontend.start_authorized_pcm_live2d_mouth(
                     envelope, operator_approved=True, rights_confirmed=True)
                 causal_row = self._causal_journal.mouth_started(
-                    turn_key=turn_key or secrets.token_hex(32),
+                    turn_key=effective_turn_key,
                     part_id=part_id, wav_data=raw,
                     wav_seconds=wav_seconds, obs_scene=original.scene,
                     obs_source_uuid=uuid)
@@ -543,7 +547,7 @@ class ApprovedLiveVoiceOutput:
                         gap = self._causal_journal.actual_obs_request_gap(
                             sync_causal_row)
                         evidence = self._sync_receipts.record(
-                            turn_key=turn_key or secrets.token_hex(32),
+                            turn_key=effective_turn_key,
                             part_id=part_id, wav_data=raw,
                             obs_source_uuid=uuid,
                             obs_request_gap_seconds=gap,
