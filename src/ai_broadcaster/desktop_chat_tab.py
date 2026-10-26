@@ -2411,15 +2411,29 @@ class LocalChatTab(ttk.Frame):
             " / 전체 SQLite 한도 도달 시간 미추정"
             if projected_limit is None
             else f" / 현재 순증 기준 전체 SQLite 한도 예상 {projected_limit:.0f}초(보장 아님)")
+        inference_pressure = (
+            self._twitch_parallel_ai.pressure_snapshot()
+            if self._twitch_parallel_ai is not None else None)
+        inference_label = (
+            " / 로컬 선행 추론 "
+            f"{inference_pressure.pending}/{inference_pressure.limit}건"
+            f" · 생성완료 FIFO 대기 {inference_pressure.generated_waiting_fifo}건"
+            f" · 모델 실행 {inference_pressure.running}건"
+            f" · 모델 실행대기 {inference_pressure.waiting_to_run}건"
+            + (f" · 선두 순번 대기 {inference_pressure.first_pending_seconds:.2f}초"
+               if inference_pressure.first_pending_seconds is not None else "")
+            + (" · 경고: 선두 모델 미완료로 뒤쪽 결과 FIFO 정지"
+               if inference_pressure.fifo_head_blocked else "")
+            + " · 실제 수신/방송 1~3초 미달성 가능"
+            if inference_pressure is not None else "")
         self._platform_health_status.set(
             "플랫폼별 실제 수신 진단 (무누락·24시간·시청자 지연 미검증):\n"
             + "\n".join(lines)
             + f"\nGUI 이벤트 대기 {self._results.qsize()}건"
             + f" / 로컬 AI FIFO 대기 {pending}건"
-            + (f" / 선행 AI {self._twitch_parallel_ai.pending}/"
-               f"{self._twitch_parallel_ai.prefetch_limit}건"
-               " · 초과분은 원본 SQLite에 대기"
-               if self._twitch_parallel_ai is not None else "")
+            + inference_label
+            + (" · 선행 추론 창 초과분은 원본 SQLite에 안전 대기"
+               if inference_pressure is not None else "")
             + (" / 디스크 미처리 채팅 "
                + (str(durable_count) + "건" if durable_count is not None
                   else "저장소 미연결"))
