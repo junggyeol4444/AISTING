@@ -935,6 +935,31 @@ class LocalChatTab(ttk.Frame):
             message += (
                 "\n\n실제 Cubism 입 변화 장부 조회 불가 ("
                 + type(exc).__name__ + ")")
+        try:
+            from .approved_live_voice_media_receipts import (
+                ApprovedLiveVoiceMediaReceipts)
+            from .offline_settings import data_dir
+            path = data_dir() / "approved_live_voice_media_receipts.sqlite3"
+            if path.exists() and not path.is_symlink():
+                records = ApprovedLiveVoiceMediaReceipts(path).recent(limit=12)
+                if records:
+                    message += "\n\n[같은 WAV의 OBS 실제 PLAYING·재생 커서 진행]"
+                    for entry in records:
+                        started = ("미관측"
+                                   if entry.first_playing_offset_seconds is None
+                                   else f"{entry.first_playing_offset_seconds:.3f}초")
+                        cursor = ("커서 미확인"
+                                  if entry.last_cursor_ms is None
+                                  else f"커서 {entry.last_cursor_ms}ms")
+                        message += (
+                            f"\n구간 {entry.part_id} · {entry.observed_state}"
+                            f" · PLAYING {entry.playing_samples}/{entry.samples}회"
+                            f" · 커서 전진 {entry.cursor_advances}회"
+                            f" · 첫 재생 관측 {started} · {cursor}"
+                            " · 시청자 전달/OBS 오디오 인코딩 확인 아님")
+        except Exception as exc:
+            message += ("\n\nOBS 실제 미디어 재생 기록 조회 불가 ("
+                        + type(exc).__name__ + ")")
         messagebox.showinfo(
             "한국어 GPT-SoVITS·Cubism·OBS 발화 기록",
             message + "\n\n※ 재생요청완료는 실제 시청자 수신 증명이 아닙니다. "
@@ -2702,6 +2727,13 @@ class LocalChatTab(ttk.Frame):
                         elif event == "발화중단":
                             self._approved_live_voice_status.set(
                                 "실제 방송 음성 일부 미완료 · 이중 발화 재시도하지 않음")
+                        elif event == "OBS미디어재생관측":
+                            self._approved_live_voice_status.set(
+                                f"같은 WAV 구간 {value.part_id} OBS "
+                                f"{value.observed_state} · 실제 PLAYING "
+                                f"{value.playing_samples}/{value.samples}회"
+                                f" · 커서 전진 {value.cursor_advances}회"
+                                " · 시청자 수신·실제 송출 음량 미확인")
                         elif event == "실제입OBS관측":
                             gap = (
                                 "OBS 요청 시각 미확인"
