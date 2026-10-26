@@ -5148,3 +5148,11 @@ F) 원본 100단계 roadmap.json status는 completed=9, pending=91이며 **코�
 - **프로필 설정의 트랙 후보일 뿐 실제 인코더 출력 패킷·시청자 청취/1~3초 성공 증거 아님.** Simple 기본 트랙 1도 실제 스트림 인코더의 직접 판독이 아님. 새 OBS 송출/녹화/장면·외부 채팅·게임/공지 제어 없음. 기존 설정·캐릭터·선택 로컬 모델·`num_predict=96`/`keep_alive=10m`·개인 SQLite·100단계 9/91 및 원래 1~222절 인수인계 불변.
 - 상세 부록 `docs/hourly-handoff-appendices/AISTING_20261026_223_OBS_STREAM_PROFILE_AUDIO_TRACK_MATCH_AND_RECEIPTS.md`. **전체 개발 미완료. 코드 테스트 NOT_RUN / 통합 NOT_RUN / CI 미조회 / Windows 10·11 EXE NOT_RUN / 실제 권리 GPT-SoVITS·공식 Cubism·OBS/4플랫폼 수백 명·24시간 NOT_RUN / 시청자 응답 1~3초 미확인.** 과거 CI `39720448468` 500/500 3초 초과·FIFO p95 2973.875초·전체 p95 2979.984초 실패, Windows CI `39722213656` 취소 그대로 보존.
 - 다음은 최신 main 재조회 후 4플랫폼 대량 FIFO/로컬 AI 병목·24시간 승인형 방송/게임/콘텐츠/공지·기억/실제 오디오 영상 인과의 남은 제품 소스 **개발 먼저**. 전체 개발 후에만 통합 검증→오류 일괄 수정→재검증. 기존 예약·대화 유지 최우선, 타 저장소/Drive/브랜치·force push/rollback·무승인 OAuth·방송/녹화·채팅·공지·게임 조작/모델 설치 금지.
+
+
+## 224절 — 2026-10-26 4플랫폼 공개 채팅 GUI 최대 16건 묶음·로컬 AI FIFO 개별 처리 유지
+- `main` 시작 HEAD `405cdaf34f4461b64749c7b503fc06cfdcc8dac0` 재조회 후 원본 기획·100단계·누적 인수인계 2종·223절 부록·현존 SQL/AI/Tk 소스 확인.
+- 실제 제품 코드 커밋 3개: `80a5e44c3935fd3e932000a41e374dc032bede32`(`ordered_parallel_local_ai.py`: 현재 추론 슬롯 수 thread-safe 공개), `73923aaa61621a0f478f1bfcbed7e5207c46fd3b`(`desktop_chat_tab.py`: SQLite 원본 채팅별 순번/시간/출처 불변으로 GUI 이벤트 최대 16건 묶음, 화면 이벤트 선등록 뒤 AI FIFO 원래 개별 순서 submit, 로컬 병렬 슬롯 및 메모리/GUI backpressure 유지), `1769d8cd25d1c6e9a667e8c3dde6081c82f130f5`(`desktop_chat_tab.py`: 원래 GUI 한 건 표시 계약 공통화, 모두 개별 수신/플랫폼 계수, 단일 Tk Text.insert/상태 갱신 및 128건 처리 슬라이스).
+- **AI 메시지는 절대 묶어 답변하지 않으며** 사용자 문장 동일 여부로 폐기하지 않음. SQLite 보류/ACK·채팅 내용/기억·운영자 선택 Ollama `num_predict=96`/`keep_alive=10m`, 공식 Cubism/OBS/권리 TTS/100단계 기존 상태 전부 보존. 수신 화면 이벤트의 제한적 묶음은 1~3초·수백명·24시간 검증 성적이 아님.
+- 224절 상세 부록: `docs/hourly-handoff-appendices/AISTING_20261026_224_BOUNDED_FOUR_PLATFORM_GUI_CHAT_BATCH_FASTER_FIFO.md`. **전체 개발 미완료. 코드 테스트 NOT_RUN, 통합 NOT_RUN, CI 미조회, Windows 10/11 EXE/GUI NOT_RUN, GPT-SoVITS·공식 Cubism·OBS 실방송·4플랫폼 수백명/24시간 NOT_RUN, 실제 시청자 1~3초 미확인.** 과거 CI `39720448468` 500/500 3초 초과, FIFO p95 2973.875초·전체 p95 2979.984초 실패 및 Windows CI `39722213656` 취소 이력 변경 금지.
+- 다음은 224절 이어 아직 남은 **원본 실제 핵심 기능 전체 개발 먼저**, 이후에만 Windows EXE/실계정/4플랫폼/음성/OBS 통합검증→오류 일괄 수정→재검증. 기존 예약 유지/원래 이 대화에서 답변 우선, 임의 새 대화·타 프로젝트·Drive·새 브랜치/force push·무승인 로그인/송출/외부 채팅/공지/게임/모델 설치 금지.
