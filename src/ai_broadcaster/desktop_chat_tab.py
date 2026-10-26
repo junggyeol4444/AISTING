@@ -41,6 +41,7 @@ from .approved_live_content_agenda import (
 from .approved_live_voice_output import ApprovedLiveVoiceOutput
 from .ordered_parallel_local_ai import OrderedParallelLocalAI
 from .youtube_page_checkpoint import YouTubePageCheckpoint
+from .platform_reconnect_journal import DurablePlatformReconnectJournal
 
 
 @dataclass(frozen=True)
@@ -1195,12 +1196,14 @@ class LocalChatTab(ttk.Frame):
             session = None
             emit = lambda kind, item: LocalChatTab._enqueue_public_event(
                 self, session, kind, item)
+            reconnect_journal = DurablePlatformReconnectJournal()
             if choice == "전체":
                 twitch_token = getattr(self, "_twitch_oauth_token", None)
                 twitch_login = getattr(self, "_twitch_oauth_login", None)
                 multi_options = {
                     "youtube_api_key": self._youtube_api_key.get(),
-                    "youtube_oauth_token": self._youtube_oauth_token.get()}
+                    "youtube_oauth_token": self._youtube_oauth_token.get(),
+                    "reconnect_journal": reconnect_journal}
                 if "youtube" in saved_platforms:
                     # 사용자 선택 실제 방송의 YouTube API 페이지가 기존
                     # 채팅 SQLite에 전량 수용된 후만 재시작 커서를 기록한다.
@@ -1216,7 +1219,7 @@ class LocalChatTab(ttk.Frame):
                 # 단일 플랫폼도 4플랫폼과 동일한 기존 재연결 관리자에
                 # 연결한다. 채팅 원본은 종류/내용/순서 그대로 AI 단일 FIFO로
                 # 전달하며, 오류 후 커서를 초기화하거나 전체 정지하지 않는다.
-                single_options = {}
+                single_options = {"reconnect_journal": reconnect_journal}
                 if code == "twitch":
                     twitch_token = self._twitch_oauth_token.get()
                     if twitch_token:
@@ -1243,6 +1246,8 @@ class LocalChatTab(ttk.Frame):
             durable.acquire_exclusive_consumer()
             recovery_snapshot = durable.recovery_snapshot(session._channels)
             prior_ai_incidents = durable.recent_processing_incidents(limit=25)
+            prior_reconnect_events = reconnect_journal.recent_for(
+                session._channels, limit=12)
         except Exception as exc:
             if "durable" in locals():
                 durable.release_exclusive_consumer()
@@ -1258,6 +1263,18 @@ class LocalChatTab(ttk.Frame):
                 + str(len(prior_ai_incidents))
                 + "개 사건 기록 있음 · 해당 채팅의 성공/송출 미확인 · "
                 "원본 SQLite 보존 상태 확인 필요")
+        if prior_reconnect_events:
+            self._append(
+                "[선택 방송 재연결 기록] 이전 실행의 실제 수신 상태 "
+                + str(len(prior_reconnect_events))
+                + "건 확인 · 서버 누락/24시간 정상 송출의 증거는 아님")
+            for platform, _channel, state, attempt, gap, recorded_at in (
+                    prior_reconnect_events[:4]):
+                detail = (f" · 실제 공백 {gap:.2f}초" if gap is not None else "")
+                self._append(
+                    "[수신 이력] " + platform + " / " + state
+                    + (f" / 재연결 시도 {attempt}" if attempt else "")
+                    + detail + " / UTC " + recorded_at)
         parallel_ai = None
         if parallel_mode:
             try:
