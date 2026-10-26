@@ -349,8 +349,8 @@ class LocalChatTab(ttk.Frame):
             command=self._review_previous_voice_pending,
         ).pack(anchor="w", before=model_row, pady=(1, 2))
         ttk.Checkbutton(
-            self, text="이전 실제 OBS 방송 시작·종료 사실을 내 로컬 AI가 기억"
-                 " (선택 시에만 · 기본 꺼짐 · 다른 캐릭터/채팅 원문 저장 없음)",
+            self, text="이전 실제 OBS 시작·종료 및 승인 주제 전달 기록을 내 로컬 AI가 참고"
+                 " (선택 시에만 · 기본 꺼짐 · 채팅/닉네임 저장 없음)",
             variable=self._broadcast_memory_enabled,
         ).pack(anchor="w", before=model_row, pady=(2,1))
         ttk.Label(self, textvariable=self._twitch_status, wraplength=600).pack(
@@ -1120,7 +1120,8 @@ class LocalChatTab(ttk.Frame):
                 return
             try:
                 from .approved_live_memory import approved_live_memory_context
-                broadcast_facts = approved_live_memory_context(limit=5)
+                broadcast_facts = approved_live_memory_context(
+                    limit=5, include_approved_topics=True)
             except (ValueError, OSError, RuntimeError) as exc:
                 approval_dialog.showwarning(
                     "이전 방송 사건 기억",
