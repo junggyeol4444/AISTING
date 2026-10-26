@@ -31,7 +31,8 @@ def _valid_token(token: str) -> bool:
     return type(token) is str and _TOKEN.fullmatch(token) is not None
 
 
-def start_pcm_driver_script(envelope: tuple[float, ...], token: str) -> str:
+def start_pcm_driver_script(envelope: tuple[float, ...], token: str, *,
+                            await_obs_cursor: bool = False) -> str:
     """원본 Cubism 모델의 음성 입 매개변수 경로만 일시 구동한다."""
     if not _valid_token(token):
         raise ValueError("승인된 동일 발화 요청 식별자가 유효하지 않습니다.")
@@ -40,6 +41,8 @@ def start_pcm_driver_script(envelope: tuple[float, ...], token: str) -> str:
                    or not math.isfinite(x) or not 0 <= x <= 1
                    for x in envelope)):
         raise ValueError("실제 WAV 음량 배열 형식이 유효하지 않습니다.")
+    if type(await_obs_cursor) is not bool:
+        raise TypeError("OBS 커서 연동 형식 오류")
     data = json.dumps(envelope, separators=(",", ":"))
     nonce = json.dumps(token)
     # The official WebGL model remains the actual renderer. We only provide
@@ -64,9 +67,11 @@ def start_pcm_driver_script(envelope: tuple[float, ...], token: str) -> str:
         "if(!Number.isFinite(previous)||previous>0.02)return {ok:false};"
         "const levels=" + data + ";"
         "const token=" + nonce + ";"
+        "const awaitCursor=" + json.dumps(await_obs_cursor) + ";"
         "const original=wav.getRms;"
         "const started=performance.now();"
         "const state={token,model,wav,original,started,closed:false,"
+        "awaitCursor,anchorAt:null,anchorMs:null,lastMs:null,updates:0,"
         "calls:0,positiveCalls:0,samples:0,changes:0,"
         "firstMouth:null,lastMouth:null,low:null,high:null,"
         "lastParameter:null,timer:null,expiry:null,reason:null};"
@@ -82,7 +87,11 @@ def start_pcm_driver_script(envelope: tuple[float, ...], token: str) -> str:
         "state.reason='원본음성상태오류';cleanup();return 0;}"
         "if(Number.isFinite(upstream)&&upstream>0.02){"
         "state.reason='공식음성중첩';cleanup();return upstream;}"
-        "const elapsed=performance.now()-started;"
+        "if(awaitCursor&&state.anchorAt===null)return 0;"
+        "if(awaitCursor&&performance.now()-state.anchorAt>500)return 0;"
+        "const elapsed=awaitCursor?"
+        "(state.anchorMs+Math.max(0,performance.now()-state.anchorAt)):"
+        "(performance.now()-started);"
         "if(manager.getModel(0)!==model){state.reason='모델변경';cleanup();return 0;}"
         "if(elapsed>=levels.length*50){state.reason='끝';cleanup();return 0;}"
         "const index=Math.floor(Math.max(0,elapsed)/50);"
@@ -107,9 +116,32 @@ def start_pcm_driver_script(envelope: tuple[float, ...], token: str) -> str:
         "},50);"
         "state.expiry=setTimeout(()=>{"
         "if(!state.closed){state.reason='시간초과';cleanup();}"
-        "},levels.length*50+1000);"
+        "},awaitCursor?10000:levels.length*50+1000);"
         "window.__aistingAuthorizedPcm=state;"
         "return {ok:true,token,lipSyncIds:ids.getSize(),duration:levels.length*0.05};"
+        "})()"
+    )
+
+
+def sync_pcm_driver_cursor_script(token: str, cursor_ms: int) -> str:
+    """OBS PLAYING 실제 커서로 기존 승인된 공식 Cubism RMS 시간을 동기화."""
+    if not _valid_token(token) or type(cursor_ms) is not int or not 0 <= cursor_ms <= 20000:
+        raise ValueError("OBS 실재생 커서·토큰 오류")
+    nonce = json.dumps(token)
+    return (
+        "(() => {"
+        "if(location.origin!=='http://127.0.0.1:12393')return {ok:false};"
+        "const s=window.__aistingAuthorizedPcm;"
+        "if(!s||s.closed||!s.awaitCursor||s.token!==" + nonce + ")return {ok:false};"
+        "const ms=" + str(cursor_ms) + ";"
+        "if(s.lastMs!==null&&ms<s.lastMs)return {ok:false};"
+        "if(s.lastMs===null){"
+        "if(s.expiry!==null)clearTimeout(s.expiry);"
+        "s.expiry=setTimeout(()=>{if(!s.closed){"
+        "s.reason='OBS커서만료';s.cleanup();}},10000);"
+        "}"
+        "s.lastMs=ms;s.anchorMs=ms;s.anchorAt=performance.now();s.updates++;"
+        "return {ok:true,token:s.token,cursorMs:ms,updates:s.updates};"
         "})()"
     )
 
@@ -127,6 +159,7 @@ def finish_pcm_driver_script(token: str) -> str:
         "state.cleanup();"
         "delete window.__aistingAuthorizedPcm;"
         "return {ok:true,calls:state.calls,positiveCalls:state.positiveCalls,"
+        "cursorUpdates:state.updates,"
         "samples:state.samples,changes:state.changes,"
         "mouthRange:state.low===null?null:state.high-state.low,"
         "mouthFirstMs:state.firstMouth===null?null:state.firstMouth-state.started,"

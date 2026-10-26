@@ -1108,6 +1108,7 @@ def start_authorized_pcm_live2d_mouth(
     envelope: tuple[float, ...], *,
     operator_approved: bool = False,
     rights_confirmed: bool = False,
+    obs_cursor_sync: bool = False,
 ) -> str:
     """운영자가 승인한 실제 WAV의 50ms PCM RMS를 공식 Cubism에 일시 제공."""
     if operator_approved is not True or rights_confirmed is not True:
@@ -1115,16 +1116,37 @@ def start_authorized_pcm_live2d_mouth(
     from .same_wav_cubism_driver import start_pcm_driver_script
     token = secrets.token_hex(16)
     # Do not send raw audio, model file or secrets through the native bridge.
-    start_pcm_driver_script(envelope, token)
+    start_pcm_driver_script(envelope, token, await_obs_cursor=obs_cursor_sync)
     result = _authorized_pcm_ipc({
         "type": "authorized-pcm-start",
         "token": token, "envelope": list(envelope),
+        "obs_cursor_sync": obs_cursor_sync,
     }, "authorized-pcm-start-result")
     if (result.get("token") != token
             or type(result.get("lipSyncIds")) is not int
             or result["lipSyncIds"] < 1):
         raise FrontendUnavailable("이번 실제 Cubism 모델의 입 매개변수 확인 실패")
     return token
+
+
+def sync_authorized_pcm_live2d_mouth_cursor(
+    token: str, cursor_ms: int, *, operator_approved: bool = False,
+) -> int:
+    """승인된 OBS PLAYING 미디어 커서를 Windows 공식 Cubism 창에 전달."""
+    if operator_approved is not True:
+        raise PermissionError("기존 승인된 공식 Cubism 입 동기화만 허용합니다.")
+    from .same_wav_cubism_driver import sync_pcm_driver_cursor_script
+    sync_pcm_driver_cursor_script(token, cursor_ms)
+    response = _authorized_pcm_ipc({
+        "type": "authorized-pcm-cursor",
+        "token": token, "cursor_ms": cursor_ms,
+    }, "authorized-pcm-cursor-result")
+    if (response.get("token") != token
+            or response.get("cursorMs") != cursor_ms
+            or type(response.get("updates")) is not int
+            or response["updates"] < 1):
+        raise FrontendUnavailable("공식 Cubism 실재생 커서 반영 확인 실패")
+    return response["updates"]
 
 
 def finish_authorized_pcm_live2d_mouth(
@@ -1171,17 +1193,26 @@ def _native_frontend_input_worker(window, address: str | None = None,
                 conn.send_bytes(b'{"type":"input-invalid"}')
                 continue
             if isinstance(request, dict) and request.get("type") in (
-                    "authorized-pcm-start", "authorized-pcm-finish"):
+                    "authorized-pcm-start", "authorized-pcm-finish",
+                    "authorized-pcm-cursor"):
                 from .same_wav_cubism_driver import (
-                    start_pcm_driver_script, finish_pcm_driver_script)
+                    start_pcm_driver_script, finish_pcm_driver_script,
+                    sync_pcm_driver_cursor_script)
                 command = request["type"]
                 try:
                     if command == "authorized-pcm-start":
                         envelope = request.get("envelope")
                         if not isinstance(envelope, list):
                             raise ValueError("PCM 형식")
+                        sync = request.get("obs_cursor_sync", False)
+                        if type(sync) is not bool:
+                            raise ValueError("OBS 커서 연동 형식 오류")
                         script = start_pcm_driver_script(
-                            tuple(envelope), request.get("token"))
+                            tuple(envelope), request.get("token"),
+                            await_obs_cursor=sync)
+                    elif command == "authorized-pcm-cursor":
+                        script = sync_pcm_driver_cursor_script(
+                            request.get("token"), request.get("cursor_ms"))
                     else:
                         script = finish_pcm_driver_script(request.get("token"))
                     answer = window.evaluate_js(script)
@@ -1195,6 +1226,13 @@ def _native_frontend_input_worker(window, address: str | None = None,
                             "ok": True,
                             "token": answer.get("token"),
                             "lipSyncIds": answer.get("lipSyncIds"),
+                        }
+                    elif command == "authorized-pcm-cursor":
+                        response = {
+                            "type": "authorized-pcm-cursor-result",
+                            "ok": True, "token": answer.get("token"),
+                            "cursorMs": answer.get("cursorMs"),
+                            "updates": answer.get("updates"),
                         }
                     else:
                         response = {
