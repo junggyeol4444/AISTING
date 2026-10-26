@@ -10,6 +10,8 @@ GPU 실처리량이나 시청자 1~3초 응답은 보장하지 않는다.
 from __future__ import annotations
 
 import threading
+import time
+from dataclasses import dataclass
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from uuid import uuid4
@@ -21,6 +23,20 @@ from .local_llm import LocalModelConfig, LocalOllamaReplyGenerator
 from .operator_settings import load_settings, DEFAULT_FILE
 from .offline_settings import active_persona, load_settings as load_gui_settings
 from .session import ChatMessage
+
+
+@dataclass(frozen=True)
+class ParallelInferencePressure:
+    """텍스트·사용자 식별자 없는 실제 선행 추론의 FIFO 대기 관측."""
+    pending: int
+    running: int
+    waiting_to_run: int
+    generated_waiting_fifo: int
+    oldest_pending_seconds: float | None
+    first_pending_seconds: float | None
+    first_pending_is_complete: bool
+    fifo_head_blocked: bool
+    limit: int
 
 
 class OrderedParallelLocalAI:
@@ -59,6 +75,8 @@ class OrderedParallelLocalAI:
         self._executor = ThreadPoolExecutor(
             max_workers=max_workers, thread_name_prefix="AISTING-로컬추론")
         self._pending: dict[int, Future] = {}
+        self._submitted_at: dict[int, float] = {}
+        self._completed_at: dict[int, float] = {}
         self._committed_sequence = 0
 
     def can_submit(self, sequence: int | None = None) -> bool:
@@ -100,6 +118,12 @@ class OrderedParallelLocalAI:
             message = ChatMessage(str(uuid4()), sender.strip(), text.strip())
             future = self._executor.submit(self._infer_only, message)
             self._pending[sequence] = future
+            self._submitted_at[sequence] = time.monotonic()
+            def completed(_future, seq=sequence):
+                with self._lock:
+                    if self._pending.get(seq) is _future:
+                        self._completed_at[seq] = time.monotonic()
+            future.add_done_callback(completed)
 
     def _infer_only(self, message: ChatMessage) -> tuple[ChatMessage, str, dict | None]:
         """실제 모델 생성만 병렬화; 이 스레드에서는 기억/ACK/OBS 변경 금지."""
@@ -130,6 +154,8 @@ class OrderedParallelLocalAI:
         except Exception:
             with self._lock:
                 self._pending.pop(sequence, None)
+                self._submitted_at.pop(sequence, None)
+                self._completed_at.pop(sequence, None)
             raise
         with self._lock:
             if self._stopped:
@@ -145,6 +171,8 @@ class OrderedParallelLocalAI:
                 warning = "AI 답변 생성됨 · 기존 SQLite 대화 기억 저장 실패"
             count = self._memory.count()
             self._pending.pop(sequence, None)
+            self._submitted_at.pop(sequence, None)
+            self._completed_at.pop(sequence, None)
             self._committed_sequence = sequence
             return ChatResult(
                 reply=reply, remembered_count=count, warning=warning,
@@ -154,7 +182,35 @@ class OrderedParallelLocalAI:
         with self._lock:
             self._stopped = True
             self._pending.clear()
+            self._submitted_at.clear()
+            self._completed_at.clear()
             self._executor.shutdown(wait=False, cancel_futures=True)
+
+    def pressure_snapshot(self) -> ParallelInferencePressure:
+        """완료된 미래 답변이 앞 순번의 추론을 기다리는 실제 병목 관측.
+
+        메시지/발화/대화 메모리에 영향을 주지 않고 조회하며, 모델 속도가
+        빠르다고 추정하거나 완료 전 시청자 응답을 성공으로 집계하지 않는다.
+        """
+        with self._lock:
+            now = time.monotonic()
+            count = len(self._pending)
+            if not count:
+                return ParallelInferencePressure(0, 0, 0, 0, None, None,
+                                                False, False, self._prefetch_limit)
+            first_seq = min(self._pending)
+            first = self._pending[first_seq]
+            running = sum(future.running() for future in self._pending.values())
+            queued = sum(not future.running() and not future.done()
+                         for future in self._pending.values())
+            ready = sum(future.done() for future in self._pending.values())
+            born = self._submitted_at.get(first_seq)
+            head_age = None if born is None else max(0.0, now - born)
+            oldest = min(self._submitted_at.values(), default=None)
+            oldest_age = None if oldest is None else max(0.0, now - oldest)
+            return ParallelInferencePressure(
+                count, running, queued, ready, oldest_age, head_age,
+                first.done(), ready > 0 and not first.done(), self._prefetch_limit)
 
     @property
     def pending(self) -> int:
