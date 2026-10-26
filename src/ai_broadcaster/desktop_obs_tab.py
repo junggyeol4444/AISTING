@@ -800,6 +800,10 @@ class ObsStatusTab(ttk.Frame):
             # 별도 로컬 SQLite 영구 장부: 강제 종료 후 같은 슬롯의
             # 중복 OBS 시작을 예방한다. 사용자 승인 전에는 생성하지 않는다.
             journal=ApprovedLiveSlotJournal()
+            from .approved_live_runtime_checkpoint import ApprovedLiveRuntimeCheckpoint
+            # 사용자가 이 예약을 실제 승인한 때에만 독립 상태 장부 준비.
+            # 원래 슬롯/이벤트·채팅/기억 SQLite는 변경하지 않는다.
+            runtime_log=ApprovedLiveRuntimeCheckpoint()
             on_cafe_started = None
             on_cafe_finished = None
             if cafe_enabled:
@@ -863,6 +867,11 @@ class ObsStatusTab(ttk.Frame):
                 chat_recovery_limit=3,
                 occurrence_claim=journal.claim,
                 occurrence_event=journal.record_event,
+                runtime_checkpoint=(
+                    lambda occurrence, obs, media, chat:
+                    runtime_log.record(
+                        occurrence, obs_streaming=obs,
+                        media_alive=media, chat_alive=chat)),
                 on_pre_notice=pre_callback,
                 pre_notice_claim=(journal.claim_pre_notice if pre_enabled else None),
                 pre_notice_lead_minutes=pre_lead)
@@ -1129,7 +1138,8 @@ class ObsStatusTab(ttk.Frame):
                             " / 종료 공지 " + snap.end_notice +
                             " / 카페 시작 " + snap.cafe_start_notice +
                             " / 카페 종료 " + snap.cafe_end_notice +
-                            " / 공식 Live2D·한국어 음성 " + snap.media_health)
+                            " / 공식 Live2D·한국어 음성 " + snap.media_health +
+                            " / 장시간 방송 관측 " + snap.runtime_checkpoint)
                     self._approved_scheduler=None
                     if self._chat_tab is not None and self._scheduled_chat_token is not None:
                         if self._chat_tab._scheduled_chat_permission is self._scheduled_chat_token:
@@ -1180,6 +1190,7 @@ class ObsStatusTab(ttk.Frame):
                 " · 채팅 복구 " + snap.chat_recovery +
                 " · OBS 연결 " + snap.obs_recovery +
                 " · Live2D·한국어 음성 " + snap.media_health +
+                " · 장시간 방송 관측 " + snap.runtime_checkpoint +
                 " · 카페 시작 " + snap.cafe_start_notice +
                 " / 종료 " + snap.cafe_end_notice +
                 " · " + snap.stream_health +
