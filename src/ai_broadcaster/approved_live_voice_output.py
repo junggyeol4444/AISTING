@@ -32,6 +32,7 @@ from .approved_live_voice_outbox import ApprovedLiveVoiceOutbox
 from .approved_live_voice_stream_lease import ApprovedVoiceStreamLease
 from .approved_live_voice_causal_journal import ApprovedVoiceCausalJournal
 from .approved_live_voice_sync_receipts import ApprovedLiveVoiceSyncReceipts
+from .approved_live_voice_media_receipts import ApprovedLiveVoiceMediaReceipts
 from .approved_live_voice_playback_watch import ApprovedLiveVoicePlaybackWatch
 from .approved_live_voice_prefetch import ApprovedVoiceSegmentPrefetch
 
@@ -122,6 +123,7 @@ class ApprovedLiveVoiceOutput:
         self._stream_lease = ApprovedVoiceStreamLease()
         self._causal_journal = ApprovedVoiceCausalJournal()
         self._sync_receipts = ApprovedLiveVoiceSyncReceipts()
+        self._media_receipts = ApprovedLiveVoiceMediaReceipts()
         self._playback_watch = ApprovedLiveVoicePlaybackWatch()
         self._stop = threading.Event()
         self._inbox: queue.Queue[tuple[str, str]] = queue.Queue(
@@ -462,6 +464,19 @@ class ApprovedLiveVoiceOutput:
                     and type(matches[0].get("inputUuid")) is str
                     and matches[0]["inputUuid"] == uuid)
 
+        def current_obs_media_status() -> tuple[str, int | None]:
+            """실제 같은 임시 음성 UUID의 OBS 미디어 상태/재생 커서만 조회."""
+            if not source_is_owned():
+                raise RuntimeError("OBS 재생 상태를 읽을 임시 음성 입력 소유권 상실")
+            status = client.get_media_input_status(name)
+            state = getattr(status, "media_state", None)
+            cursor = getattr(status, "media_cursor", None)
+            if type(cursor) is float:
+                if not cursor.is_integer() or cursor < 0:
+                    raise RuntimeError("OBS 실제 재생 커서 형식 오류")
+                cursor = int(cursor)
+            return state, cursor
+
         with tempfile.TemporaryDirectory(prefix="AISTING_live_voice_") as td:
             wav_path = Path(td) / "current_authorized.wav"
             wav_path.write_bytes(raw)
@@ -512,14 +527,22 @@ class ApprovedLiveVoiceOutput:
                     prefetch_next()
                 # 한 WAV 재생 중에도 실제 송출/입/임시 소스가 유지되는지
                 # 주기적으로 읽는다. 관측 불명 시 후속 구간 재발화 금지.
-                self._playback_watch.wait_for_current_wav(
+                playback = self._playback_watch.wait_for_current_wav(
                     seconds=wav_seconds, stop=self._stop, obs=obs,
                     lease=self._stream_lease, expected_scene=original.scene,
                     source_is_owned=source_is_owned,
                     cubism_is_alive=lambda: (
                         child.poll() is None
                         and frontend._native_viewer is child
-                        and frontend._native_bridge is not None))
+                        and frontend._native_bridge is not None),
+                    media_status=current_obs_media_status)
+                # OBS의 실제 PLAYING·커서 전진을 같은 물리 WAV의 해시/
+                # 소스 UUID에 묶어 별도 SQLite에 보존한 후에만 완료로 진행.
+                # 이 증거는 시청자 전달/인코더 오디오 믹스 성공은 아님.
+                media_receipt = self._media_receipts.record(
+                    turn_key=effective_turn_key, part_id=part_id,
+                    wav_data=raw, source_uuid=uuid, observation=playback)
+                self._publish("OBS미디어재생관측", media_receipt)
                 self._causal_journal.finish(causal_row, completed=True)
                 causal_row = None
                 return wav_seconds
