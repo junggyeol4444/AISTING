@@ -24,6 +24,7 @@ from uuid import uuid4
 from .approved_local_game_vision import observe_game_scene_with_local_vision
 from .approved_game_goal_journal import ApprovedGameGoalJournal
 from .game_goal_evidence import assess_game_goal_from_two_observations
+from .approved_game_scene_identity import require_approved_game_scene
 from .local_llm import LocalModelConfig, LocalOllamaReplyGenerator
 from .offline_settings import active_persona, load_settings as load_gui_settings
 from .operator_settings import load_settings as load_operator_settings
@@ -397,6 +398,21 @@ class ApprovedLocalGameAutoplay:
                 serialized = json.dumps(
                     asdict(action), ensure_ascii=False, separators=(",", ":"))
                 journal.record(run.run_id, index, "행동계획", serialized)
+                # 모델이 텍스트 답변을 생성한 동안 사용자가 OBS
+                # 장면을 바꿀 수 있으므로 게임 키/클릭 직전에 동일
+                # 로컬 OBS 장면 확인. 기존 HWND/PID/전경 포커스
+                # 확인과 함께 요구하며, 실패하면 입력을 보내지 않는다.
+                if action.action in ("key", "click"):
+                    try:
+                        require_approved_game_scene(
+                            self._obs_password, self._obs_port, approved_scene)
+                    except Exception:
+                        journal.record(
+                            run.run_id, index, "중단",
+                            "행동 직전 승인한 OBS 게임 장면 확인 실패 · 입력 요청 전 차단")
+                        self._notify("게임장면변경", approved_scene)
+                        reason = "실행실패"
+                        break
                 # 실제 SendInput 이전에 입력 가능성을 영구 기록한다.
                 # 강제 종료 뒤 이 행동을 다시 보내지 않는다.
                 journal.record(run.run_id, index, "입력시도", serialized)
