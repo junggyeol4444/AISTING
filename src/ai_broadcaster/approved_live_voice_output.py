@@ -34,6 +34,8 @@ from .approved_live_voice_causal_journal import ApprovedVoiceCausalJournal
 from .approved_live_voice_sync_receipts import ApprovedLiveVoiceSyncReceipts
 from .approved_live_voice_media_receipts import ApprovedLiveVoiceMediaReceipts
 from .approved_live_voice_playback_watch import ApprovedLiveVoicePlaybackWatch
+from .approved_live_voice_audio_route_watch import ApprovedLiveVoiceAudioRouteGuard
+from .approved_live_voice_audio_route_receipts import ApprovedLiveVoiceAudioRouteReceipts
 from .approved_live_voice_prefetch import ApprovedVoiceSegmentPrefetch
 
 
@@ -125,6 +127,7 @@ class ApprovedLiveVoiceOutput:
         self._sync_receipts = ApprovedLiveVoiceSyncReceipts()
         self._media_receipts = ApprovedLiveVoiceMediaReceipts()
         self._playback_watch = ApprovedLiveVoicePlaybackWatch()
+        self._audio_route_receipts = ApprovedLiveVoiceAudioRouteReceipts()
         self._stop = threading.Event()
         self._inbox: queue.Queue[tuple[str, str]] = queue.Queue(
             maxsize=_MAX_SPEECH_QUEUE)
@@ -464,6 +467,7 @@ class ApprovedLiveVoiceOutput:
         causal_row = None
         sync_causal_row = None
         obs_request_confirmed = False
+        audio_route_guard = None
 
         def source_is_owned() -> bool:
             values = client.get_input_list().inputs
@@ -517,6 +521,12 @@ class ApprovedLiveVoiceOutput:
                 # OBS 재생 요청 사이에 끼어 시간 오차가 커졌다.
                 client.set_scene_item_enabled(original.scene, scene_item_id, True)
                 self._stream_lease.check(obs)
+                # 실제 OBS v5에서 현재 장면의 UUID, 1~6번 출력 트랙,
+                # mute/volume을 읽기만 한다. 출력 경로가 없으면 요청 전 차단.
+                audio_route_guard = ApprovedLiveVoiceAudioRouteGuard(
+                    obs=obs, scene=original.scene, input_name=name,
+                    source_uuid=uuid, source_is_owned=source_is_owned)
+                audio_route_guard.sample()
                 mouth_token = frontend.start_authorized_pcm_live2d_mouth(
                     envelope, operator_approved=True, rights_confirmed=True,
                     obs_cursor_sync=True)
@@ -547,6 +557,7 @@ class ApprovedLiveVoiceOutput:
                         and frontend._native_viewer is child
                         and frontend._native_bridge is not None),
                     media_status=current_obs_media_status,
+                    audio_route_check=audio_route_guard.sample,
                     on_media_cursor=lambda cursor: (
                         frontend.sync_authorized_pcm_live2d_mouth_cursor(
                             mouth_token, cursor, operator_approved=True)))
@@ -557,6 +568,13 @@ class ApprovedLiveVoiceOutput:
                     turn_key=effective_turn_key, part_id=part_id,
                     wav_data=raw, source_uuid=uuid, observation=playback)
                 self._publish("OBS미디어재생관측", media_receipt)
+                # 입력 재생 상태만으로 오디오 출력이 있다고 주장하지 않는다.
+                # 동일 WAV의 실제 OBS 장면/트랙/음소거/볼륨 관측을 별도
+                # SQLite 장부에 저장한 뒤에만 구간 완료로 처리한다.
+                audio_receipt = self._audio_route_receipts.record(
+                    turn_key=effective_turn_key, part_id=part_id,
+                    wav_data=raw, guard=audio_route_guard)
+                self._publish("OBS오디오경로후보관측", audio_receipt)
                 self._causal_journal.finish(causal_row, completed=True)
                 causal_row = None
                 return wav_seconds

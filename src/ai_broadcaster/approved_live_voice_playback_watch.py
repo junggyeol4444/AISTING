@@ -36,6 +36,7 @@ class LivePlaybackObservation:
     media_state: str = "미관측"
     media_ended_seen: bool = False
     media_cursor_sync_updates: int = 0
+    audio_route_checks: int = 0
 
 
 class ApprovedLiveVoicePlaybackWatch:
@@ -55,6 +56,7 @@ class ApprovedLiveVoicePlaybackWatch:
         cubism_is_alive: Callable[[], bool],
         media_status: Callable[[], tuple[str, int | None]] | None = None,
         on_media_cursor: Callable[[int], object] | None = None,
+        audio_route_check: Callable[[], object] | None = None,
     ) -> LivePlaybackObservation:
         """기존 WAV 시간만 기다리며 주기적으로 실제 출력 소유권을 확인.
 
@@ -72,7 +74,9 @@ class ApprovedLiveVoicePlaybackWatch:
                 or type(expected_scene) is not str or not expected_scene
                 or (media_status is not None and not callable(media_status))
                  or (on_media_cursor is not None and
-                     (media_status is None or not callable(on_media_cursor)))):
+                     (media_status is None or not callable(on_media_cursor)))
+                 or (audio_route_check is not None
+                     and not callable(audio_route_check))):
             raise TypeError("기존 승인된 OBS·Cubism·음성 출력 관찰 대상 오류")
         started = time.monotonic()
         deadline = started + float(seconds) + 0.2
@@ -86,6 +90,8 @@ class ApprovedLiveVoicePlaybackWatch:
         ended_seen = False
         cursor_sync_updates = 0
         last_progress_at = None
+        audio_route_checks = 0
+        last_audio_route_at = started
 
         def observe_media() -> None:
             nonlocal media_samples, playing_samples, cursor_advances
@@ -154,7 +160,17 @@ class ApprovedLiveVoicePlaybackWatch:
             if source_is_owned() is not True:
                 raise RuntimeError("동일 WAV 재생 중 OBS 전용 음성 소스 소유권 상실")
             observe_media()
+            # mute/볼륨/장면 경로/트랙을 약 1초마다 읽어 실제
+            # WAV 중 경로가 사라지면 후속 발화를 중단. 쓰기 요청 없음.
+            if (audio_route_check is not None
+                    and time.monotonic() - last_audio_route_at >= 1.0):
+                audio_route_check()
+                audio_route_checks += 1
+                last_audio_route_at = time.monotonic()
             samples += 1
+        if audio_route_check is not None:
+            audio_route_check()
+            audio_route_checks += 1
         # WAV 시간이 경과했을 뿐 실제 미디어 커서가 움직였다고 꾸미지 않음.
         # 재생이 이미 끝나 observation 간에 증거를 놓치면 불명으로 중단.
         if media_status is not None and (
@@ -175,4 +191,5 @@ class ApprovedLiveVoicePlaybackWatch:
             media_last_cursor_ms=last_cursor,
             media_state=observed_media_state,
             media_ended_seen=ended_seen,
-            media_cursor_sync_updates=cursor_sync_updates)
+            media_cursor_sync_updates=cursor_sync_updates,
+            audio_route_checks=audio_route_checks)
