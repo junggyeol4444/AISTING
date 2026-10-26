@@ -298,3 +298,22 @@ class ApprovedGameGoalJournal:
                 "FROM approved_game_goal_confirmations WHERE run_id=?",
                 (run_id,)).fetchone()
         return GameGoalConfirmation(str(row[0]), bool(row[1]), str(row[2]))
+
+    def recent_operator_confirmed_goals(
+        self, *, limit: int = 5,
+    ) -> tuple[tuple[str, str, str], ...]:
+        """사용자가 직접 달성 표시한 과거 목표만 로컬 AI 참고용 조회."""
+        if type(limit) is not int or not 1 <= limit <= 10:
+            raise ValueError("운영자 확인 목표 조회 수는 1~10이어야 합니다.")
+        with self._db() as db:
+            rows = db.execute(
+                "SELECT runs.game_title,runs.goal,confirmation.recorded_at "
+                "FROM approved_game_goal_confirmations AS confirmation "
+                "JOIN approved_game_goal_runs AS runs "
+                "ON runs.run_id=confirmation.run_id "
+                "WHERE confirmation.operator_confirmed=1 "
+                "AND runs.state='목표후보' "
+                "ORDER BY confirmation.recorded_at DESC, runs.rowid DESC LIMIT ?",
+                (limit,)).fetchall()
+        return tuple((str(title), str(goal), str(when))
+                     for title, goal, when in rows)
