@@ -5099,3 +5099,11 @@ F) 원본 100단계 roadmap.json status는 completed=9, pending=91이며 **코�
 - 세부 변경·현재 제한은 `docs/hourly-handoff-appendices/AISTING_20261026_217_OPERATOR_GAME_CONFIRMATION_AND_OPT_IN_MEMORY.md` 참고. 기존 문서 앞부분 원문 삭제·축약 없음. 기존 설정/캐릭터/SQLite 사건/모델 96토큰·10분 설정·100단계/9 완료 91 pending 유지.
 - **전체 AISTING 개발 미완료, 테스트 NOT_RUN, 통합 NOT_RUN, CI 미조회, Windows EXE/GUI 실사용 NOT_RUN, 실계정 4플랫폼·권리 TTS·공식 Live2D·OBS·24시간 방송·시청자 1~3초 미검증.** 과거 실모델 CI `39720448468` 500/500 3초 초과, FIFO p95 2973.875초·전체 p95 2979.984초 실패, Windows CI `39722213656` 취소 유지.
 - 다음 실행: 기존 최신 `main` 읽고 미개발 필수 제품 기능 소스 개발·정상 비강제 `main` 반영 우선, 전부 개발 후 통합 검증→일괄 수정→재검증. 동일 AISTING 대화 우선, 기존 예약 보존, 다른 저장소/예약/Drive/브랜치 무단 조작·force push/원본 삭제·무승인 실제 연결/송출 금지.
+
+
+## 218절 — 2026-10-26 동일 GPT-SoVITS WAV의 OBS PLAYING·커서 전진 실제 제품 개발
+- 시작 `main` HEAD `9e6dfb9fdaaab3862f2dc2090decc4cacc14c244` 확인. 원본 기획·100단계·217절 이후 제품 소스 읽고 기존 방송용 발화 제품의 **OBS 재생 요청과 실제 재생 상태 관측을 분리**하는 핵심 제품 코드 개발부터 진행.
+- 기존 main 정상 비강제 소스 커밋 4개: `d0aaa0e0f2d24c352e9e2ec52c0b1d8815d1dee2`(신규 같은 WAV의 OBS 미디어 관측 독립 SQLite), `1606104d21e6f408fc3ebd5aa1d9e81e2a56ec77`(기존 재생 중 감시기 실제 PLAYING/커서 확인), `ddcc933bdb12bfeb9995dd3341be947e17e8b481`(권리 TTS→공식 PCM Cubism→OBS 동일 WAV 발화에 `GetMediaInputStatus` 연결·동일 WAV 영구 관측), `b9a49e2f8c50e17ce68e50bfd586db3f16b18321`(기존 Windows GUI 실제 재생 기록·실시간 상태). WAV/계정·닉네임·토큰 원문 저장 없음. 실제 OBS 시청자 전달 보증하지 않음.
+- 새 상세 부록 `docs/hourly-handoff-appendices/AISTING_20261026_218_ACTUAL_OBS_MEDIA_PLAYING_CURSOR_SAME_WAV.md`. 기존 장기 인수인계 원문 전문과 원래 설정/캐릭터/개인 SQLite·100단계 상태·`num_predict=96`/`keep_alive=10m` 보존.
+- **AISTING 전체 개발 미완료; 테스트 NOT_RUN / 통합 NOT_RUN / CI 미조회·미확인 / Windows 10/11 EXE GUI 실제 사용 NOT_RUN / GPT-SoVITS 동일 WAV·공식 Cubism·OBS 실계정 재생/수백 명 4플랫폼·24시간·시청자 최종 1~3초 NOT_RUN**. 과거 실모델 CI `39720448468`: 500/500 모두 3초 초과, FIFO p95 2973.875초·전체 p95 2979.984초 실패, Windows CI `39722213656` 취소 그대로.
+- 다음 실행 최신 `main` HEAD/218절 부록·인수인계 조회 후 4플랫폼 내구·FIFO/실효 모델 속도, 동일 WAV 공식 입/OBS 장시간 송출, 24시간 자율 방송/게임·콘텐츠·기억/공지 핵심 제품 기능 **실코딩부터 계속**. 전체 개발 끝나기 전 테스트/CI/오류 수정 우선 금지. 개발 완료 후 검증→일괄 수정→재검증. 기존 예약/같은 대화 유지 우선, 다른 프로젝트/예약/Drive·브랜치/원본 조작 금지.
