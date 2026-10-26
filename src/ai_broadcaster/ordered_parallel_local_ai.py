@@ -92,6 +92,17 @@ class OrderedParallelLocalAI:
                 return True
             return len(self._pending) < self._prefetch_limit
 
+    def available_prefetch_slots(self) -> int:
+        """현재 승인 세션의 선행 추론 *신규* 접수 가능 개수.
+
+        SQLite 복구 작업자가 GUI에 여러 채팅을 한 번에 표시하더라도
+        먼저 로컬 모델 슬롯을 확보한다. 한도 밖의 원본 채팅은
+        SQLite에 남겨두고 FIFO 순번·메시지·페르소나를 변경하지 않는다.
+        """
+        with self._lock:
+            return (0 if self._stopped else
+                    max(0, self._prefetch_limit - len(self._pending)))
+
     @property
     def prefetch_limit(self) -> int:
         return self._prefetch_limit
