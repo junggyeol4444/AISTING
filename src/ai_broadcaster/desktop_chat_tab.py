@@ -1663,6 +1663,38 @@ class LocalChatTab(ttk.Frame):
             while not session._stop.is_set():
                 ceiling = spool.recovery_ceiling(session._channels)
                 if ceiling > cursor:
+                    # 224절: SQLite 원본을 개별 메시지로 유지하되 Tk GUI
+                    # 이벤트만 16건 단위로 합친다. 화면 표시 알림을 AI
+                    # FIFO 등록보다 먼저 넣어 답변 표시가 질문을 앞지르지
+                    # 않도록 하고, 한 건의 메시지도 합치거나 생략하지 않는다.
+                    display_batch = []
+
+                    def flush_display_batch() -> None:
+                        if not display_batch:
+                            return
+                        views = tuple(
+                            _ReaderTimestampedChat(msg, arrived,
+                                                    ai_prequeued=True)
+                            for seq, msg, arrived, deferred in display_batch)
+                        self._results.put(("twitch_scoped", (
+                            session, "twitch_chat_batch", views)))
+                        # GUI 이벤트 접수 후에만 해당 원본 순번을 로컬
+                        # 추론/AI 처리 FIFO에 등록. 모든 원본은 SQLite 유지.
+                        for seq, msg, arrived, deferred in display_batch:
+                            arrival_times.put(arrived)
+                            if self._twitch_parallel_ai is not None:
+                                actor_name = "[" + {
+                                    "twitch": "트위치", "chzzk": "치지직",
+                                    "soop": "SOOP", "youtube": "유튜브"
+                                }.get(msg.platform, "트위치") + "] " + msg.sender
+                                self._twitch_parallel_ai.submit(
+                                    seq, msg.text, sender=actor_name)
+                            inbox.put(PendingChat(seq, msg))
+                            if deferred:
+                                session.note_deferred_sqlite_chat_enqueued(
+                                    msg.platform)
+                        display_batch.clear()
+
                     for pending in spool.iter_recovery(
                             session._channels, through_sequence=ceiling,
                             after_sequence=cursor):
@@ -1671,48 +1703,43 @@ class LocalChatTab(ttk.Frame):
                                 if (session is not self._twitch_session
                                         or getattr(self, "_closed", False)):
                                     return
-                                if (inbox.qsize() < 4096
+                                parallel = self._twitch_parallel_ai
+                                slots = (parallel.available_prefetch_slots()
+                                         if parallel is not None else 16)
+                                if (inbox.qsize() + len(display_batch) < 4096
                                         and self._results.qsize() < 4096
-                                        and (self._twitch_parallel_ai is None
-                                             or self._twitch_parallel_ai.can_submit(
-                                                 pending.sequence))):
-                                    # 이번 부팅의 신규 수신만 실제 수신 시각을
-                                    # 기억한다. 이전 부팅 monotonic은 재사용 금지.
+                                        and slots > len(display_batch)):
+                                    # 이전 재시작의 시각은 재사용하지 않고
+                                    # 이번 부팅의 실제 수신/파싱 시각만 사용.
                                     accepted_at = self._recovery_arrival_times.pop(
                                         pending.sequence, None)
-                                    deferred_this_run = accepted_at is not None
+                                    deferred = accepted_at is not None
                                     parsed_at = self._recovery_parsed_times.pop(
                                         pending.sequence, None)
                                     if accepted_at is None:
                                         accepted_at = time.monotonic()
-                                    # 새로 들어온 채팅의 실제 파싱 시각을
-                                    # 원래 메시지 필드에 복원한다. 재부팅 전
-                                    # 시각은 다른 monotonic 기준이므로 재사용 금지.
-                                    live_message = (
-                                        replace(pending.message,
-                                                parsed_at_monotonic=parsed_at)
-                                        if parsed_at is not None else pending.message)
-                                    arrival_times.put(accepted_at)
-                                    self._results.put(("twitch_scoped", (
-                                        session, "twitch_chat", _ReaderTimestampedChat(
-                                            live_message, accepted_at,
-                                            ai_prequeued=True))))
-                                    if self._twitch_parallel_ai is not None:
-                                        actor_name = "[" + {
-                                            "twitch": "트위치", "chzzk": "치지직",
-                                            "soop": "SOOP", "youtube": "유튜브"
-                                        }.get(live_message.platform, "트위치") + "] " + live_message.sender
-                                        self._twitch_parallel_ai.submit(
-                                            pending.sequence, live_message.text,
-                                            sender=actor_name)
-                                    inbox.put(PendingChat(pending.sequence, live_message))
-                                    if deferred_this_run:
-                                        session.note_deferred_sqlite_chat_enqueued(
-                                            pending.message.platform)
+                                    msg = (replace(
+                                        pending.message,
+                                        parsed_at_monotonic=parsed_at)
+                                        if parsed_at is not None
+                                        else pending.message)
+                                    display_batch.append(
+                                        (pending.sequence, msg, accepted_at, deferred))
+                                    # 실시간 모델 슬롯을 초과한 선행 AI
+                                    # 등록 금지; 슬롯이 적으면 즉시 소량 전송.
+                                    if len(display_batch) >= min(16, slots):
+                                        flush_display_batch()
                                     break
                             session._stop.wait(0.02)
                         if session._stop.is_set():
                             return
+                    # 수신량이 16건 미만인 조용한 방송도 즉시 AI에 등록.
+                    with self._live_ingress_lock:
+                        if (session is not self._twitch_session
+                                or session._stop.is_set()
+                                or getattr(self, "_closed", False)):
+                            return
+                        flush_display_batch()
                     cursor = ceiling
                     continue
                 # 마지막 SQLite 스냅샷과 wakeup 초기화를 수신 콜백과
@@ -2718,6 +2745,49 @@ class LocalChatTab(ttk.Frame):
             + " · 네트워크 이전 누락·시청자 E2E 미검증"
         )
 
+    def _present_twitch_chat(self, payload) -> None:
+        """개별 공개 채팅 한 건의 기존 GUI/AI 계약을 보존한다.
+
+        내구 SQLite의 FIFO와 독립이며, 실제 수신 메시지는 작업자가
+        ai_prequeued=True로 표시하므로 Tk에서 재등록하지 않는다.
+        """
+        # 이전 직접 GUI 테스트와 기존 플랫폼 채팅 객체는 보존.
+        # 실제 수신기 출처 이벤트만 콜백 원시각을 사용한다.
+        accepted_at = time.monotonic()
+        ai_prequeued = False
+        if isinstance(payload, _ReaderTimestampedChat):
+            accepted_at = payload.reader_received_at
+            ai_prequeued = payload.ai_prequeued
+            payload = payload.message
+        meter = getattr(self, "_live_latency_metrics", None)
+        if meter is not None:
+            meter.accept()
+        self._twitch_received += 1
+        name = {"twitch":"트위치","chzzk":"치지직",
+                "soop":"SOOP","youtube":"유튜브"}.get(
+                    getattr(payload, "platform", "twitch"), "트위치")
+        self._append("[" + name + " #" + payload.channel + "] "
+                     + payload.sender + ": " + payload.text)
+        # Every incoming message, including duplicates, is
+        # queued regardless of the status of previous replies.
+        if self._twitch_ai_inbox is not None:
+            platform = getattr(payload, "platform", "twitch")
+            platform_meter = getattr(
+                self, "_platform_live_metrics", {}).get(platform)
+            if platform_meter is not None:
+                platform_meter.accept()
+            if not ai_prequeued:
+                # 기존 GUI 직접 호출만 여기서 AI에 등록한다.
+                # 네트워크 실제 콜백은 이미 1회 등록됨.
+                arrivals = getattr(self, "_ai_arrival_times", None)
+                if arrivals is not None:
+                    arrivals.put(accepted_at)
+                self._twitch_ai_inbox.put(payload)
+        self._twitch_status.set(
+            "실제 채팅 " + str(self._twitch_received)
+            + "건 · AI 응답 " + str(self._twitch_replied)
+            + "건 · AI 오류 " + str(self._twitch_ai_failures) + "건")
+
     def _poll(self) -> None:
         if self._closed:
             return
@@ -2848,42 +2918,13 @@ class LocalChatTab(ttk.Frame):
                             self._chat_platform.get() + " " + str(payload) +
                             " 채팅방 입장 확인 · 실제 채팅 대기")
                     elif kind == "twitch_chat":
-                        # 이전 직접 GUI 테스트와 기존 플랫폼 채팅 객체는 보존.
-                        # 실제 수신기 출처 이벤트만 콜백 원시각을 사용한다.
-                        accepted_at = time.monotonic()
-                        ai_prequeued = False
-                        if isinstance(payload, _ReaderTimestampedChat):
-                            accepted_at = payload.reader_received_at
-                            ai_prequeued = payload.ai_prequeued
-                            payload = payload.message
-                        meter = getattr(self, "_live_latency_metrics", None)
-                        if meter is not None:
-                            meter.accept()
-                        self._twitch_received += 1
-                        name = {"twitch":"트위치","chzzk":"치지직",
-                                "soop":"SOOP","youtube":"유튜브"}.get(
-                                    getattr(payload, "platform", "twitch"), "트위치")
-                        self._append("[" + name + " #" + payload.channel + "] "
-                                     + payload.sender + ": " + payload.text)
-                        # Every incoming message, including duplicates, is
-                        # queued regardless of the status of previous replies.
-                        if self._twitch_ai_inbox is not None:
-                            platform = getattr(payload, "platform", "twitch")
-                            platform_meter = getattr(
-                                self, "_platform_live_metrics", {}).get(platform)
-                            if platform_meter is not None:
-                                platform_meter.accept()
-                            if not ai_prequeued:
-                                # 기존 GUI 직접 호출만 여기서 AI에 등록한다.
-                                # 네트워크 실제 콜백은 이미 1회 등록됨.
-                                arrivals = getattr(self, "_ai_arrival_times", None)
-                                if arrivals is not None:
-                                    arrivals.put(accepted_at)
-                                self._twitch_ai_inbox.put(payload)
-                        self._twitch_status.set(
-                            "실제 채팅 " + str(self._twitch_received)
-                            + "건 · AI 응답 " + str(self._twitch_replied)
-                            + "건 · AI 오류 " + str(self._twitch_ai_failures) + "건")
+                        self._present_twitch_chat(payload)
+                    elif kind == "twitch_chat_batch":
+                        # SQLite 원본 메시지는 각기 별개의 실제 채팅.
+                        # 묶인 것은 Tk 큐의 전달 객체뿐이며 모두 표시·계수.
+                        for item in payload:
+                            self._present_twitch_chat(item)
+                        processed += max(0, len(payload) - 1)
                     elif kind == "twitch_ai_stream_preview":
                         preview, chars, local_seconds = payload
                         # 완료 전 스트림은 임시 GUI 텍스트일 뿐,
