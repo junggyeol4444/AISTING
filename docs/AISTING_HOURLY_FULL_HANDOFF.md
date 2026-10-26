@@ -5116,3 +5116,11 @@ F) 원본 100단계 roadmap.json status는 completed=9, pending=91이며 **코�
 - 세부 신규 부록 `docs/hourly-handoff-appendices/AISTING_20261026_219_TRANSACTIONAL_DURABLE_CHAT_FLOW_LEDGER.md`. 기존 1~218절 인수인계 원문 append-only 보존. 기존 캐릭터/설정, GPT-SoVITS·공식 Live2D·OBS, 원래 100단계 공식 9/100 및 선택된 Ollama `num_predict=96`/`keep_alive=10m` 불변.
 - **219절 실코드 작성/main 반영 완료, 전체 AISTING 제품 개발 미완료. 테스트 NOT_RUN / 통합 NOT_RUN / CI 미조회 / Windows EXE·GUI NOT_RUN / 4플랫폼 수백 명·24시간·실제 WAV→공식 Cubism→OBS/시청자 수신·1~3초 NOT_RUN.** 과거 실모델 CI `39720448468`: 500/500 3초 초과, FIFO p95 2973.875초/전체 p95 2979.984초 실패 및 Windows CI `39722213656` 취소 원문 보존.
 - 다음 작업은 반드시 최신 main HEAD 재조회 후 핵심 남은 제품 기능 **코딩 먼저**, 완료 후에만 전체 검증→일괄 수정→재검증. 새 브랜치·force push·원본 삭제/롤백·다른 프로젝트/Drive/예약·무승인 OAuth/방송·공지/채팅/모델 학습 금지. 기존 시간별 AISTING 예약과 동일 대화 보고 우선 보존.
+
+
+## 220절 — 2026-10-26 실제 AI 답변 Windows DPAPI 음성 영구 선인계·채팅 ACK 인과
+- 시작 `main` HEAD `7a56252e120108e8b7c6f384b0015bdbd20b9ed5`; 기존 원본 기획·100단계 9 완료/91 pending·219절·전체 인수인계 Git blob 및 4플랫폼 채팅 SQLite/AI FIFO/Windows GUI/권리 GPT-SoVITS·공식 Cubism·OBS 음성 제품 코드 확인 후 **실제 소스 개발 먼저** 수행.
+- 실제 제품 소스 3개 정상 비강제 `main` 커밋 `397f14b86943dbe9cde1b5f385c4ea7b508d015a`: `durable_public_chat_queue.py`에 DB 생애 UUID 및 미처리 채팅 sequence별 안정적 음성 nonce; `approved_live_voice_output.py`에 선택형 nonce로 서버 ID 없는 별도 채팅의 재시작 음성 중복 차단, 서버 ID 우선·수동 음성 기존 동작 보존; `desktop_chat_tab.py`에 로컬 AI 작업자→운영자 승인 Windows DPAPI SQLite 음성 영구 접수→공개 채팅 SQLite ACK 순서 및 GUI 중복 enqueue 차단/접수 seq 표시. 영구 접수 실패 시 원본 미처리 채팅 보존·FIFO 중단/장애 기록.
+- 상세 부록 `docs/hourly-handoff-appendices/AISTING_20261026_220_DURABLE_AI_TO_VOICE_HANDOFF_BEFORE_CHAT_ACK.md`. 원래 1~219절 인수인계 원문 보존. 서로 다른 2개 SQLite 간 단일 원자 트랜잭션이라고 주장하지 않음. 기존 '시도/불명' 음성 자동 재발화 금지. 영구 접수만으로 실제 WAV 재생/OBS 믹스/시청자 수신/1~3초 달성 주장 금지.
+- **전체 AISTING 개발 미완료. 테스트 NOT_RUN / 통합 NOT_RUN / CI 미조회 / Windows 10·11 EXE GUI NOT_RUN / 실제 권리 GPT-SoVITS→공식 Cubism→OBS/4플랫폼 수백 명·24시간 NOT_RUN / 1~3초 미확인.** 과거 실모델 CI `39720448468` 500/500 3초 초과, FIFO p95 2973.875초·전체 p95 2979.984초 실패, Windows CI `39722213656` 취소 보존.
+- 다음 실행 최신 `main` HEAD 재조회→남은 핵심 제품 소스 실제 개발→기존 main 정상 비강제 반영→원문 append-only 인수인계. 전체 기능 개발 후에만 Windows EXE 통합 검증→오류 일괄 수정→재검증. 기존 예약/동일 대화 우선, 다른 프로젝트/예약/Drive·원본/브랜치·무승인 실제 방송/채팅/공지/OAuth/모델 학습 조작 금지.
