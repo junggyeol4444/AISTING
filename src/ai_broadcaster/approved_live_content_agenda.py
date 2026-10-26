@@ -148,6 +148,27 @@ class ApprovedLiveContentJournal:
             if cursor.rowcount != 1:
                 raise RuntimeError("기존 콘텐츠 발화 시도와 상태가 일치하지 않습니다.")
 
+    def last_confirmed_topics(
+        self, occurrence: str, *, before_sequence: int,
+        limit: int = 3,
+    ) -> tuple[tuple[int, str], ...]:
+        """같은 승인 방송 안에서 공식 AI로 전달 확인된 주제만 조회.
+
+        실제 발화가 시청자에게 들렸다는 뜻이 아니고, 과거의
+        '시도'/'전달불명'은 다음 방송의 확정 기억으로 쓰지 않는다.
+        """
+        self._check_occurrence(occurrence)
+        if (type(before_sequence) is not int or before_sequence < 1
+                or type(limit) is not int or not 1 <= limit <= 5):
+            raise ValueError("승인 방송 콘텐츠 이어가기 조회 조건이 잘못됐습니다.")
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT sequence,topic FROM approved_live_content_turns "
+                "WHERE occurrence=? AND sequence<? AND state='전달확인' "
+                "ORDER BY sequence DESC LIMIT ?",
+                (occurrence, before_sequence, limit)).fetchall()
+        return tuple((int(seq), str(topic)) for seq, topic in reversed(rows))
+
     def recent(self, *, limit: int = 20) -> tuple[tuple[str, int, str, str], ...]:
         if type(limit) is not int or not 1 <= limit <= 100:
             raise ValueError("콘텐츠 기록 조회 범위는 1~100건입니다.")
@@ -213,8 +234,20 @@ class ApprovedLiveContentAgenda:
             return None
         sequence = self._next
         topic = self.topics[(sequence - 1) % len(self.topics)]
+        confirmed = self._journal.last_confirmed_topics(
+            self.occurrence, before_sequence=sequence, limit=3)
+        # 단순 입력 시도/전달불명은 기억으로 꾸미지 않고, 같은
+        # 승인 방송에서 공식 AI에게 요청 전달이 확인된 순서만 사용.
+        # 사용자가 승인한 주제 자체를 AI가 추가/수정하지 않는다.
+        continuity = (
+            " 같은 방송에서 이전에 공식 AI에 전달 확인된 주제는 "
+            + " / ".join(f"{n}회 '{past}'" for n, past in confirmed)
+            + "입니다. 전달 확인은 실제 시청자 수신 증거가 아닙니다. "
+            "이미 다룬 내용이라고 단정하지 말고 자연스럽게 연결하세요. "
+            if confirmed else "")
         prompt = (
             "지금은 운영자가 승인한 방송의 자율 콘텐츠 진행 차례입니다. "
+            + continuity +
             "운영자가 지정한 주제 '" + topic + "'에 대해 한국어로 자연스럽게 "
             "이야기를 이어가 주세요. 시청자 메시지를 지어내거나 "
             "시청자가 실제로 반응했다고 단정하지 마세요. "
