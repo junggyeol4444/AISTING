@@ -116,6 +116,6 @@ def approved_game_goal_memory_context(*, limit: int = 5) -> str:
     ]
     for title, goal, recorded_at in records:
         lines.append(
-            recorded_at + " · 게임 " + title.replace("\\n", " ")[:150]
-            + " · 운영자 확인 목표 " + goal.replace("\\n", " ")[:220])
-    return "\\n".join(lines)[:1400]
+            recorded_at + " · 게임 " + title.replace("\n", " ")[:150]
+            + " · 운영자 확인 목표 " + goal.replace("\n", " ")[:220])
+    return "\n".join(lines)[:1400]
