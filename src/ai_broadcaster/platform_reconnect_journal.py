@@ -137,3 +137,57 @@ class DurablePlatformReconnectJournal:
         return tuple((str(p), str(c), str(s), int(a),
                       None if gap is None else float(gap), str(at))
                      for p, c, s, a, gap, at in rows)
+
+    def previous_session_health_for(
+        self, channels: dict[str, str],
+    ) -> dict[str, dict[str, object]]:
+        """선택한 채널의 직전 실제 수신 세션만 SQLite에서 복원한다.
+
+        재시작 시 예전 소켓이 살아 있다고 간주하거나 자동 송출/재연결을
+        수행하지 않는다. 마지막 상태와 서버가 실제 확인한 재연결 공백만
+        반환하며, 예기치 않은 종료·누락된 채팅 건수는 추정하지 않는다.
+        채팅 본문·닉네임·토큰·서버 메시지 ID는 조회하지 않는다.
+        """
+        if (type(channels) is not dict or not channels or len(channels) > 4
+                or any(self._scope(code, channel) != (code, channel)
+                       for code, channel in channels.items())):
+            raise ValueError("이전 수신 세션 조회 범위가 올바르지 않습니다.")
+        result: dict[str, dict[str, object]] = {}
+        with self._lock, self._connect() as db:
+            for code, channel in channels.items():
+                latest = db.execute(
+                    "SELECT session_id,state,recorded_at "
+                    "FROM platform_reconnect_events "
+                    "WHERE platform=? AND channel=? "
+                    "ORDER BY id DESC LIMIT 1", (code, channel)).fetchone()
+                if latest is None:
+                    continue
+                session_id, state, at = latest
+                counts = db.execute(
+                    "SELECT "
+                    "COALESCE(SUM(CASE WHEN state='재연결시도' "
+                    "THEN 1 ELSE 0 END),0),"
+                    "COALESCE(SUM(CASE WHEN state='재연결완료' "
+                    "THEN 1 ELSE 0 END),0),"
+                    "COALESCE(SUM(CASE WHEN state='재연결완료' "
+                    "THEN gap_seconds ELSE 0 END),0.0),"
+                    "MAX(CASE WHEN state='재연결완료' "
+                    "THEN gap_seconds ELSE NULL END) "
+                    "FROM platform_reconnect_events "
+                    "WHERE platform=? AND channel=? AND session_id=?",
+                    (code, channel, session_id)).fetchone()
+                # 세션중지는 실제 Stop 요청 관측일 뿐 모든 채팅 수신이나
+                # 시청자 출력 성공의 증거가 아니다. 읽기종료는 정상 방송
+                # 종료와 예기치 않은 종료가 모두 가능하므로 구분하지 않는다.
+                result[code] = {
+                    "마지막상태": str(state),
+                    "마지막기록UTC": str(at),
+                    "명시적중지기록": state == "세션중지",
+                    "종료사유불명": state != "세션중지",
+                    "재연결시도기록": int(counts[0]),
+                    "재연결완료기록": int(counts[1]),
+                    "완료공백합계초": round(float(counts[2]), 3),
+                    "완료공백최장초": (
+                        None if counts[3] is None else round(float(counts[3]), 3)),
+                }
+        return result
