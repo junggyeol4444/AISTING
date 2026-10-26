@@ -758,6 +758,25 @@ class MultiPlatformReadOnlySession:
                 ages.append(max(0.0, now - parsed))
         return round(max(ages), 6) if ages else None
 
+    def live_room_readiness(self) -> dict[str, tuple[bool, bool, bool]]:
+        """실제 OBS 예약의 1초 간격 안전 상태만 O(플랫폼 수)로 읽는다.
+
+        값은 각 플랫폼의 (서버 입장 확인, 현재 연결 공백, 읽기 종료).
+        기존 reconnect_snapshot()의 퍼센타일/50k 샘플 정렬이나
+        채팅 원문/닉네임 조회 없이 같은 잠금에서 4개 이내 상태만
+        가져온다. 관측 입장 여부일 뿐 메시지 전량 수신 보장은 아님.
+        """
+        with self._emit_lock:
+            stopped = self._stop.is_set()
+            return {
+                code: (
+                    bool(self._room_ready.get(code, False) and not stopped),
+                    bool(code in self._disconnect_started and not stopped),
+                    bool(code in self._finished_readers),
+                )
+                for code in self._channels
+            }
+
     def try_reconnect_snapshot(self):
         """GUI 대기열이 많을 때 상태 잠금을 기다리지 않고 다음 주기 재시도."""
         if not self._emit_lock.acquire(blocking=False):
