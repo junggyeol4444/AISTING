@@ -5064,3 +5064,14 @@ F) 원본 100단계 roadmap.json status는 completed=9, pending=91이며 **코�
 - **이번 소스 구현과 main 반영은 완료, AISTING 전체 제품 개발은 미완료. 테스트 NOT_RUN / 전체 통합 회귀 NOT_RUN / CI 미조회·미확인 / Windows 10·11 네이티브 EXE GUI NOT_RUN / 권리 GPT-SoVITS 한국어 WAV→공식 Live2D Cubism 입→OBS/4플랫폼 수백 명·24시간·최종 시청자 1~3초 NOT_RUN.** SQLite 20만 건 보호한도·네트워크 중 서버가 제공하지 않은 채팅의 복원 불가 등은 별도 해결·검증 필요.
 - 실모델 과거 CI `39720448468`: 500/500 3초 초과, FIFO p95 2973.875초 및 전체 p95 2979.984초 실패; Windows CI `39722213656` 취소 기록을 삭제하거나 성공으로 변경하지 않음.
 - 다음 1시간 실행: 새로운 대화 요구 없이 원래 AISTING 대화 유지 우선, GitHub 현재 main HEAD를 새로 조회하고 본 209절 이후 마지막 기록부터 4플랫폼 채팅 전량 내구/백프레셔, AI FIFO/선행 로컬 추론의 실제 1~3초 병목, 권리 한국어 WAV·공식 Live2D·OBS 실제 발화의 장시간 인과, 24시간 자율 방송·복구, 게임·콘텐츠의 **남은 실제 핵심 소스 개발부터** 진행. **전체 개발 완료 후** Windows/실방송 통합 검증→일괄 오류 수정→재검증.
+
+## 210절 — 2026-10-26, 승인된 실제 방송 공식 Cubism·한국어 TTS 매체 생존 연속 감시 제품 개발
+- 실행 시작 `main` 실제 HEAD `470ad3e11903ca64ecc2cadab6311cef8b4bc352`. 209절 실제 제품 코드 및 인수인계, 기존 기획/로드맵·원본 소스 확인 후 **제품 소스 우선 6개 정상 비강제 커밋**, 그 뒤 인수인계 부록 작성. 기존 전체 원문 유지하고 본 절만 append-only.
+- 신규 `approved_live_media_watchdog.py`: 실시간 단조 시계로 공식 Live2D/권리 GPT-SoVITS 생존 관측, 일시 장애와 30초 연속 장애/복구를 분리. `3ac1d91d0ed4308be5f5df4973da3f63cbb4fbe6`.
+- `approved_live_scheduler.py` 변경: 운영자가 이미 승인한 기존 OBS 주간 방송 중 5초 간격으로 매체 생존 확인. 30초 계속 불확실하면 기존 방송의 소유권/장면/송출 연속성을 확인하며 자신이 시작한 OBS 출력에 한해서만 안전 종료 시도, 임의 새 방송 시작/장면 변경/녹화 변경 없음. 스냅샷에 상태 추가. `ca8993c59f520e6adfce6a793f26b0e4bdb5fb5b`.
+- `approved_live_slot_journal.py` 기존 DB 스키마 보존하면서 지속 장애·복구 사건 종류 추가. `7e8c3de62f2ac6e2e817e85be03553dab1a4d3a8`.
+- `desktop_obs_tab.py` 기존 Windows Tk GUI에 별도 승인 방송 매체 감시/30초 유예 고지·실제 관측 상태 표시, `c6f3d4ab9007323e6c5b3a69edf86a2bcd595249`.
+- 신규 `approved_local_tts_listener.py`: 기존 공식 `/tts` 설정의 `127.0.0.1`/`localhost`/`::1`에만 제한시간 0.75초 TCP 연결로 실제 로컬 음성 수신 서비스 포트 관찰. 합성·다운로드·학습·외부 접속 및 HTTP 송신 없음. `7f0bf9b0aa190e4ea03a45a25543d4ab6b346f5c`. 이를 기존 공식 Live2D 창·저장 페르소나/권리 음성 설정과 함께 감시 콜백에 연결 `28dfa6d40cf43bc19e7c29797721b9d34a36ab01`. 서비스 포트 열림은 WAV 생성/입·OBS/시청자 실출력 증거가 아님.
+- 부록 `docs/hourly-handoff-appendices/AISTING_20261026_210_CONTINUOUS_CUBISM_TTS_MEDIA_WATCHDOG.md` 신규 작성 커밋 `47e4bf4a07bf5270138f0d4142fbc92154139112`. 전체 제품 개발 아직 **미완료**. 기존 캐릭터 이름/성격/말투, 사용자 SQLite/설정, 100단계 기획, `num_predict=96`, `keep_alive=10m`, 전체 구 절 원문 보존. 새 브랜치/강제 push/다른 저장소·Drive·다른 예약·무승인 실제 방송/공지·OAuth·모델 학습 없음.
+- **테스트 NOT_RUN / 전체 통합 회귀 NOT_RUN / CI 미조회·미확인 / Windows 10·11 EXE GUI NOT_RUN / 실제 GPT-SoVITS 동일 한국어 WAV→공식 Cubism 입→OBS·4플랫폼 수백 명·24시간·시청자 최종 1~3초 NOT_RUN.** 과거 실모델 CI `39720448468`의 500/500건 3초 초과, FIFO p95 2973.875초/전체 p95 2979.984초 실패 및 Windows CI `39722213656` 취소 원문 보존.
+- 다음 회차는 **main 최신 HEAD 재조회 → 210절 이후 남은 필수 제품 소스 먼저 개발 → 모든 기능 개발 완료 이후 Windows/실계정 OBS·공식 Live2D·권리 GPT-SoVITS·4플랫폼 통합 검증 → 발견 오류 일괄 수정 → 재검증**. 중점: 동일 WAV 장시간 발화 인과와 24시간 안전 복구, 로컬 AI FIFO·선행 추론 1~3초, 수백 명 채팅 전체 내구 저장/재연결, 자율 게임/콘텐츠. 기존 AISTING 대화 보고를 우선하고 새 예약 생성/비활성화 금지.
