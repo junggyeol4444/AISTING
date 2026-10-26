@@ -49,6 +49,7 @@ class ApprovedLiveSnapshot:
     cafe_start_notice: str = "미설정"
     cafe_end_notice: str = "미설정"
     media_health: str = "승인 방송 매체 관측 미시작"
+    runtime_checkpoint: str = "장시간 방송 관측 장부 미설정"
 
 
 class ApprovedLiveScheduler:
@@ -93,6 +94,7 @@ class ApprovedLiveScheduler:
         media_alive: Callable[[], bool] | None = None,
         media_watch_interval_seconds: float = 5.0,
         media_grace_seconds: float = 30.0,
+        runtime_checkpoint: Callable[[str, bool, bool | None, bool | None], object] | None = None,
     ) -> None:
         if operator_approved is not True or rights_confirmed is not True:
             raise PermissionError("운영자 방송 자동 시작/종료와 한국어 음성 권리 승인이 필요합니다.")
@@ -168,6 +170,15 @@ class ApprovedLiveScheduler:
         self._media_health = (
             "운영자 승인 방송 시작 후 5초 간격 한국어 음성·Cubism 생존 관측 대기"
             if media_alive is not None else "실제 방송 매체 감시 미설정")
+        if runtime_checkpoint is not None and not callable(runtime_checkpoint):
+            raise ValueError("장시간 방송 상태 장부 연결이 올바르지 않습니다.")
+        self._runtime_checkpoint = runtime_checkpoint
+        self._last_runtime_checkpoint_at: float | None = None
+        self._last_media_ok: bool | None = None
+        self._last_chat_ok: bool | None = None
+        self._runtime_checkpoint_state = (
+            "승인 방송 중 실제 OBS 확인 후 첫 기록 대기"
+            if runtime_checkpoint is not None else "장시간 방송 상태 기록 미설정")
         self._on_cafe_started = on_cafe_started
         self._on_cafe_finished = on_cafe_finished
         self._cafe_start_notice = "대기" if on_cafe_started else "미설정"
@@ -242,7 +253,7 @@ class ApprovedLiveScheduler:
                 self._health_monitor.snapshot().description,
                 self._chat_recovery, self._obs_recovery,
                 self._cafe_start_notice, self._cafe_end_notice,
-                self._media_health)
+                self._media_health, self._runtime_checkpoint_state)
 
     def _record_event(self, state: str) -> None:
         """영구 상태 기록 실패가 이미 진행 중인 OBS 종료를 막지 않게 한다."""
@@ -363,6 +374,12 @@ class ApprovedLiveScheduler:
         self._cafe_end_notice = "대기" if self._on_cafe_finished else "미설정"
         self._live_chat = "대기" if self._begin_live_chat else "미설정"
         self._health_monitor = ObsStreamHealthMonitor()
+        self._last_runtime_checkpoint_at = None
+        self._last_media_ok = None
+        self._last_chat_ok = None
+        self._runtime_checkpoint_state = (
+            "승인 OBS 방송 첫 실제 상태 확인 대기"
+            if self._runtime_checkpoint is not None else "장시간 방송 상태 기록 미설정")
         self._media_watchdog.reset()
         self._last_media_observation = None
         self._media_health = (
@@ -544,6 +561,7 @@ class ApprovedLiveScheduler:
             healthy = self._chat_alive() is True
         except Exception:
             healthy = False
+        self._last_chat_ok = healthy
         if healthy:
             self._chat_unhealthy_since = None
             self._chat_recovery = (
@@ -653,6 +671,7 @@ class ApprovedLiveScheduler:
                             media_ok = False
                         observed_media = self._media_watchdog.observe(
                             at=monotonic_now, healthy=media_ok)
+                        self._last_media_ok = media_ok
                         self._media_health = observed_media.state
                         if observed_media.recovered:
                             self._record_event("공식Live2D음성연결복구확인")
@@ -665,6 +684,25 @@ class ApprovedLiveScheduler:
                             self._stop.set()
                             return self.snapshot()
                     self._recover_live_chat_if_needed(monotonic_now)
+                    # OBS 실제 송출/원래 장면 확인 후 최대 60초마다
+                    # 로컬 SQLite에 관측만 지속 기록. 재시작 때 같은
+                    # 슬롯을 자동 실행하는 근거로 사용하지 않는다.
+                    if (self._runtime_checkpoint is not None
+                            and self._occurrence is not None
+                            and (self._last_runtime_checkpoint_at is None
+                                 or monotonic_now - self._last_runtime_checkpoint_at >= 60.0)):
+                        self._last_runtime_checkpoint_at = monotonic_now
+                        try:
+                            saved = self._runtime_checkpoint(
+                                self._occurrence, True,
+                                self._last_media_ok, self._last_chat_ok)
+                            self._runtime_checkpoint_state = (
+                                "실제 OBS 출력 확인 · 독립 SQLite 관측 시각 "
+                                + str(saved.observed_at))
+                        except Exception:
+                            self._runtime_checkpoint_state = (
+                                "장시간 방송 로컬 관측 기록 실패 · "
+                                "기존 OBS 출력은 건드리지 않음")
                     if (self._owns_stream and not self._stop.is_set()
                             and monotonic_now - self._started_at
                             >= self._rules.maximum_minutes * 60):
