@@ -31,6 +31,7 @@ from .approved_live_voice_journal import ApprovedLiveVoiceJournal, voice_turn_ke
 from .approved_live_voice_outbox import ApprovedLiveVoiceOutbox
 from .approved_live_voice_stream_lease import ApprovedVoiceStreamLease
 from .approved_live_voice_causal_journal import ApprovedVoiceCausalJournal
+from .approved_live_voice_sync_receipts import ApprovedLiveVoiceSyncReceipts
 from .approved_live_voice_playback_watch import ApprovedLiveVoicePlaybackWatch
 from .approved_live_voice_prefetch import ApprovedVoiceSegmentPrefetch
 
@@ -120,6 +121,7 @@ class ApprovedLiveVoiceOutput:
         self._outbox_wakeup = threading.Event()
         self._stream_lease = ApprovedVoiceStreamLease()
         self._causal_journal = ApprovedVoiceCausalJournal()
+        self._sync_receipts = ApprovedLiveVoiceSyncReceipts()
         self._playback_watch = ApprovedLiveVoicePlaybackWatch()
         self._stop = threading.Event()
         self._inbox: queue.Queue[tuple[str, str]] = queue.Queue(
@@ -444,6 +446,8 @@ class ApprovedLiveVoiceOutput:
         created = False
         mouth_token = None
         causal_row = None
+        sync_causal_row = None
+        obs_request_confirmed = False
 
         def source_is_owned() -> bool:
             values = client.get_input_list().inputs
@@ -478,7 +482,12 @@ class ApprovedLiveVoiceOutput:
                 self._stream_lease.check(obs)
                 if self._stop.is_set() or not obs.status().streaming:
                     raise RuntimeError("사용자 중지 또는 OBS 송출 종료")
-                # 하나의 WAV로 공식 Cubism 입과 OBS 오디오를 함께 구동.
+                # 동일 WAV의 OBS 임시 음성 소스를 활성화한 뒤에만
+                # Cubism PCM 입 구동을 시작한다. 과거에는 선행 TTS
+                # 작업 제출과 OBS 소스 활성화가 공식 입 시작과
+                # OBS 재생 요청 사이에 끼어 시간 오차가 커졌다.
+                client.set_scene_item_enabled(original.scene, scene_item_id, True)
+                self._stream_lease.check(obs)
                 mouth_token = frontend.start_authorized_pcm_live2d_mouth(
                     envelope, operator_approved=True, rights_confirmed=True)
                 causal_row = self._causal_journal.mouth_started(
@@ -486,15 +495,17 @@ class ApprovedLiveVoiceOutput:
                     part_id=part_id, wav_data=raw,
                     wav_seconds=wav_seconds, obs_scene=original.scene,
                     obs_source_uuid=uuid)
-                # 현재 WAV가 공식 Cubism 입·OBS 소스에 연결된 뒤에만
-                # 다음 한 구간을 선행 합성한다. FIFO 발화는 그대로 유지.
-                if prefetch_next is not None:
-                    prefetch_next()
-                client.set_scene_item_enabled(original.scene, scene_item_id, True)
+                sync_causal_row = causal_row
+                # 둘 사이에 추가 합성이나 TTS 기다림을 끼워 넣지 않는다.
                 self._stream_lease.check(obs)
                 client.trigger_media_input_action(
                     name, "OBS_WEBSOCKET_MEDIA_INPUT_ACTION_RESTART")
                 self._causal_journal.obs_triggered(causal_row)
+                obs_request_confirmed = True
+                # OBS 재생 요청이 기록된 뒤에만 다음 WAV 합성을
+                # 시작해 현재 구간 시작 시간의 영향을 줄인다.
+                if prefetch_next is not None:
+                    prefetch_next()
                 # 한 WAV 재생 중에도 실제 송출/입/임시 소스가 유지되는지
                 # 주기적으로 읽는다. 관측 불명 시 후속 구간 재발화 금지.
                 self._playback_watch.wait_for_current_wav(
@@ -516,12 +527,32 @@ class ApprovedLiveVoiceOutput:
                         # 불명 원본 행은 유지. 재발화하지 않는다.
                         pass
                 restore_error = None
+                mouth_observation = None
                 if mouth_token is not None:
                     try:
-                        frontend.finish_authorized_pcm_live2d_mouth(
+                        mouth_observation = frontend.finish_authorized_pcm_live2d_mouth(
                             mouth_token, operator_approved=True)
                     except Exception as exc:
                         restore_error = exc
+                # OBS에 실제 재생 요청을 한 WAV와 공식 Cubism 모델
+                # 실제 매개변수 변화 결과를 영구 연결. 같은 음성 원문,
+                # 닉네임·WAV 본문·토큰을 새 장부에 저장하지 않는다.
+                evidence_error = None
+                if mouth_observation is not None and sync_causal_row is not None:
+                    try:
+                        gap = self._causal_journal.actual_obs_request_gap(
+                            sync_causal_row)
+                        evidence = self._sync_receipts.record(
+                            turn_key=turn_key or secrets.token_hex(32),
+                            part_id=part_id, wav_data=raw,
+                            obs_source_uuid=uuid,
+                            obs_request_gap_seconds=gap,
+                            observation=mouth_observation,
+                            obs_triggered=obs_request_confirmed)
+                        self._publish("실제입OBS관측", evidence)
+                    except Exception as exc:
+                        # 방금 재생한 구간을 다시 실행하지 않는다.
+                        evidence_error = exc
                 remove_error = None
                 if created:
                     try:
@@ -534,3 +565,6 @@ class ApprovedLiveVoiceOutput:
                 if restore_error is not None or remove_error is not None:
                     raise RuntimeError(
                         "공식 Cubism 원상복귀 또는 방송 음성 소스 정리 실패")
+                if evidence_error is not None:
+                    raise RuntimeError(
+                        "실제 입·OBS 동일 WAV 관측 영구 기록 실패 · 재발화 차단")
