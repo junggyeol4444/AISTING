@@ -32,7 +32,8 @@ class MultiPlatformReadOnlySession:
                  youtube_oauth_token: str = "",
                  twitch_oauth_token: str = "", twitch_oauth_login: str = "",
                  youtube_cursor_journal: YouTubePageCheckpoint | None = None,
-                 reconnect_journal: DurablePlatformReconnectJournal | None = None):
+                 reconnect_journal: DurablePlatformReconnectJournal | None = None,
+                 batched_frames: bool = False):
         if (type(channels) is not dict or not channels or len(channels) > 4
                 or not callable(emit)):
             raise ValueError("동시 채팅 플랫폼과 채널을 확인하세요.")
@@ -43,6 +44,9 @@ class MultiPlatformReadOnlySession:
                 "youtube" not in channels or
                 not isinstance(youtube_cursor_journal, YouTubePageCheckpoint)):
             raise ValueError("유튜브 실제 채팅 재시작 커서 연결이 올바르지 않습니다.")
+        if type(batched_frames) is not bool:
+            raise ValueError("채팅 프레임 SQLite 일괄 수신 설정이 올바르지 않습니다.")
+        self._batched_frames = batched_frames
         self.channel = "전체"
         self._stop = threading.Event()
         self._stop_started_at = None
@@ -186,6 +190,87 @@ class MultiPlatformReadOnlySession:
                             with self._emit_lock:
                                 self._post_stop_rejected_chat_count[code] += 1
                         return False
+                    if kind == "chat_batch":
+                        # 배치 수신은 운영자가 GUI에서 시작한 실제 SQLite
+                        # 채팅 경로에만 사용하고, 기존 단건 콜백은 불변.
+                        if not self._batched_frames or code == "youtube":
+                            raise ValueError("승인되지 않은 배치 수신")
+                        if type(item) is not tuple or not 1 <= len(item) <= 256:
+                            raise ValueError("배치 채팅 형식 또는 크기 오류")
+                        chats = tuple(
+                            PlatformChat(row.channel, row.sender, row.text, code,
+                                         row.event_id, row.parsed_at_monotonic)
+                            if code == "twitch" and isinstance(row, TwitchChatLine)
+                            else row for row in item)
+                        if any(not isinstance(row, PlatformChat)
+                               or row.platform != code for row in chats):
+                            raise ValueError("다른 플랫폼의 채팅이 배치에 포함됐습니다.")
+                        started = time.monotonic()
+                        with self._emit_lock:
+                            self._callback_inflight_started_at[code] = started
+                            self._callback_chat_count[code] += len(chats)
+                            self._last_chat_at[code] = started
+                        try:
+                            accepted = self._emit("chat_batch", chats)
+                        except Exception:
+                            with self._emit_lock:
+                                self._callback_error_count[code] += len(chats)
+                            raise
+                        finally:
+                            elapsed = max(0.0, time.monotonic() - started)
+                            with self._emit_lock:
+                                self._callback_inflight_started_at[code] = None
+                                self._callback_emit_total_seconds[code] += elapsed
+                                self._callback_emit_max_seconds[code] = max(
+                                    self._callback_emit_max_seconds[code], elapsed)
+                                self._callback_emit_samples[code].append(elapsed)
+                                self._callback_emit_over_three_seconds[code] += int(
+                                    elapsed > 3.0)
+                        if accepted is False:
+                            with self._emit_lock:
+                                self._callback_aborted_count[code] += len(chats)
+                            return False
+                        accepted_at = time.monotonic()
+                        with self._emit_lock:
+                            for chat in chats:
+                                event_id = chat.event_id
+                                if event_id is None:
+                                    self._missing_event_id_count[code] += 1
+                                elif event_id in self._seen_event_ids[code]:
+                                    self._replayed_event_id_count[code] += 1
+                                    self._callback_duplicate_chat_count[code] += 1
+                                else:
+                                    self._seen_event_ids[code].add(event_id)
+                                    recent = self._recent_event_ids[code]
+                                    recent.append(event_id)
+                                    if len(recent) > 50_000:
+                                        self._seen_event_ids[code].discard(recent.popleft())
+                                self._forwarded_chat_count[code] += 1
+                                if accepted is SQLITE_DEFERRED_CHAT:
+                                    self._sqlite_deferred_count[code] += 1
+                                parsed_at = chat.parsed_at_monotonic
+                                if (type(parsed_at) in (int, float)
+                                        and math.isfinite(parsed_at)
+                                        and 0 < parsed_at <= started):
+                                    waited = max(0.0, started - parsed_at)
+                                    received = max(0.0, accepted_at - started)
+                                    total = max(0.0, accepted_at - parsed_at)
+                                    self._parse_to_callback_samples[code].append(waited)
+                                    self._parse_to_callback_max_seconds[code] = max(
+                                        self._parse_to_callback_max_seconds[code], waited)
+                                    self._parse_to_callback_over_three[code] += int(waited > 3)
+                                    self._callback_to_accept_samples[code].append(received)
+                                    self._callback_to_accept_max_seconds[code] = max(
+                                        self._callback_to_accept_max_seconds[code], received)
+                                    self._callback_to_accept_over_three[code] += int(
+                                        received > 3)
+                                    self._parse_to_accept_samples[code].append(total)
+                                    self._parse_to_accept_max_seconds[code] = max(
+                                        self._parse_to_accept_max_seconds[code], total)
+                                    self._parse_to_accept_over_three[code] += int(total > 3)
+                                else:
+                                    self._parse_timestamp_missing_count[code] += 1
+                        return True
                     if kind == "chat":
                         if code == "twitch" and isinstance(item, TwitchChatLine):
                             item = PlatformChat(
@@ -389,6 +474,8 @@ class MultiPlatformReadOnlySession:
         # Construct and validate every reader before starting any network I/O.
         for code, channel in channels.items():
             reader = factories[code](channel.strip(), self._callbacks[code])
+            if self._batched_frames and code in ("twitch", "chzzk", "soop"):
+                reader._batch_ingress = True
             if code in self._pending_websocket_chats and hasattr(
                     reader, "_pending_chats"):
                 reader._pending_chats = self._pending_websocket_chats[code]
@@ -842,6 +929,8 @@ class MultiPlatformReadOnlySession:
                                 try:
                                     replacement = self._factories[code](
                                         self._channels[code], self._callbacks[code])
+                                    if self._batched_frames and code in ("twitch", "chzzk", "soop"):
+                                        replacement._batch_ingress = True
                                     if (code in self._pending_websocket_chats
                                             and hasattr(replacement, "_pending_chats")):
                                         replacement._pending_chats = (
