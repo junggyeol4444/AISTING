@@ -61,6 +61,7 @@ from .offline_final_acceptance import (
     build_final_acceptance, inspect_bundled_project, export_final_acceptance,
 )
 from .offline_discord_notice_link import prepare_discord_notice_dry_run
+from .approved_discord_notice_delivery import ApprovedDiscordNoticeDelivery
 from .offline_naver_cafe_review import review_naver_cafe_official_link
 from .offline_notice_posting_rehearsal import OfflineNoticePostingRehearsal
 from .offline_broadcast_schedule import (
@@ -4838,6 +4839,93 @@ class AistingApp(tk.Tk):
         ttk.Label(tab, textvariable=self._notice_post_status, wraplength=735).pack(anchor='w', pady=5)
         self._notice_post_text = tk.Text(tab, height=14, wrap='word', state='disabled')
         self._notice_post_text.pack(fill='both', expand=True, pady=7)
+        # 기존 084/085/086 오프라인 모의 GUI는 건드리지 않고,
+        # 별도 명시 승인한 경우에만 외부 Discord 공식 API를 사용한다.
+        live_box = ttk.LabelFrame(tab, text="디스코드 공식 봇 · 실제 공지 별도 승인")
+        live_box.pack(fill="x", pady=(8, 4))
+        self._real_discord_channel = tk.StringVar(value="")
+        self._real_discord_token = tk.StringVar(value="")
+        self._real_discord_status = tk.StringVar(
+            value="실제 발신 대기 · 기본 비활성 · 봇 토큰 저장하지 않음")
+        self._real_discord_busy = False
+        self._real_discord_results = queue.SimpleQueue()
+        ttk.Label(
+            live_box,
+            text="084에서 작성·확정한 방송 시작 공지만 1회 발신 · "
+                 "자동 게시/재전송 없음 · 메시지 본문과 봇 토큰 영구 저장 없음",
+            wraplength=720).pack(anchor="w", pady=(3, 4))
+        input_row = ttk.Frame(live_box)
+        input_row.pack(fill="x")
+        ttk.Label(input_row, text="채널 ID").pack(side="left")
+        ttk.Entry(input_row, textvariable=self._real_discord_channel,
+                  width=22).pack(side="left", padx=5)
+        ttk.Label(input_row, text="Bot 토큰").pack(side="left")
+        ttk.Entry(input_row, textvariable=self._real_discord_token,
+                  show="*", width=30).pack(side="left", padx=5)
+        ttk.Button(
+            live_box, text="084 방송 시작 공지 실제 1회 게시 (개별 확인)",
+            command=self._send_real_discord_notice).pack(anchor="w", pady=5)
+        ttk.Label(
+            live_box, textvariable=self._real_discord_status,
+            wraplength=730).pack(anchor="w", pady=3)
+
+    def _send_real_discord_notice(self) -> None:
+        """운영자가 버튼과 확인창 모두 승인할 때만 실제 게시 요청."""
+        if self._real_discord_busy or self._closing:
+            return
+        try:
+            draft = self._notice_post_current()
+            occurrence = self._notice_when.get()
+            parse_reference(occurrence)
+            channel = self._real_discord_channel.get().strip()
+            token = self._real_discord_token.get().strip()
+            ApprovedDiscordNoticeDelivery.validate(
+                occurrence, channel, "시작", draft.text, token)
+        except (ValueError, TypeError, AttributeError) as exc:
+            self._real_discord_status.set(
+                "공지 내용·일정·채널·토큰 확인 필요 (" +
+                type(exc).__name__ + ") · 실제 게시하지 않음")
+            return
+        if not messagebox.askyesno(
+            "실제 Discord 공지 발신 최종 승인",
+            "현재의 084 방송 시작 공지를 채널 " + channel +
+            "에 공식 Bot 계정으로 지금 실제 게시합니다. "
+            "같은 방송/채널의 중복 발신은 차단하고 응답 불명 시 자동 재전송하지 않습니다. "
+            "본인이 이 채널의 공지 권한을 보유하며 이번 외부 게시를 승인합니까?",
+            parent=self):
+            self._real_discord_status.set("운영자 승인 취소 · 실제 게시 없음")
+            return
+        self._real_discord_busy = True
+        self._real_discord_token.set("")
+        self._real_discord_status.set("승인받은 Discord 실제 공지 발신 중")
+        def worker():
+            try:
+                result = ApprovedDiscordNoticeDelivery().send_once(
+                    occurrence=occurrence, channel_id=channel, kind="시작",
+                    content=draft.text, bot_token=token, operator_approved=True)
+                self._real_discord_results.put(("확인", result.message_id))
+            except Exception:
+                # 토큰, 전체 URL, 서버 원문 등을 UI에 노출하지 않는다.
+                self._real_discord_results.put(("불명", ""))
+        threading.Thread(
+            target=worker, name="AISTING-실제Discord공지", daemon=True).start()
+        self.after(150, self._poll_real_discord_notice)
+
+    def _poll_real_discord_notice(self) -> None:
+        if self._closing:
+            return
+        try:
+            state, message_id = self._real_discord_results.get_nowait()
+        except queue.Empty:
+            self.after(150, self._poll_real_discord_notice)
+            return
+        self._real_discord_busy = False
+        self._real_discord_status.set(
+            "실제 Discord 게시 확인 · 메시지 ID " + message_id
+            if state == "확인" else
+            "게시 결과 불명 · 이 방송의 자동 재전송 차단 · "
+            "Discord 채널에서 직접 게시 여부를 확인하세요")
+
 
     def _notice_post_clear(self) -> None:
         self._notice_post_status.set('086 입력/설정 변경 · 이전 화면 결과 무효 · 실제 게시 없음')
