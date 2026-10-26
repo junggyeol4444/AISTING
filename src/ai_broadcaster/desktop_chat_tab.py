@@ -40,6 +40,8 @@ from .approved_live_content_agenda import (
     ApprovedLiveContentAgenda, ApprovedLiveContentJournal)
 from .approved_live_voice_output import ApprovedLiveVoiceOutput
 from .ordered_parallel_local_ai import OrderedParallelLocalAI
+from .approved_local_model_residency import ApprovedLocalModelResidency
+from .local_llm import LocalModelConfig
 from .youtube_page_checkpoint import YouTubePageCheckpoint
 from .platform_reconnect_journal import DurablePlatformReconnectJournal
 
@@ -65,6 +67,9 @@ class LocalChatTab(ttk.Frame):
         self._results: queue.SimpleQueue[tuple[str, object]] = queue.SimpleQueue()
         self._busy = False
         self._model_name = tk.StringVar()
+        self._model_warmup_busy = False
+        self._model_warmup_status = tk.StringVar(
+            value="선택 로컬 모델 선행 적재 미실행 · 자동 모델 변경/설치 없음")
         self._input = tk.StringVar()
         self._memory_count = tk.StringVar(value="저장된 대화: 확인 전")
         self._voice_player = ReplyVoicePlayer()
@@ -182,6 +187,11 @@ class LocalChatTab(ttk.Frame):
         model_row.pack(fill="x", pady=4)
         ttk.Label(model_row, text="설치한 모델 이름", width=17).pack(side="left")
         ttk.Entry(model_row, textvariable=self._model_name).pack(side="left", fill="x", expand=True)
+        self._model_warmup_button = ttk.Button(
+            model_row, text="기존 모델 선행 적재", command=self._start_local_model_warmup)
+        self._model_warmup_button.pack(side="left", padx=(6, 0))
+        ttk.Label(self, textvariable=self._model_warmup_status,
+                  wraplength=580).pack(anchor="w", pady=(0, 3))
         self._dialog = tk.Text(self, height=12, wrap="word", state="disabled", font=("Malgun Gothic", 10))
         self._dialog.pack(fill="both", expand=True, pady=8)
         input_row = ttk.Frame(self)
@@ -394,6 +404,40 @@ class LocalChatTab(ttk.Frame):
                   wraplength=580).pack(anchor="w")
         self._refresh_memory_count()
         self.after(150, self._poll)
+
+    def _start_local_model_warmup(self) -> None:
+        """선택 모델의 로컬 사전 적재만 수동 수행. 추론·발화·방송 없음."""
+        if (self._closed or self._model_warmup_busy or self._busy
+                or self._twitch_session is not None):
+            return
+        try:
+            config = LocalModelConfig(model=self._model_name.get().strip())
+        except (ValueError, TypeError):
+            self._model_warmup_status.set("이미 설치한 Ollama 모델 이름을 확인하세요.")
+            return
+        if not messagebox.askyesno(
+            "선택 Ollama 모델 선행 적재 승인",
+            "지금 입력한 기존 로컬 모델 '" + config.model + "'만 "
+            "127.0.0.1 Ollama로 선행 적재합니다. "
+            "모델 설치·교체·학습·텍스트 생성·음성·방송·채팅 송신은 없습니다. "
+            "기존 10분 모델 유지 설정을 사용하며 응답 1~3초는 보장하지 않습니다. "
+            "진행하시겠습니까?", parent=self):
+            return
+        self._model_warmup_busy = True
+        self._model_warmup_button.configure(state="disabled")
+        self._model_warmup_status.set(
+            "선택된 기존 로컬 모델 준비 요청 중 · 송출/합성 미실행")
+        def worker() -> None:
+            try:
+                receipt = ApprovedLocalModelResidency(config).warm_once(
+                    operator_approved=True, timeout_seconds=60.0)
+            except Exception as exc:
+                self._results.put(("approved_local_model_warmup_error",
+                                   type(exc).__name__))
+            else:
+                self._results.put(("approved_local_model_warmup_ok", receipt))
+        threading.Thread(target=worker,
+                         name="AISTING-선택로컬모델선행적재", daemon=True).start()
 
     def _toggle_multi_channels(self) -> None:
         if self._chat_platform.get() == "전체":
@@ -2413,6 +2457,24 @@ class LocalChatTab(ttk.Frame):
                     return
                 kind, payload = self._results.get_nowait()
                 processed += 1
+                if kind in ("approved_local_model_warmup_ok",
+                            "approved_local_model_warmup_error"):
+                    self._model_warmup_busy = False
+                    self._model_warmup_button.configure(state="normal")
+                    if kind == "approved_local_model_warmup_ok":
+                        extra = (
+                            f" · 로컬 서버 로드 {payload.server_load_seconds:.3f}초"
+                            if payload.server_load_seconds is not None else
+                            " · 서버 내부 로드 시간 미제공")
+                        self._model_warmup_status.set(
+                            "선택 로컬 모델 선행 적재 확인 · " + payload.model +
+                            " · keep_alive 10분" + extra +
+                            " · 추론/시청자 응답시간 미검증")
+                    else:
+                        self._model_warmup_status.set(
+                            "기존 모델 선행 적재 미확인 (" + str(payload) +
+                            ") · 다운로드·교체·외부송신 미실행")
+                    continue
                 if kind in ("youtube_oauth_ok", "youtube_oauth_error"):
                     self._oauth_busy = False
                     self._youtube_oauth_button.configure(state="normal")
