@@ -129,6 +129,9 @@ class ObsStatusTab(ttk.Frame):
             game_history_row, text="동일 목표 지난 기록 참고해 새 승인으로 이어하기",
             command=self._resume_approved_game)
         self._game_resume_button.pack(side="left", padx=(5,0))
+        ttk.Button(
+            game_history_row, text="AI 목표후보 운영자 직접 확인/미확인 기록",
+            command=self._confirm_game_goal_candidate).pack(side="left", padx=(5,0))
         ttk.Label(self, textvariable=self._game_status, wraplength=560).pack(
             anchor="w", pady=(1,5))
         ttk.Label(self,text="선택 장면 안의 소스 · OBS에서 설정은 직접 변경").pack(anchor="w",pady=(4,3))
@@ -379,6 +382,14 @@ class ObsStatusTab(ttk.Frame):
                     f"{run.created_at} · {run.game_title} · {run.goal[:80]} "
                     f"· {run.state} · 최대 {run.max_steps}회"
                     + (" · 이전 회차 참고" if run.parent_run_id else ""))
+                review=journal.confirmation_for(run.run_id)
+                if review is not None:
+                    lines.append(
+                        "  운영자 수동 확인: "
+                        + ("달성 확인" if review.operator_confirmed
+                           else "미달성 확인")
+                        + " · " + review.recorded_at
+                        + " · 게임 서버 성공 증빙은 별도")
                 for event in journal.history(run.run_id, limit=5):
                     lines.append(
                         f"  {event.step_no}회 {event.phase}: {event.detail[:120]}")
@@ -392,6 +403,76 @@ class ObsStatusTab(ttk.Frame):
                 "게임 이력 읽기 실패",
                 "원본 게임 기록을 변경하지 않았습니다 (" +
                 type(exc).__name__ + ")", parent=self)
+
+    def _confirm_game_goal_candidate(self) -> None:
+        """실제 게임 입력 없이 AI 후보에 대한 운영자 검토만 1회 기록."""
+        from .approved_game_goal_journal import ApprovedGameGoalJournal
+        from .offline_settings import data_dir
+        if self._game_runner is not None:
+            messagebox.showwarning(
+                "게임 목표 확인", "현재 게임 자동 진행 종료 후 확인할 수 있습니다.",
+                parent=self)
+            return
+        path=data_dir() / "approved_game_goals.sqlite3"
+        if not path.is_file() or path.is_symlink():
+            messagebox.showinfo(
+                "게임 목표 확인", "과거 게임 실행 장부가 없습니다.", parent=self)
+            return
+        try:
+            if self._chat_tab is None:
+                raise ValueError("기존 로컬 모델 선택이 없습니다.")
+            title=self._game_title.get().strip()
+            goal=self._game_goal.get().strip()
+            model=self._chat_tab._model_name.get().strip()
+            if not title or not goal or not model:
+                raise ValueError("게임 창·목표·로컬 모델을 먼저 입력하세요.")
+            journal=ApprovedGameGoalJournal(path)
+            candidates=[
+                run for run in journal.recent_runs(limit=100)
+                if (run.game_title, run.goal, run.model) == (title, goal, model)
+                and run.state == "목표후보"
+                and journal.confirmation_for(run.run_id) is None
+            ]
+            if not candidates:
+                messagebox.showinfo(
+                    "게임 목표 확인",
+                    "해당 게임·목표·모델의 미확인 AI 달성후보가 없습니다. "
+                    "기존 판정은 임의로 목표 성공으로 변경하지 않습니다.",
+                    parent=self)
+                return
+            run=candidates[0]
+            events=journal.history(run.run_id, limit=50)
+            evidence=next((
+                event.detail for event in reversed(events)
+                if event.phase == "목표판정" and "달성후보" in event.detail
+            ), "후보 상세 근거 없음")
+            checked=messagebox.askyesnocancel(
+                "AI 후보에 대한 운영자 독립 확인",
+                f"실행: {run.run_id[:8]} · {run.created_at}\n"
+                f"게임: {run.game_title}\n목표: {run.goal}\n"
+                f"로컬 모델: {run.model}\n"
+                f"AI 화면 판단: {evidence[:900]}\n\n"
+                "운영자가 실제 게임 화면/결과를 직접 확인했나요?\n"
+                "예 = 운영자가 목표 달성을 직접 확인\n"
+                "아니오 = 운영자가 목표 미달성을 직접 확인\n"
+                "취소 = 아무 기록도 하지 않음\n\n"
+                "확인 내용은 1회만 별도 SQLite에 보존되고 "
+                "게임·OBS·방송·공지에는 어떠한 명령도 보내지 않습니다.",
+                parent=self)
+            if checked is None:
+                return
+            saved=journal.confirm_candidate(
+                run.run_id, operator_confirmed=checked, operator_approved=True)
+            self._game_status.set(
+                "AI 달성후보 " + saved.run_id[:8] + " · 운영자 직접 "
+                + ("목표 달성 확인" if saved.operator_confirmed
+                   else "목표 미달성 확인")
+                + " 영구 기록 · 실제 게임 조작/송출 없음")
+        except Exception as exc:
+            messagebox.showerror(
+                "게임 목표 확인 기록 실패",
+                "원래 후보 및 실행 이력은 유지합니다 ("
+                + type(exc).__name__ + ")", parent=self)
 
     def _resume_approved_game(self) -> None:
         """동일 게임/목표/모델만 과거 이력 참고; 실제 입력은 다시 승인."""
