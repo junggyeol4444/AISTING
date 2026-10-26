@@ -242,6 +242,16 @@ class ReadOnlySession:
         if not self._chat_room_ready:
             return
         while self._pending_chats and not self._stop.is_set():
+            # GUI의 실제 SQLite 내구 수신에서만 배치 계약을 활성화한다.
+            # 다른 기존 콜백은 원래 1건 호출 계약을 유지한다.
+            if getattr(self, "_batch_ingress", False):
+                batch = tuple(list(self._pending_chats)[:256])
+                if self.emit("chat_batch", batch) is False:
+                    raise RuntimeError(
+                        "공개 채팅 묶음을 SQLite에 수용하지 못해 재연결 보류합니다.")
+                for _ in batch:
+                    self._pending_chats.popleft()
+                continue
             item = self._pending_chats[0]
             if self.emit("chat", item) is False:
                 raise RuntimeError(
