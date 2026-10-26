@@ -17,6 +17,12 @@ from .operator_settings import validate_settings
 from .conversation_memory import ConversationMemory
 
 
+# 기존 사용자 승인 운영값: 생성 토큰 96, 완료 후 모델 유지 10분.
+# 실제 모델 교체·다운로드·컨텍스트/페르소나 임의 변경 금지.
+_APPROVED_NUM_PREDICT = 96
+_APPROVED_KEEP_ALIVE = "10m"
+
+
 class LocalModelError(RuntimeError):
     """로컬 모델 연결 또는 응답 문제."""
 
@@ -136,7 +142,11 @@ class LocalOllamaReplyGenerator:
             messages.append({"role": "system", "content": self.broadcast_facts})
         messages.extend(self._history_messages(message))
         messages.append({"role": "user", "content": f"{message.sender}: {message.text}"})
-        payload = {"model": self.config.model, "stream": False, "messages": messages}
+        payload = {
+            "model": self.config.model, "stream": False,
+            "messages": messages, "keep_alive": _APPROVED_KEEP_ALIVE,
+            "options": {"num_predict": _APPROVED_NUM_PREDICT},
+        }
         request = Request(
             self.config.endpoint,
             data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
@@ -193,11 +203,13 @@ class LocalOllamaReplyGenerator:
             messages.append({"role": "system", "content": self.broadcast_facts})
         messages.extend(self._history_messages(message))
         messages.append({"role": "user", "content": f"{message.sender}: {message.text}"})
-        # num_predict, keep_alive 등 사용자 미승인 옵션을 넣지 않는다.
+        # 사용자 기존 요청값 96토큰/10분만 명시한다. 임의 옵션 추가 금지.
         request = Request(
             self.config.endpoint,
             data=json.dumps({"model": self.config.model, "stream": True,
-                             "messages": messages},
+                             "messages": messages,
+                             "keep_alive": _APPROVED_KEEP_ALIVE,
+                             "options": {"num_predict": _APPROVED_NUM_PREDICT}},
                             ensure_ascii=False).encode("utf-8"),
             headers={"Content-Type": "application/json",
                      "Accept": "application/x-ndjson"},
