@@ -589,6 +589,22 @@ class ObsStatusTab(ttk.Frame):
         require_saved_korean_gpt_sovits(project)
         return True
 
+    def _approved_live_media_alive(self) -> bool:
+        """기존 동일 승인 방송의 공식 Cubism와 로컬 한국어 TTS 생존만 관찰.
+
+        원격 서버 접속, 합성/OBS 조작, 새 OAuth/방송 자동 시작은 하지
+        않는다. TCP 포트가 살아 있어도 합성 결과나 시청자 출력 성공을
+        증명하지 않는다.
+        """
+        if not self._approved_live_preflight():
+            return False
+        from . import original_plan_frontend as frontend
+        from .official_tts_readiness import read_saved_korean_gpt_sovits_config
+        from .approved_local_tts_listener import local_korean_tts_listener_alive
+        url, _reference, _words = read_saved_korean_gpt_sovits_config(
+            frontend._native_viewer_project)
+        return local_korean_tts_listener_alive(url, timeout=0.75)
+
     def _approved_live_closing(self, words: str) -> bool:
         """기존 공식 Live2D 음성 경로에 운영자가 입력한 종료 문구만 전달."""
         from .original_plan_frontend import (
@@ -818,7 +834,7 @@ class ObsStatusTab(ttk.Frame):
                 scene=scene, closing_text=closing,
                 operator_approved=True, rights_confirmed=True,
                 media_preflight=self._approved_live_preflight,
-                media_alive=self._approved_live_preflight,
+                media_alive=self._approved_live_media_alive,
                 media_watch_interval_seconds=5.0,
                 media_grace_seconds=30.0,
                 deliver_closing=self._approved_live_closing,
