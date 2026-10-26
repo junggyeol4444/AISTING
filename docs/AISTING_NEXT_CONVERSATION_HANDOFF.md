@@ -5154,3 +5154,12 @@ F) 원본 100단계 roadmap.json status는 completed=9, pending=91이며 **코�
 - 새 상세 부록 `docs/hourly-handoff-appendices/AISTING_20261026_218_ACTUAL_OBS_MEDIA_PLAYING_CURSOR_SAME_WAV.md`. 기존 장기 인수인계 원문 전문과 원래 설정/캐릭터/개인 SQLite·100단계 상태·`num_predict=96`/`keep_alive=10m` 보존.
 - **AISTING 전체 개발 미완료; 테스트 NOT_RUN / 통합 NOT_RUN / CI 미조회·미확인 / Windows 10/11 EXE GUI 실제 사용 NOT_RUN / GPT-SoVITS 동일 WAV·공식 Cubism·OBS 실계정 재생/수백 명 4플랫폼·24시간·시청자 최종 1~3초 NOT_RUN**. 과거 실모델 CI `39720448468`: 500/500 모두 3초 초과, FIFO p95 2973.875초·전체 p95 2979.984초 실패, Windows CI `39722213656` 취소 그대로.
 - 다음 실행 최신 `main` HEAD/218절 부록·인수인계 조회 후 4플랫폼 내구·FIFO/실효 모델 속도, 동일 WAV 공식 입/OBS 장시간 송출, 24시간 자율 방송/게임·콘텐츠·기억/공지 핵심 제품 기능 **실코딩부터 계속**. 전체 개발 끝나기 전 테스트/CI/오류 수정 우선 금지. 개발 완료 후 검증→일괄 수정→재검증. 기존 예약/같은 대화 유지 우선, 다른 프로젝트/예약/Drive·브랜치/원본 조작 금지.
+
+
+## 219절 — 2026-10-26 4플랫폼 SQLite 채팅 접수·확정 영구 원장 실제 제품 개발
+- 기존 `main` 시작 HEAD `430b8c5bcb27df86ea73206ff4b7e15f5ed6a56c` 직접 확인, 218절 상세 부록·원본 기획/로드맵·원래 4플랫폼 공개 채팅 FIFO/GUI 코드 읽은 후 개발 우선 실행.
+- `84c185707b07e91c819e852ea8ecb453bbe29396`: `durable_public_chat_queue.py`에 `public_chat_durable_flow` 채널별 별도 영구 집계 테이블·SQLite INSERT/DELETE 트리거, 이전 보류 수 baseline과 도입 후 실제 접수/확정 원자 누적·SQLite 롤백 경계 추가. 기존 보류/완료 ID/실패 기록/개인 기억 DB 데이터 변경·삭제 없이 유지. 도입 이전 이미 완료된 과거 건수는 복원했다고 주장하지 않음. 같은 본문/닉네임 메시지 삭제/재정렬 금지.
+- `b56660958bb90aee75106fef22620c725e050bd4`: `desktop_chat_tab.py` Windows 기존 GUI에 4플랫폼 채널별 재시작 이전 포함 원장 도입 후 접수/완료/보류 및 원장 일치 경고 표시. 기존 라이브 5초 상태 갱신에 추가; 채팅 원문/닉네임·인증정보 새 영구집계에는 저장하지 않음.
+- 세부 신규 부록 `docs/hourly-handoff-appendices/AISTING_20261026_219_TRANSACTIONAL_DURABLE_CHAT_FLOW_LEDGER.md`. 기존 1~218절 인수인계 원문 append-only 보존. 기존 캐릭터/설정, GPT-SoVITS·공식 Live2D·OBS, 원래 100단계 공식 9/100 및 선택된 Ollama `num_predict=96`/`keep_alive=10m` 불변.
+- **219절 실코드 작성/main 반영 완료, 전체 AISTING 제품 개발 미완료. 테스트 NOT_RUN / 통합 NOT_RUN / CI 미조회 / Windows EXE·GUI NOT_RUN / 4플랫폼 수백 명·24시간·실제 WAV→공식 Cubism→OBS/시청자 수신·1~3초 NOT_RUN.** 과거 실모델 CI `39720448468`: 500/500 3초 초과, FIFO p95 2973.875초/전체 p95 2979.984초 실패 및 Windows CI `39722213656` 취소 원문 보존.
+- 다음 작업은 반드시 최신 main HEAD 재조회 후 핵심 남은 제품 기능 **코딩 먼저**, 완료 후에만 전체 검증→일괄 수정→재검증. 새 브랜치·force push·원본 삭제/롤백·다른 프로젝트/Drive/예약·무승인 OAuth/방송·공지/채팅/모델 학습 금지. 기존 시간별 AISTING 예약과 동일 대화 보고 우선 보존.
