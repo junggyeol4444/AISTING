@@ -87,3 +87,35 @@ def approved_live_memory_context(
                 occurrence + ": 승인 주제의 공식 AI 요청 전달 확인: " + excerpt
                 + " (시청자에게 전달됐는지는 미확인)")
     return "\n".join(lines)[:1500]
+
+
+def approved_game_goal_memory_context(*, limit: int = 5) -> str:
+    """운영자가 실제 화면으로 직접 달성 확인한 게임 목표만 로컬 AI에 참고.
+
+    독립 게임 장부를 읽을 때만 사용한다. AI 달성후보·미달성·미확정은
+    사실로 가져오지 않는다. 방송/시청자/게임 서버 성공을 증명하지 않는다.
+    """
+    if type(limit) is not int or not 1 <= limit <= 10:
+        raise ValueError("게임 목표 기억 조회 수는 1~10이어야 합니다.")
+    path = data_dir() / "approved_game_goals.sqlite3"
+    if path.is_symlink() or path.parent.is_symlink():
+        raise ValueError("게임 목표 기억 SQLite 바로가기는 읽지 않습니다.")
+    if not path.exists():
+        return ""
+    if not path.is_file():
+        raise ValueError("게임 목표 기억 저장소가 일반 파일이 아닙니다.")
+    from .approved_game_goal_journal import ApprovedGameGoalJournal
+    records = ApprovedGameGoalJournal(path).recent_operator_confirmed_goals(
+        limit=limit)
+    if not records:
+        return ""
+    lines = [
+        "다음은 운영자가 수동으로 목표 달성을 확인했다고 표시한 과거 게임 기록이다. "
+        "AI의 달성후보 자체를 성공으로 여기거나 실제 서버 보상·시청자 송출·"
+        "현재 진행을 확인했다고 지어내지 말 것."
+    ]
+    for title, goal, recorded_at in records:
+        lines.append(
+            recorded_at + " · 게임 " + title.replace("\\n", " ")[:150]
+            + " · 운영자 확인 목표 " + goal.replace("\\n", " ")[:220])
+    return "\\n".join(lines)[:1400]
