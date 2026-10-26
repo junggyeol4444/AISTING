@@ -10,6 +10,8 @@
 from __future__ import annotations
 
 import os
+import hashlib
+import secrets
 import sqlite3
 import stat
 import threading
@@ -29,6 +31,7 @@ _APPLICATION_ID = 0x41535447  # ASTG
 _MAX_RECORDS = 200_000
 _MAX_MESSAGE = 4000
 _FLOW_TABLE = "public_chat_durable_flow"
+_VOICE_ID_TABLE = "public_chat_voice_handoff_identity"
 _FLOW_COLUMNS = (
     "platform", "channel", "baseline_pending", "accepted_after_activation",
     "confirmed_after_activation", "activated_at",
@@ -66,7 +69,8 @@ class DurablePublicChatQueue:
                              or "pending_public_chat" not in tables
                              or not tables.issubset({
                                  "pending_public_chat", "confirmed_server_events",
-                                 "public_chat_processing_incidents", _FLOW_TABLE})):
+                                 "public_chat_processing_incidents", _FLOW_TABLE,
+                                 _VOICE_ID_TABLE})):
                 raise ValueError("AISTING 미처리 채팅 DB가 아닌 파일을 변경하지 않습니다.")
             if existed_before and not existing:
                 raise ValueError("기존 빈 SQLite 파일의 소유권을 확인할 수 없습니다.")
@@ -162,6 +166,21 @@ class DurablePublicChatQueue:
                 "ON CONFLICT(platform,channel) DO UPDATE SET "
                 "confirmed_after_activation=confirmed_after_activation+1; "
                 "END")
+            # 220절: 이 SQLite 파일의 생애에 귀속되는 난수 ID를 따로 보관.
+            # 원래 채팅 행/순번/서버 ID는 수정하지 않는다. 다른 위치로
+            # SQLite 파일을 이동해도 동일 순번의 음성 인계 키는 유지된다.
+            db.execute(
+                "CREATE TABLE IF NOT EXISTS public_chat_voice_handoff_identity("
+                "singleton INTEGER PRIMARY KEY CHECK(singleton=1),"
+                "spool_uuid TEXT NOT NULL)")
+            voice_columns = tuple(row[1] for row in db.execute(
+                "PRAGMA table_info(public_chat_voice_handoff_identity)"))
+            if voice_columns != ("singleton", "spool_uuid"):
+                raise ValueError("공개 채팅→음성 인계 DB 식별자 구조가 일치하지 않습니다.")
+            db.execute(
+                "INSERT OR IGNORE INTO public_chat_voice_handoff_identity"
+                "(singleton,spool_uuid) VALUES(1,?)",
+                (secrets.token_hex(16),))
             # 동일 본문/사용자의 별개 채팅은 보존. 플랫폼이 실제 발급한
             # 이벤트 ID의 보류 중/처리 완료 재전송만 중복 작업으로 막는다.
             db.execute(
@@ -706,6 +725,32 @@ class DurablePublicChatQueue:
                     "최초순번": oldest[0] if oldest is not None else None,
                 }
             return result
+
+    def voice_handoff_nonce(self, sequence: int) -> str:
+        """미처리 SQLite 한 행에 고정된 음성 중복 방지 nonce(원문 없음).
+
+        Windows DPAPI 영구 음성 대기함에 먼저 접수한 뒤 채팅 ACK를
+        기록할 때 사용. 비정상 종료로 채팅 ACK만 빠진 경우 같은
+        음성 turn_key를 재사용하며 이전 발화를 자동 재생하지 않는다.
+        서버 이벤트 ID가 없는 다른 채팅은 서로 다른 SQLite sequence.
+        """
+        if type(sequence) is not int or sequence < 1:
+            raise ValueError("음성 인계용 채팅 순번이 올바르지 않습니다.")
+        with self._lock, self._connection() as db:
+            pending = db.execute(
+                "SELECT 1 FROM pending_public_chat WHERE sequence=?",
+                (sequence,)).fetchone()
+            if pending is None:
+                raise RuntimeError("음성 인계할 미처리 원본 채팅이 없습니다.")
+            row = db.execute(
+                "SELECT spool_uuid FROM public_chat_voice_handoff_identity "
+                "WHERE singleton=1").fetchone()
+            if (row is None or type(row[0]) is not str
+                    or len(row[0]) != 32
+                    or any(ch not in "0123456789abcdef" for ch in row[0])):
+                raise RuntimeError("공개 채팅 음성 인계 DB 식별자를 확인할 수 없습니다.")
+            identity = "AISTING-voice-handoff-v1\\0" + row[0] + "\\0" + str(sequence)
+            return hashlib.sha256(identity.encode("utf-8")).hexdigest()[:32]
 
     def durable_flow_snapshot(
             self, channels: dict[str, str]) -> dict[str, dict[str, object]]:

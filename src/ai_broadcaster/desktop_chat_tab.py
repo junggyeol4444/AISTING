@@ -2103,21 +2103,26 @@ class LocalChatTab(ttk.Frame):
                         report("twitch_ai_incident_error",
                                "SQLite AI 처리 사건 영구 기록 실패")
 
-                def confirm_durable_after_success():
+                def confirm_durable_after_success() -> bool:
                     # 실제 AI 처리 완료/공식 전달이 확인된 경우에만 항목 삭제.
-                    # 재시작 직전에는 중복 처리 가능성이 남음을 숨기지 않는다.
-                    if (pending_sequence is None or session is None
-                            or session._stop.is_set()):
-                        return
+                    # 승인 방송용 음성은 먼저 Windows DPAPI 영구 대기함에
+                    # 접수하고 그 다음 SQLite 채팅 ACK를 커밋한다.
+                    if pending_sequence is None or session is None:
+                        return True
+                    if session._stop.is_set():
+                        return False
                     spool = getattr(self, "_twitch_chat_spool", None)
                     if spool is None:
                         report("twitch_ai_error", (chat, "미처리 채팅 보존 큐 누락"))
-                        return
+                        return False
                     try:
                         if not spool.confirm(pending_sequence):
                             report("twitch_ai_error", (chat, "미처리 채팅 확인 대상 없음"))
+                            return False
                     except Exception:
                         report("twitch_ai_error", (chat, "미처리 채팅 완료기록 실패"))
+                        return False
+                    return True
 
                 # 실제 GUI에서는 생성 시 전달한 세션 전용 시각 큐만 사용.
                 # 인자 없는 이전 직접 호출 검사만 기존 속성을 사용한다.
@@ -2331,8 +2336,45 @@ class LocalChatTab(ttk.Frame):
                     attempt_failed = True
                     report("twitch_ai_error", (chat, type(exc).__name__))
                 else:
-                    report("twitch_ai_ok", (chat, result))
-                    confirm_durable_after_success()
+                    # 220절: 실제 승인된 음성 방송에서는 Tk 결과 큐가
+                    # 밀리거나 종료돼도 AI 완료 ACK 전에 동일 답변을
+                    # Windows DPAPI SQLite 음성 FIFO에 먼저 영구 인계.
+                    # 음성 합성/OBS 발신은 기존 별도 승인 작업자만 수행.
+                    voice_handoff_sequence = None
+                    if (pending_sequence is not None
+                            and isinstance(session, MultiPlatformReadOnlySession)):
+                        with self._live_ingress_lock:
+                            voice_for_session = (
+                                self._approved_live_voice_output
+                                if session is self._twitch_session else None)
+                            spool_for_session = (
+                                self._twitch_chat_spool
+                                if session is self._twitch_session else None)
+                        if voice_for_session is not None:
+                            try:
+                                if (spool_for_session is None
+                                        or getattr(voice_for_session, "_outbox", None)
+                                        is None or session._stop.is_set()):
+                                    raise RuntimeError(
+                                        "승인된 Windows 영구 음성 대기함을 확인할 수 없습니다.")
+                                nonce = spool_for_session.voice_handoff_nonce(
+                                    pending_sequence)
+                                voice_handoff_sequence = voice_for_session.enqueue(
+                                    result.reply,
+                                    platform=getattr(chat, "platform", "twitch"),
+                                    channel=getattr(chat, "channel", "직접선택"),
+                                    event_id=getattr(chat, "event_id", None),
+                                    durable_nonce=nonce)
+                            except Exception as exc:
+                                attempt_failed = True
+                                report("twitch_ai_error", (
+                                    chat, "AI→영구 음성 인계 실패 · "
+                                    + type(exc).__name__))
+                    if not attempt_failed:
+                        report("twitch_ai_ok", (
+                            chat, result, voice_handoff_sequence))
+                        if not confirm_durable_after_success():
+                            attempt_failed = True
                 finally:
                     report_measured_elapsed()
                 if (attempt_failed and pending_sequence is not None
@@ -2852,7 +2894,9 @@ class LocalChatTab(ttk.Frame):
                             " · 미완성 임시 텍스트 · 방송 발신/기억 저장 없음: "
                             + preview[:160])
                     elif kind == "twitch_ai_ok":
-                        chat, result = payload
+                        chat, result, *voice_handoff = payload
+                        persisted_voice_seq = (
+                            voice_handoff[0] if voice_handoff else None)
                         self._twitch_replied += 1
                         # 서버가 보고한 실제 모델 로딩/입력/생성 시간만 표시.
                         # 시청자 전달이나 송출 구간 시간으로 잘못 해석하지 않는다.
@@ -2884,21 +2928,32 @@ class LocalChatTab(ttk.Frame):
                         self._refresh_voice_buttons()
                         live_voice = self._approved_live_voice_output
                         if live_voice is not None:
-                            try:
-                                count = live_voice.enqueue(
-                                    result.reply,
-                                    platform=getattr(chat, "platform", "twitch"),
-                                    channel=getattr(chat, "channel", "직접선택"),
-                                    event_id=getattr(chat, "event_id", None))
-                            except (ValueError, RuntimeError) as exc:
+                            if persisted_voice_seq is not None:
+                                # AI 작업자가 실제 DPAPI 음성 원장에 먼저
+                                # 확정했으므로 Tk에서 두 번 enqueue하지 않음.
                                 self._approved_live_voice_status.set(
-                                    "실제 한국어 음성 전송 불가 (" + type(exc).__name__
-                                    + ") · 원문 AI 텍스트 유지")
+                                    f"AI→한국어 음성 영구 인계 FIFO "
+                                    f"{persisted_voice_seq}번 · "
+                                    f"현재 방송 대기 {live_voice.pending}건 "
+                                    "· 실제 재생/시청자 수신은 별도 확인")
                             else:
-                                self._approved_live_voice_status.set(
-                                    f"실제 한국어 발화 FIFO {count}번 영구 접수 "
-                                    f"· 같은 방송 대기 {live_voice.pending}건 "
-                                    "· 다른 방송 자동 재발화 금지")
+                                # 이전 단독 GUI/비영구 경로의 계약은 유지.
+                                try:
+                                    count = live_voice.enqueue(
+                                        result.reply,
+                                        platform=getattr(chat, "platform", "twitch"),
+                                        channel=getattr(chat, "channel", "직접선택"),
+                                        event_id=getattr(chat, "event_id", None))
+                                except (ValueError, RuntimeError) as exc:
+                                    self._approved_live_voice_status.set(
+                                        "실제 한국어 음성 전송 불가 ("
+                                        + type(exc).__name__
+                                        + ") · 원문 AI 텍스트 유지")
+                                else:
+                                    self._approved_live_voice_status.set(
+                                        f"실제 한국어 발화 FIFO {count}번 영구 접수 "
+                                        f"· 같은 방송 대기 {live_voice.pending}건 "
+                                        "· 다른 방송 자동 재발화 금지")
                         else:
                             selected = self._tts_voices.get(self._voice_name.get())
                             if should_auto_read(self._auto_voice.get(), selected, result.reply):

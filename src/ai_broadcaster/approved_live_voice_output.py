@@ -145,6 +145,7 @@ class ApprovedLiveVoiceOutput:
     def enqueue(
         self, reply: str, *, platform: str = "twitch",
         channel: str = "직접선택", event_id: str | None = None,
+        durable_nonce: str | None = None,
     ) -> int:
         """완성된 기존 AI 답변 한 건을 원순서 그대로 추가한다.
 
@@ -156,8 +157,17 @@ class ApprovedLiveVoiceOutput:
         korean_voice_segments(reply)
         # 실제 서버 이벤트 ID가 없는 서로 다른 메시지는 절대 본문으로
         # 합치지 않는다. 원문은 메모리 FIFO에만 두고 DB에는 SHA만 기록.
+        if durable_nonce is not None and (
+                type(durable_nonce) is not str
+                or re.fullmatch(r"[0-9a-f]{32}", durable_nonce) is None):
+            raise ValueError("SQLite 원본 채팅의 음성 인계 키가 올바르지 않습니다.")
+        # 실제 서버 ID가 있으면 서버 ID를 우선. 서버 ID가 없을 때만
+        # SQLite 파일 생애+sequence 기반 nonce로 재시작 중복 발화 차단.
+        # 기존 수동 발화는 새 난수 nonce를 사용해 독립 유지.
         turn_key = voice_turn_key(
-            platform, channel, event_id, nonce=secrets.token_hex(16))
+            platform, channel, event_id,
+            nonce=durable_nonce if durable_nonce is not None
+            else secrets.token_hex(16))
         if self._outbox is not None:
             seq, is_new = self._outbox.enqueue(self._session_id, turn_key, reply)
             if not is_new:
