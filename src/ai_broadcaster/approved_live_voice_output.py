@@ -36,6 +36,7 @@ from .approved_live_voice_media_receipts import ApprovedLiveVoiceMediaReceipts
 from .approved_live_voice_playback_watch import ApprovedLiveVoicePlaybackWatch
 from .approved_live_voice_audio_route_watch import ApprovedLiveVoiceAudioRouteGuard
 from .approved_live_voice_audio_route_receipts import ApprovedLiveVoiceAudioRouteReceipts
+from .approved_live_voice_stream_track_receipts import ApprovedLiveVoiceStreamTrackReceipts
 from .approved_live_voice_prefetch import ApprovedVoiceSegmentPrefetch
 
 
@@ -128,6 +129,7 @@ class ApprovedLiveVoiceOutput:
         self._media_receipts = ApprovedLiveVoiceMediaReceipts()
         self._playback_watch = ApprovedLiveVoicePlaybackWatch()
         self._audio_route_receipts = ApprovedLiveVoiceAudioRouteReceipts()
+        self._stream_track_receipts = ApprovedLiveVoiceStreamTrackReceipts()
         self._stop = threading.Event()
         self._inbox: queue.Queue[tuple[str, str]] = queue.Queue(
             maxsize=_MAX_SPEECH_QUEUE)
@@ -575,6 +577,12 @@ class ApprovedLiveVoiceOutput:
                     turn_key=effective_turn_key, part_id=part_id,
                     wav_data=raw, guard=audio_route_guard)
                 self._publish("OBS오디오경로후보관측", audio_receipt)
+                # 현재 활성 OBS 프로필 트랙과 동일 WAV 입력 교집합의
+                # 읽기 전용 관측만 영구 기록한다. 인코더/청취 성공은 아님.
+                track_receipt = self._stream_track_receipts.record(
+                    turn_key=effective_turn_key, part_id=part_id,
+                    wav_data=raw, guard=audio_route_guard)
+                self._publish("OBS송출프로필트랙관측", track_receipt)
                 self._causal_journal.finish(causal_row, completed=True)
                 causal_row = None
                 return wav_seconds

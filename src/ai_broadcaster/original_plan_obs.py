@@ -119,6 +119,23 @@ class ActualObsAudioRoute:
 
 
 @dataclass(frozen=True)
+class ActualObsStreamAudioTrack:
+    """OBS 활성 스트림의 프로필 오디오 트랙 후보. 실제 인코더/수신 증거 아님."""
+    profile: str
+    mode: str
+    selected_track: int
+    origin: str
+    stream_active: bool
+
+    @property
+    def configuration_confirmed(self) -> bool:
+        return (self.stream_active is True
+                and self.mode in ("Simple", "Advanced")
+                and type(self.selected_track) is int
+                and 1 <= self.selected_track <= 6)
+
+
+@dataclass(frozen=True)
 class ActualObsProgramMediaObservation:
     """Two read-only OBS media observations in one operator-approved check.
 
@@ -983,6 +1000,47 @@ class OfficialObsWebsocket:
                 tuple(all_level_samples),
             )
 
+
+    def read_stream_audio_track_profile(self) -> ActualObsStreamAudioTrack:
+        """OBS WebSocket v5에서 현재 활성 스트림의 오디오 설정만 읽는다.
+
+        GetProfileParameter는 OBS 프로필 설정이며 실제 인코딩 패킷/
+        플랫폼 송출/시청자 청취의 증거가 아니다. 불명 설정은 실패 처리.
+        """
+        if self._client is None:
+            raise ObsConnectionError('실제 OBS 연결이 필요합니다.')
+        try:
+            active = self._client.get_stream_status().output_active
+            if active is not True:
+                raise ValueError('OBS 송출 중이 아닙니다.')
+            profile = self._client.get_current_profile().current_profile_name
+            if type(profile) is not str or not profile.strip():
+                raise ValueError('OBS 프로필이 확인되지 않습니다.')
+            mode = self._client.get_profile_parameter(
+                'Output', 'Mode').parameter_value
+            if mode == 'Simple':
+                # OBS Simple Output의 기본 오디오 믹스 트랙 1 후보.
+                selected, origin = 1, 'simple-profile-default'
+            elif mode == 'Advanced':
+                raw = self._client.get_profile_parameter(
+                    'AdvOut', 'TrackIndex').parameter_value
+                if type(raw) is int and 1 <= raw <= 6:
+                    selected = raw
+                elif type(raw) is str and len(raw) == 1 and raw in '123456':
+                    selected = int(raw)
+                else:
+                    raise ValueError('OBS 고급 출력 트랙 설정이 불명입니다.')
+                origin = 'advanced-profile-track-index'
+            else:
+                raise ValueError('OBS 출력 모드가 불명입니다.')
+            return ActualObsStreamAudioTrack(
+                profile, mode, selected, origin, active)
+        except ObsConnectionError:
+            raise
+        except Exception as exc:
+            raise ObsConnectionError(
+                'OBS 현재 스트림 오디오 프로필 설정 조회 실패 · 음성 보류'
+            ) from exc
 
     def read_program_audio_route(self, *, input_name: str,
                                  scene: str) -> ActualObsAudioRoute:
