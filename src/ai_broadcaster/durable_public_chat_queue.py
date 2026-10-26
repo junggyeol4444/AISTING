@@ -312,6 +312,73 @@ class DurablePublicChatQueue:
                         inserted, str(inserted_created_at))
             return inserted
 
+    def append_batch(self, chats) -> tuple[int | None, ...]:
+        """같은 소켓 프레임의 실제 채팅을 원순서대로 한 SQLite 트랜잭션에 확정.
+
+        각 입력에 대해 신규 sequence 또는 기존 서버 ID 재수신의 None을
+        반환한다. 중간에 보존 한도/DB 오류가 나면 전체 프레임을 롤백한다.
+        메모리 계수와 FIFO 시계는 SQLite COMMIT 성공 뒤에만 갱신한다.
+        내용/닉네임이 같아도 ID가 없는 채팅은 모두 별개로 기록한다.
+        """
+        if not isinstance(chats, (tuple, list)) or not 1 <= len(chats) <= 256:
+            raise ValueError("동일 채팅 프레임의 수신량은 1~256건입니다.")
+        fields = tuple(self._fields(chat) for chat in chats)
+        inserted: list[tuple[int, tuple, str]] = []
+        sequences: list[int | None] = []
+        with self._lock:
+            # 이 경로가 독립 호출되더라도 한 번의 보호 범위 안에서
+            # 기존 단독 append와 같은 20만 건의 명시적 상한을 적용한다.
+            with self._connection() as db:
+                for record in fields:
+                    platform, channel, sender, message, event_id = record
+                    if event_id is not None:
+                        known = db.execute(
+                            "SELECT 1 FROM confirmed_server_events "
+                            "WHERE platform=? AND channel=? AND event_id=?",
+                            (platform, channel, event_id)).fetchone()
+                        if known is not None:
+                            sequences.append(None)
+                            continue
+                        known = db.execute(
+                            "SELECT 1 FROM pending_public_chat "
+                            "WHERE platform=? AND channel=? AND event_id=?",
+                            (platform, channel, event_id)).fetchone()
+                        if known is not None:
+                            sequences.append(None)
+                            continue
+                    if self._pending + len(inserted) >= _MAX_RECORDS:
+                        raise RuntimeError(
+                            "미처리 채팅 영구 보존 한도 초과 · 현재 프레임 전체를 "
+                            "성공 처리하지 않고 재연결 보류합니다.")
+                    cursor = db.execute(
+                        "INSERT OR IGNORE INTO pending_public_chat "
+                        "(platform,channel,sender,message,event_id) "
+                        "VALUES(?,?,?,?,?)", record)
+                    if cursor.rowcount != 1:
+                        # 실제 서버 ID 경합은 중복으로만 처리, 본문 병합 금지.
+                        sequences.append(None)
+                        continue
+                    seq = int(cursor.lastrowid)
+                    created = db.execute(
+                        "SELECT created_at FROM pending_public_chat "
+                        "WHERE sequence=?", (seq,)).fetchone()[0]
+                    inserted.append((seq, record, str(created)))
+                    sequences.append(seq)
+            for seq, record, created_at in inserted:
+                platform, channel = record[:2]
+                self._pending += 1
+                self._pending_by_platform[platform] = (
+                    self._pending_by_platform.get(platform, 0) + 1)
+                self._recent_ingress[platform].append(time.monotonic())
+                if platform not in self._oldest_pending:
+                    self._oldest_pending[platform] = (seq, created_at)
+                scope = (platform, channel)
+                self._pending_by_channel[scope] = (
+                    self._pending_by_channel.get(scope, 0) + 1)
+                if scope not in self._oldest_pending_by_channel:
+                    self._oldest_pending_by_channel[scope] = (seq, created_at)
+        return tuple(sequences)
+
     def confirm(self, sequence: int) -> bool:
         """실제 AI/공식 전달 완료 시 서버 ID+삭제를 하나의 트랜잭션으로 확정."""
         if type(sequence) is not int or sequence < 1:
