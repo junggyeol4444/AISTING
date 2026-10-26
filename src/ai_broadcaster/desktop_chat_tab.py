@@ -104,6 +104,10 @@ class LocalChatTab(ttk.Frame):
         self._relevant_memory_enabled = tk.BooleanVar(value=False)
         self._long_term_memory_enabled = tk.BooleanVar(value=False)
         self._parallel_local_ai_enabled = tk.BooleanVar(value=False)
+        # 선택한 로컬 모델·PC의 실제 처리량에 맞춰 실행마다 수동 조정.
+        # 저장된 캐릭터/모델·기존 메모리/SQLite는 수정하지 않는다.
+        self._parallel_ai_workers = tk.StringVar(value="4")
+        self._parallel_ai_prefetch = tk.StringVar(value="32")
         self._twitch_parallel_ai: OrderedParallelLocalAI | None = None
         self._approved_live_voice_enabled = tk.BooleanVar(value=False)
         self._approved_live_voice_output: ApprovedLiveVoiceOutput | None = None
@@ -306,10 +310,22 @@ class LocalChatTab(ttk.Frame):
             command=self._refresh_memory_count,
         ).pack(anchor="w", pady=(2,1), before=model_row)
         ttk.Checkbutton(
-            self, text="로컬 Ollama 동시 선행 추론 최대 4개 · "
-                 "답변/SQLite 기억은 채팅 FIFO 순서대로 (기본 꺼짐)",
+            self, text="로컬 Ollama 선행 추론 · 답변/SQLite 기억은 채팅 FIFO "
+                 "순서대로 (기본 꺼짐)",
             variable=self._parallel_local_ai_enabled,
         ).pack(anchor="w", pady=(2,1), before=model_row)
+        parallel_row = ttk.Frame(self)
+        parallel_row.pack(fill="x", pady=(0,2), before=model_row)
+        ttk.Label(parallel_row, text="동시 로컬 AI 작업자 (1~4)").pack(side="left")
+        ttk.Entry(parallel_row, textvariable=self._parallel_ai_workers,
+                  width=5).pack(side="left", padx=(5,12))
+        ttk.Label(parallel_row, text="선행 SQLite→AI 한도 (4~512)").pack(side="left")
+        ttk.Entry(parallel_row, textvariable=self._parallel_ai_prefetch,
+                  width=6).pack(side="left", padx=(5,3))
+        ttk.Label(self,
+                  text="GPU 처리량에 따라 병렬 작업자가 많으면 실제 지연이 더 커질 "
+                       "수 있습니다. 초과 채팅은 삭제하지 않고 원본 SQLite에 대기합니다.",
+                  wraplength=625).pack(anchor="w", pady=(0,2), before=model_row)
         ttk.Checkbutton(
             self,
             text="공식 창 빠른 전송: 채팅당 8초 립싱크 실증 대기 생략 (전송 확인만 · 기본 켜짐)",
@@ -1167,10 +1183,31 @@ class LocalChatTab(ttk.Frame):
         parallel_mode = bool(
             self._parallel_local_ai_enabled.get()
             and not official and scheduled_approval is None)
+        ai_workers = 4
+        ai_prefetch = 32
+        if parallel_mode:
+            try:
+                workers_raw = self._parallel_ai_workers.get().strip()
+                prefetch_raw = self._parallel_ai_prefetch.get().strip()
+                if (not workers_raw.isascii() or not workers_raw.isdecimal()
+                        or not prefetch_raw.isascii() or not prefetch_raw.isdecimal()):
+                    raise ValueError("선행 AI 추론 설정은 숫자만 사용합니다.")
+                ai_workers = int(workers_raw)
+                ai_prefetch = int(prefetch_raw)
+                if (not 1 <= ai_workers <= 4
+                        or not 4 <= ai_prefetch <= 512
+                        or ai_prefetch < ai_workers):
+                    raise ValueError("작업자는 1~4, 선행 한도는 4~512건입니다.")
+            except (ValueError, OverflowError):
+                approval_dialog.showwarning(
+                    "로컬 AI FIFO 용량",
+                    "동시 작업자 1~4개와 선행 한도 4~512건을 올바르게 지정하세요. "
+                    "선행 한도는 작업자 수보다 작을 수 없습니다.", parent=self)
+                return
         if parallel_mode and self._local_stream_preview.get():
             approval_dialog.showwarning(
                 "병렬 AI 실시간 미리보기",
-                "4개 선행 추론 중 서로 다른 답변의 생성 조각을 섞지 않도록 "
+                "동시 선행 추론 중 서로 다른 답변의 생성 조각을 섞지 않도록 "
                 "부분 미리보기를 먼저 해제하세요.", parent=self)
             return
         live_voice_options = None
@@ -1355,7 +1392,8 @@ class LocalChatTab(ttk.Frame):
         if parallel_mode:
             try:
                 parallel_ai = OrderedParallelLocalAI(
-                    model, broadcast_facts=broadcast_facts,
+                    model, max_workers=ai_workers, max_prefetch=ai_prefetch,
+                    broadcast_facts=broadcast_facts,
                     relevant_memory=relevant_memory,
                     long_term_memory=long_term_memory)
             except Exception as exc:
@@ -1391,6 +1429,12 @@ class LocalChatTab(ttk.Frame):
         else:
             self._approved_live_voice_output = None
         self._twitch_parallel_ai = parallel_ai
+        if parallel_ai is not None:
+            self._append(
+                "[로컬 모델 처리량 설정] 현재 승인 세션의 동시 추론 "
+                + str(ai_workers) + "개 · SQLite→AI 선행 한도 "
+                + str(ai_prefetch) + "건 · 나머지는 기존 DB에 미처리 보존 "
+                "· 1~3초 달성/수백 명 처리량 실측 전")
         self._twitch_chat_spool = durable
         self._twitch_session = session
         self._platform_health_updated_at = 0.0
