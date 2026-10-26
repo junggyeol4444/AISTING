@@ -483,6 +483,24 @@ class LocalChatTab(ttk.Frame):
         finally:
             self._dialog.configure(state="disabled")
 
+    def _append_many(self, lines: list[str]) -> None:
+        """기존 Tk 기록을 같은 순서로 한 번에 표시하고 표시량만 제한.
+
+        AI/음성/SQLite 순번이나 원문을 필터링하지 않으며, 개별
+        Tk 상태 변경·스크롤·줄수 계산을 채팅 최대 16건당 1회 수행.
+        """
+        if not lines:
+            return
+        self._dialog.configure(state="normal")
+        try:
+            self._dialog.insert("end", "".join(line + "\n\n" for line in lines))
+            total_lines = int(self._dialog.index("end-1c").split(".", 1)[0])
+            if total_lines > 12000:
+                self._dialog.delete("1.0", "4001.0")
+            self._dialog.see("end")
+        finally:
+            self._dialog.configure(state="disabled")
+
     def _refresh_memory_count(self) -> None:
         try:
             if not DEFAULT_MEMORY_FILE.exists():
@@ -2745,7 +2763,8 @@ class LocalChatTab(ttk.Frame):
             + " · 네트워크 이전 누락·시청자 E2E 미검증"
         )
 
-    def _present_twitch_chat(self, payload) -> None:
+    def _present_twitch_chat(self, payload, *, lines: list[str] | None = None,
+                                 refresh_status: bool = True) -> None:
         """개별 공개 채팅 한 건의 기존 GUI/AI 계약을 보존한다.
 
         내구 SQLite의 FIFO와 독립이며, 실제 수신 메시지는 작업자가
@@ -2766,8 +2785,12 @@ class LocalChatTab(ttk.Frame):
         name = {"twitch":"트위치","chzzk":"치지직",
                 "soop":"SOOP","youtube":"유튜브"}.get(
                     getattr(payload, "platform", "twitch"), "트위치")
-        self._append("[" + name + " #" + payload.channel + "] "
-                     + payload.sender + ": " + payload.text)
+        line = ("[" + name + " #" + payload.channel + "] "
+                + payload.sender + ": " + payload.text)
+        if lines is None:
+            self._append(line)
+        else:
+            lines.append(line)
         # Every incoming message, including duplicates, is
         # queued regardless of the status of previous replies.
         if self._twitch_ai_inbox is not None:
@@ -2783,10 +2806,11 @@ class LocalChatTab(ttk.Frame):
                 if arrivals is not None:
                     arrivals.put(accepted_at)
                 self._twitch_ai_inbox.put(payload)
-        self._twitch_status.set(
-            "실제 채팅 " + str(self._twitch_received)
-            + "건 · AI 응답 " + str(self._twitch_replied)
-            + "건 · AI 오류 " + str(self._twitch_ai_failures) + "건")
+        if refresh_status:
+            self._twitch_status.set(
+                "실제 채팅 " + str(self._twitch_received)
+                + "건 · AI 응답 " + str(self._twitch_replied)
+                + "건 · AI 오류 " + str(self._twitch_ai_failures) + "건")
 
     def _poll(self) -> None:
         if self._closed:
@@ -2920,10 +2944,20 @@ class LocalChatTab(ttk.Frame):
                     elif kind == "twitch_chat":
                         self._present_twitch_chat(payload)
                     elif kind == "twitch_chat_batch":
-                        # SQLite 원본 메시지는 각기 별개의 실제 채팅.
-                        # 묶인 것은 Tk 큐의 전달 객체뿐이며 모두 표시·계수.
+                        # SQLite 원본 메시지는 각기 별개이며 전량 화면에
+                        # 표시. Tk 텍스트 삽입/상태·스크롤 갱신만 일괄 실행.
+                        display_lines: list[str] = []
                         for item in payload:
-                            self._present_twitch_chat(item)
+                            self._present_twitch_chat(
+                                item, lines=display_lines,
+                                refresh_status=False)
+                        self._append_many(display_lines)
+                        if display_lines:
+                            self._twitch_status.set(
+                                "실제 채팅 " + str(self._twitch_received)
+                                + "건 · AI 응답 " + str(self._twitch_replied)
+                                + "건 · AI 오류 " + str(self._twitch_ai_failures)
+                                + "건")
                         processed += max(0, len(payload) - 1)
                     elif kind == "twitch_ai_stream_preview":
                         preview, chars, local_seconds = payload
