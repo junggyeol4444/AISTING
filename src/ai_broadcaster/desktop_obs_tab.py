@@ -15,6 +15,8 @@ class ObsStatusTab(ttk.Frame):
         super().__init__(master)
         self._chat_tab = chat_tab
         self._owned_chat_session = None
+        # 방송 스레드에서 갱신하는 문자열; Tk 위젯은 GUI 스레드에서만 변경.
+        self._approved_chat_health_detail = "채팅 연결 미시작 · 실제 서버 입장 미확인"
         self._scheduled_chat_token = None
         self._port=tk.StringVar(value="4455")
         self._password=tk.StringVar()
@@ -682,21 +684,18 @@ class ObsStatusTab(ttk.Frame):
             self._approved_chat_health_detail = "선택 채팅 세션 중지됨"
             return False
         try:
-            observed = session.try_reconnect_snapshot()
-            if observed is None:
-                # 상태 콜백과 충돌했을 땐 다음 예약 점검에서 재확인,
-                # 확인 실패를 임의의 정상 상태로 간주하지 않는다.
-                self._approved_chat_health_detail = "현재 채팅 입장 관측 잠금 중"
-                return False
+            # 초당 예약 조회에서 무거운 전체 채팅 통계 정렬 금지.
+            # 실제 리더 JOIN/API ready 상태만 해당 세션의 RLock으로 읽음.
+            observed = session.live_room_readiness()
             selected = tuple(session._channels)
             if not selected or set(observed) != set(selected):
                 self._approved_chat_health_detail = "선택 채팅 플랫폼 관측 누락"
                 return False
             missing = tuple(
                 code for code in selected
-                if observed[code].get("채팅방입장") is not True
-                or observed[code].get("수신기종료") is True
-                or observed[code].get("현재공백") is True)
+                if observed[code][0] is not True
+                or observed[code][2] is True
+                or observed[code][1] is True)
             if missing:
                 self._approved_chat_health_detail = (
                     "실제 채팅방 입장 미확인: " + ", ".join(missing)
@@ -1265,6 +1264,7 @@ class ObsStatusTab(ttk.Frame):
                 " / 종료 " + snap.end_notice +
                 " · 채팅/AI " + snap.live_chat +
                 " · 채팅 복구 " + snap.chat_recovery +
+                " / 실제 채팅방 입장 " + self._approved_chat_health_detail +
                 " · OBS 연결 " + snap.obs_recovery +
                 " · Live2D·한국어 음성 " + snap.media_health +
                 " · 장시간 방송 관측 " + snap.runtime_checkpoint +
