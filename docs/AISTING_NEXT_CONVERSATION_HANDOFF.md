@@ -5045,3 +5045,13 @@ F) 원본 100단계 roadmap.json status는 completed=9, pending=91이며 **코�
 - **테스트 NOT_RUN / 전체 통합 회귀 NOT_RUN / CI 미조회·미확인 / Windows 10·11 EXE GUI NOT_RUN / 실제 OBS·공식 Cubism·권리 GPT-SoVITS·4플랫폼 실계정·수백 명·24시간·시청자 1~3초 NOT_RUN**. 전체 개발 미완료.
 - 과거 실모델 CI `39720448468`: 500/500 3초 초과, FIFO p95 2973.875초 / 전체 p95 2979.984초 실패. Windows CI `39722213656` 취소 그대로 유지.
 - 다음 시간: **최신 main HEAD를 새로 조회**하고 본 207절/이후 추가분과 원본을 보존하면서 4플랫폼 채팅 SQLite 전량 보존·서버별 재연결, 로컬 AI 1~3초 처리량, 실제 동일 WAV/Cubism/OBS 장시간 동기화·24시간 복구, 자율 게임·콘텐츠 등 **남은 핵심 기능 소스 개발부터** 이어간다. 개발 전체 완료 후에만 통합 검증 → 오류 일괄 수정 → 재검증.
+
+## 208절 — 2026-10-26, 기존 main에 4플랫폼 채팅 프레임 SQLite 원자 일괄 수신 개발
+- 시작 확인 `main` HEAD `8c57aaaa15f0c9074d8144d226043ba0d4fd4162`; 이 기준 SHA를 나중 최신으로 단정하지 않음. 실제 제품 소스 개발·GitHub 정상 비강제 반영이 문서 작업보다 먼저 수행됨.
+- 기존 원본 기획·100단계·전체 인수인계 전문·캐릭터·설정·96토큰/`keep_alive 10m`·사용자 SQLite 보존. 이 인수인계는 원래 대용량 Git blob 원문 끝에 append-only로 본 208절을 추가.
+- 이번 제품 코드 실제 7커밋: `ccf35bd5f0ab9df670d021fd15fab396cfe9ad3a`(원자 `DurablePublicChatQueue.append_batch`); `bacbdb93c566a8ef2bd51dd2126f7a4fa2b6e85f`(치지직·SOOP 프레임); `255b5a65799b4bc038a04707b81588540277dc72`(Twitch IRC JOIN 뒤 프레임); `1bd84617eb01f89daa160da0fdeea821ea18dacd`(실제 수신 모드·재연결/계측); `c653f2626e24dfb173dfdeb11d1d5cdf4da76015`(네이티브 GUI 실제 소켓→원본 SQLite 배치 저장→AI FIFO 순서 복구); `380177d6ce5a0814fe9e4ff8f52187ed32a36c5f` 및 `65efaa9814675e30d3d9b42b4c6228a51ef9940f`(큰 메모리 보류 큐를 전량 복사하지 않고 최대 256건씩 추출).
+- 같은 수신 프레임 1~256건이 통째로 SQLite COMMIT되거나 전량 롤백된다. 성공 후에만 큐 상태 갱신; 서버의 동일 이벤트 ID 중복만 건너뛰며 별도 ID/ID 없는 동일 문구는 버리지 않는다. 기존 4플랫폼 전역 FIFO SQLite 작업자가 순번을 유지. YouTube의 기존 페이지 SQLite 커서는 이번에 변경하지 않음.
+- 부록: `docs/hourly-handoff-appendices/AISTING_20261026_208_ATOMIC_CHAT_FRAME_SQLITE_BATCH.md`. 전체 개발 여전히 미완료, SQLite 미처리 20만 건 상한은 그대로. 서버 전송 누락/네트워크 공백 사건을 재생하는 기능이나 수백 명·24시간·1~3초 완성 보장 금지.
+- **테스트 NOT_RUN / 전체 통합 회귀 NOT_RUN / CI 미조회·미확인 / Windows 10·11 EXE GUI NOT_RUN / 실제 권리 GPT-SoVITS·공식 Live2D Cubism·OBS·4플랫폼 실계정·수백 명·24시간·최종 시청자 응답 1~3초 NOT_RUN**.
+- 과거 실모델 CI `39720448468`: 500/500 모두 3초 초과, FIFO p95 2973.875초/전체 p95 2979.984초 실패. Windows CI `39722213656` 취소. 원본 실패 이력 유지.
+- 다음 실행마다 실제 최신 `main` HEAD와 208절 이후 추가분 확인 후 **남은 핵심 제품 소스 개발**을 계속. 원본 목표인 4플랫폼 전량 SQLite·재연결, 로컬 AI 1~3초 병목·FIFO, 동일 한국어 WAV→공식 Cubism 입→OBS 인과·24시간 자율방송/게임/콘텐츠부터 개발. 전부 개발 후에만 Windows/실방송 통합 검증→일괄 수정→재검증. 새 대화로 이동 요구 금지, 원래 AISTING 대화에 보고 우선, 예약/다른 프로젝트/브랜치/Drive 조작 금지, 사용자 승인 없는 OAuth·게시·송출·음성 학습 금지.
