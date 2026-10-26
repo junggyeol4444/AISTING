@@ -5025,3 +5025,15 @@ F) 원본 100단계 roadmap.json status는 completed=9, pending=91이며 **코�
 - 부록 `docs/hourly-handoff-appendices/AISTING_20261026_210_CONTINUOUS_CUBISM_TTS_MEDIA_WATCHDOG.md` 신규 작성 커밋 `47e4bf4a07bf5270138f0d4142fbc92154139112`. 전체 제품 개발 아직 **미완료**. 기존 캐릭터 이름/성격/말투, 사용자 SQLite/설정, 100단계 기획, `num_predict=96`, `keep_alive=10m`, 전체 구 절 원문 보존. 새 브랜치/강제 push/다른 저장소·Drive·다른 예약·무승인 실제 방송/공지·OAuth·모델 학습 없음.
 - **테스트 NOT_RUN / 전체 통합 회귀 NOT_RUN / CI 미조회·미확인 / Windows 10·11 EXE GUI NOT_RUN / 실제 GPT-SoVITS 동일 한국어 WAV→공식 Cubism 입→OBS·4플랫폼 수백 명·24시간·시청자 최종 1~3초 NOT_RUN.** 과거 실모델 CI `39720448468`의 500/500건 3초 초과, FIFO p95 2973.875초/전체 p95 2979.984초 실패 및 Windows CI `39722213656` 취소 원문 보존.
 - 다음 회차는 **main 최신 HEAD 재조회 → 210절 이후 남은 필수 제품 소스 먼저 개발 → 모든 기능 개발 완료 이후 Windows/실계정 OBS·공식 Live2D·권리 GPT-SoVITS·4플랫폼 통합 검증 → 발견 오류 일괄 수정 → 재검증**. 중점: 동일 WAV 장시간 발화 인과와 24시간 안전 복구, 로컬 AI FIFO·선행 추론 1~3초, 수백 명 채팅 전체 내구 저장/재연결, 자율 게임/콘텐츠. 기존 AISTING 대화 보고를 우선하고 새 예약 생성/비활성화 금지.
+
+## 211절 — 2026-10-26, 로컬 Ollama 10분 선행 적재와 4플랫폼 FIFO 선행 추론 적체 제품 개발
+- 실행 시작 실제 `main` HEAD `e562e46f8ccbc3bcffb6adf02f0fd1f755ccbd45` 확인. 원본 210절/기획·로드맵·기존 모델/채팅 코드에서 **실질 제품 소스 5개 커밋 먼저 완료** 후 이번 전체 인수인계 부록을 기존 Git blob 원문 끝에 append-only로 추가.
+- `6c40b73d3932cd52bfefc416347127d4581d5c93`: 신규 `src/ai_broadcaster/approved_local_model_residency.py`; 선택·승인한 기존 Ollama 모델을 오직 `127.0.0.1/api/generate`의 빈 프롬프트/`keep_alive=10m`로 미리 적재. 계정·원격 서버·모델 변경·다운로드·발화/방송 없음. 적재 확인은 생성·시청자 1~3초 성공의 증거가 아님.
+- `6854f31e498f410c84e0bef38a3f8230ec67c8b4`: 기존 `src/ai_broadcaster/desktop_chat_tab.py` Windows GUI에 모델 선행 적재 버튼, 사용자 개별 승인, UI 차단 없는 로컬 스레드, 완료/실패 표시. 기본 자동 실행/실방송 실행 없음.
+- `e4571f3b697af472b468dfdf219c8bec11c025fc`: `src/ai_broadcaster/local_llm.py`의 완성형·스트리밍 Ollama 실생성 요청에 사용자 기존 `num_predict=96`·`keep_alive=10m`를 명시, 동일 모델/페르소나/기억 유지.
+- `69cc1b6d6ab0af778a79c3a11030d3feaad42f4c`: `src/ai_broadcaster/ordered_parallel_local_ai.py`에 실제 추론 진행·완료 답변의 FIFO 순번대기와 선두 처리시간, head-of-line 정체를 드러내는 한정 스냅샷 추가. 원래 최대 4작업자/최대 512 선행 큐, SQLite/FIFO 처리 및 기억 저장 순서 변경 없음.
+- `8b5150c46cf55bbd33ed3876954e56ce02d59db2`: 기존 Windows `desktop_chat_tab.py` 플랫폼 상태에 로컬 모델 작업 중·대기·완료 후 FIFO 대기와 선두 완료차단 경고 표시. 앞선 메시지 삭제, 결과 재정렬, 조기 발화 금지.
+- 상세 부록 `docs/hourly-handoff-appendices/AISTING_20261026_211_LOCAL_OLLAMA_WARMUP_AND_FIFO_PRESSURE.md` 신규 실제 커밋 `efaed2b2dfc4661c3e0105e8d2990ee117245c1f`. 기존 캐릭터 성격·말투, 원본 채팅/기억 SQLite·사용자 설정, 100단계 계획, 모델 `num_predict=96`, `keep_alive=10m` 보존. 신규 브랜치/삭제·force push·다른 저장소/Drive/예약 조작 없음. 사용자 승인 없는 실제 OAuth·방송/공지·채팅·음성 학습 없음.
+- **이번 211절 제품 소스 및 main 커밋 완료 / 전체 AISTING 제품 개발 미완료 / 테스트 NOT_RUN / 전체 회귀 NOT_RUN / CI 미조회·미확인 / Windows 10·11 EXE·GUI NOT_RUN / 실제 GPT-SoVITS WAV→공식 Cubism 입→OBS 동일 발화·24시간·수백 명 4플랫폼·시청자 최종 1~3초 NOT_RUN**.
+- 과거 실모델 CI `39720448468`의 500/500 모두 3초 초과, FIFO p95 2973.875초·전체 p95 2979.984초 실패 및 Windows CI `39722213656` 취소 기록은 삭제·성공 표시하지 않는다.
+- 다음 실행: 최신 `main` HEAD 및 211절/이후 부록과 미개발 원래 기획을 새로 확인한 뒤 4플랫폼 채팅 SQLite 장기 무손실 수신·재연결, 실제 모델 선행 추론/FIFO 처리량 1~3초 실효, 실제 한국어 권리 WAV→공식 Cubism 입→OBS 장시간 인과, 24시간 방송/장애 복구, 승인형 자율 게임/콘텐츠의 **남은 핵심 기능 소스부터 개발**. 전체 개발 후에만 Windows/EXE·실방송 통합 검증→일괄 오류 수정→재검증. 기존 AISTING 대화 결과 보고 우선, 새 대화/중복 예약/다른 프로젝트 조작 금지.
