@@ -69,6 +69,9 @@ class DurablePlatformReconnectJournal:
             db.execute(
                 "CREATE INDEX IF NOT EXISTS idx_aisting_reconnect_channel "
                 "ON platform_reconnect_events(platform,channel,id)")
+            db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_aisting_reconnect_utc "
+                "ON platform_reconnect_events(platform,channel,recorded_at)")
 
     @contextmanager
     def _connect(self):
@@ -189,5 +192,53 @@ class DurablePlatformReconnectJournal:
                     "완료공백합계초": round(float(counts[2]), 3),
                     "완료공백최장초": (
                         None if counts[3] is None else round(float(counts[3]), 3)),
+                }
+        return result
+
+    def last_24h_reconnect_health_for(
+        self, channels: dict[str, str],
+    ) -> dict[str, dict[str, object]]:
+        """현재 UTC 기준 24시간에 실제 기록된 수신/재연결 사건만 집계.
+
+        프로세스 재시작으로 세션이 여러 개여도 선택한 동일 채널에
+        한정하여 SQLite 기록을 보존한 채 조회한다. 사건이 없다는 것은
+        정상 연결 또는 서버 채팅 무누락을 뜻하지 않는다. 관측된 공백
+        합계는 재연결이 *완료*된 구간만 포함한다.
+        """
+        if (type(channels) is not dict or not channels or len(channels) > 4
+                or any(self._scope(code, channel) != (code, channel)
+                       for code, channel in channels.items())):
+            raise ValueError("24시간 수신 상태 조회 범위가 올바르지 않습니다.")
+        result: dict[str, dict[str, object]] = {}
+        with self._lock, self._connect() as db:
+            for code, channel in channels.items():
+                row = db.execute(
+                    "SELECT COUNT(*),COUNT(DISTINCT session_id),"
+                    "COALESCE(SUM(CASE WHEN state='연결확인' OR "
+                    "state='재연결완료' THEN 1 ELSE 0 END),0),"
+                    "COALESCE(SUM(CASE WHEN state='재연결시도' "
+                    "THEN 1 ELSE 0 END),0),"
+                    "COALESCE(SUM(CASE WHEN state='재연결완료' "
+                    "THEN 1 ELSE 0 END),0),"
+                    "COALESCE(SUM(CASE WHEN state='재연결완료' "
+                    "THEN gap_seconds ELSE 0 END),0.0),"
+                    "MAX(CASE WHEN state='재연결완료' "
+                    "THEN gap_seconds ELSE NULL END),"
+                    "MIN(recorded_at),MAX(recorded_at) "
+                    "FROM platform_reconnect_events "
+                    "WHERE platform=? AND channel=? "
+                    "AND recorded_at>=datetime('now','-24 hours')",
+                    (code, channel)).fetchone()
+                result[code] = {
+                    "기록사건": int(row[0]),
+                    "기록세션": int(row[1]),
+                    "입장확인사건": int(row[2]),
+                    "재연결시도": int(row[3]),
+                    "재연결완료": int(row[4]),
+                    "완료공백합계초": round(float(row[5]), 3),
+                    "완료공백최장초": (
+                        None if row[6] is None else round(float(row[6]), 3)),
+                    "최초기록UTC": None if row[7] is None else str(row[7]),
+                    "최종기록UTC": None if row[8] is None else str(row[8]),
                 }
         return result
