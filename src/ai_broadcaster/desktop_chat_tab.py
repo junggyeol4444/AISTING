@@ -1411,6 +1411,7 @@ class LocalChatTab(ttk.Frame):
             durable = DurablePublicChatQueue()
             durable.acquire_exclusive_consumer()
             recovery_snapshot = durable.recovery_snapshot(session._channels)
+            prior_durable_flow = durable.durable_flow_snapshot(session._channels)
             prior_ai_incidents = durable.recent_processing_incidents(limit=25)
             prior_reconnect_events = reconnect_journal.recent_for(
                 session._channels, limit=12)
@@ -1427,6 +1428,18 @@ class LocalChatTab(ttk.Frame):
                 "원본은 변경하지 않았습니다 (" + type(exc).__name__ + ")",
                 parent=self)
             return
+        for platform, summary in prior_durable_flow.items():
+            self._append(
+                "[채팅 영구 접수·확정 원장] " + platform
+                + " · 원장 도입 당시 보류 " + str(summary["도입시보류"])
+                + "건 / 도입 후 실제 SQLite 접수 " + str(summary["도입후접수"])
+                + "건 / 완료확정 " + str(summary["도입후확정"])
+                + "건 / 현재 보류 " + str(summary["실제미처리"])
+                + "건 · " + ("원장·실제 보류 일치"
+                           if summary["집계일치"] else "경고: 원장과 보류 수 불일치")
+                + " · 시작 UTC " + str(summary["집계시작UTC"])
+                + " · 이 원장 도입 전 이미 완료된 메시지는 미포함"
+                " · 서버 미전송 사건/실방송 성공 증명 아님")
         if prior_ai_incidents:
             self._append(
                 "[과거 실제 AI 처리 실패] 마지막 25건 중 "
@@ -2452,6 +2465,12 @@ class LocalChatTab(ttk.Frame):
             durable.pending_selected_channels_snapshot(session._channels)
             if durable is not None
             and isinstance(session, MultiPlatformReadOnlySession) else {})
+        # 동일 SQLite 트랜잭션으로 확정한 누적 접수·완료 건수.
+        # 매 5초 간단한 채널별 PK 조회만 수행한다. 원문/닉네임 미조회.
+        persistent_flow = (
+            durable.durable_flow_snapshot(session._channels)
+            if durable is not None
+            and isinstance(session, MultiPlatformReadOnlySession) else {})
         # SQLite 원본·채팅 본문을 읽지 않는 이번 실행의 처리율과
         # 미처리 최장 시간을 표시한다. 3초 목표 충족을 추정으로 대체하지 않는다.
         operating = (durable.pending_operating_snapshot()
@@ -2464,6 +2483,16 @@ class LocalChatTab(ttk.Frame):
             wait_stats = wait_snapshots.get(code, {
                 "진행중": 0, "진행최장초": 0.0, "중단": 0, "중단누적초": 0.0})
             flow = operating_platforms.get(code, {})
+            durable_total = persistent_flow.get(code, {})
+            persist_label = (
+                " / 원장 도입 후 SQLite 접수 "
+                + str(durable_total["도입후접수"]) + "건 / 완료확정 "
+                + str(durable_total["도입후확정"]) + "건 / 기존 보류 "
+                + str(durable_total["도입시보류"]) + "건"
+                + (" / 영구 원장·미처리 일치"
+                   if durable_total["집계일치"]
+                   else " / 경고: 영구 원장·미처리 수 불일치")
+                if durable_total else "")
             persisted_batch = durable_batch_snapshots.get(code, {})
             selected = selected_disk.get(code)
             oldest_age = (selected.get("최장미처리초")
@@ -2582,7 +2611,8 @@ class LocalChatTab(ttk.Frame):
                 f" / 완료율 {flow.get('완료초당', 0.0):.2f}건/초"
                 f" / 순증 {flow.get('순증초당', 0.0):+.2f}건/초"
                 f" / {drain_label}"
-                f" / 진행 최장 {wait_stats['진행최장초']:.2f}초"
+                + persist_label
+                + f" / 진행 최장 {wait_stats['진행최장초']:.2f}초"
                 f" / 중단 대기 {wait_stats['중단']}건"
                 f" / 중단 누적 {wait_stats['중단누적초']:.2f}초"
                 + ai_status
