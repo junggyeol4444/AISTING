@@ -19,6 +19,7 @@ from .offline_settings import data_dir
 _APP_ID = 0x41474731  # AGG1, 다른 SQLite 파일과 혼용 방지
 _RUNS = "approved_game_goal_runs"
 _EVENTS = "approved_game_goal_events"
+_CONFIRMATIONS = "approved_game_goal_confirmations"
 _STATES = frozenset((
     "실행중", "운영자중지", "횟수종료", "AI종료", "실행실패", "목표후보",
 ))
@@ -47,6 +48,14 @@ class GameGoalEvent:
     created_at: str
 
 
+@dataclass(frozen=True)
+class GameGoalConfirmation:
+    """AI 추정과 분리된 운영자의 명시적 결과 확인 기록."""
+    run_id: str
+    operator_confirmed: bool
+    recorded_at: str
+
+
 class ApprovedGameGoalJournal:
     """프로그램이 만든 별도 로컬 SQLite에서만 승인된 목표 진행 기록."""
 
@@ -66,7 +75,7 @@ class ApprovedGameGoalJournal:
                 "AND name NOT LIKE 'sqlite_%'").fetchall()}
             if existed and not tables:
                 raise ValueError("소유권이 불명확한 기존 SQLite는 변경하지 않습니다.")
-            if tables and (tables != {_RUNS, _EVENTS} or app_id != _APP_ID):
+            if tables and (tables not in ({_RUNS, _EVENTS}, {_RUNS, _EVENTS, _CONFIRMATIONS}) or app_id != _APP_ID):
                 raise ValueError("다른 프로그램의 SQLite는 변경하지 않습니다.")
             if app_id not in (0, _APP_ID):
                 raise ValueError("게임 진행 장부 소유권이 일치하지 않습니다.")
@@ -85,6 +94,17 @@ class ApprovedGameGoalJournal:
                 "run_id TEXT NOT NULL, step_no INTEGER NOT NULL,"
                 "phase TEXT NOT NULL, detail TEXT NOT NULL,"
                 "created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")
+            # 이전 2개 테이블은 변경하지 않고, 운영자 판정만 별도 보관.
+            db.execute(
+                "CREATE TABLE IF NOT EXISTS approved_game_goal_confirmations ("
+                "run_id TEXT PRIMARY KEY NOT NULL,"
+                "operator_confirmed INTEGER NOT NULL "
+                "CHECK(operator_confirmed IN (0,1)),"
+                "recorded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")
+            confirmed_columns = tuple(row[1] for row in db.execute(
+                "PRAGMA table_info(approved_game_goal_confirmations)"))
+            if confirmed_columns != ("run_id", "operator_confirmed", "recorded_at"):
+                raise ValueError("기존 게임 완료 확인 장부 스키마가 일치하지 않습니다.")
             run_columns = tuple(row[1] for row in db.execute(
                 "PRAGMA table_info(approved_game_goal_runs)"))
             event_columns = tuple(row[1] for row in db.execute(
@@ -226,3 +246,55 @@ class ApprovedGameGoalJournal:
                 "WHERE run_id=? AND state='실행중'", (state, run_id))
             if row.rowcount != 1:
                 raise RuntimeError("실행 중인 게임 기록이 없어 종료할 수 없습니다.")
+
+    def confirmation_for(self, run_id: str) -> GameGoalConfirmation | None:
+        """게임 실행 기록과 분리된 운영자 확인. 화면 성공의 객관적 증명 아님."""
+        if type(run_id) is not str or len(run_id) != 36:
+            raise ValueError("게임 실행 확인 ID가 올바르지 않습니다.")
+        with self._db() as db:
+            row = db.execute(
+                "SELECT run_id,operator_confirmed,recorded_at "
+                "FROM approved_game_goal_confirmations WHERE run_id=?",
+                (run_id,)).fetchone()
+        return (GameGoalConfirmation(str(row[0]), bool(row[1]), str(row[2]))
+                if row else None)
+
+    def confirm_candidate(
+        self, run_id: str, *, operator_confirmed: bool,
+        operator_approved: bool = False,
+    ) -> GameGoalConfirmation:
+        """운영자가 종료된 AI 후보를 직접 검토한 뒤에만 판정을 1회 보존.
+
+        성공/실패를 AI가 자동 확정하지 않으며 원본 run/event는 불변.
+        확인은 별도 게임 명령·OBS 조작·방송/공지 전송을 수행하지 않는다.
+        """
+        if operator_approved is not True:
+            raise PermissionError("게임 목표 완료 여부는 운영자가 별도 확인해야 합니다.")
+        if type(run_id) is not str or len(run_id) != 36:
+            raise ValueError("게임 실행 확인 ID가 올바르지 않습니다.")
+        if type(operator_confirmed) is not bool:
+            raise ValueError("운영자 확인 결과는 참/거짓으로 명시해야 합니다.")
+        with self._db(write=True) as db:
+            state = db.execute(
+                "SELECT state FROM approved_game_goal_runs WHERE run_id=?",
+                (run_id,)).fetchone()
+            if state != ("목표후보",):
+                raise RuntimeError("종료된 AI 목표 달성후보 기록만 확인할 수 있습니다.")
+            if db.execute(
+                "SELECT 1 FROM approved_game_goal_confirmations WHERE run_id=?",
+                (run_id,)).fetchone() is not None:
+                raise RuntimeError("이미 운영자 확인이 기록되었습니다. 덮어쓰지 않습니다.")
+            if db.execute(
+                "SELECT 1 FROM approved_game_goal_events "
+                "WHERE run_id=? AND phase='목표판정' AND detail LIKE ? LIMIT 1",
+                (run_id, '%달성후보%')).fetchone() is None:
+                raise RuntimeError("해당 실행에 AI 목표 달성후보 판정 근거가 없습니다.")
+            db.execute(
+                "INSERT INTO approved_game_goal_confirmations "
+                "(run_id,operator_confirmed) VALUES (?,?)",
+                (run_id, int(operator_confirmed)))
+            row = db.execute(
+                "SELECT run_id,operator_confirmed,recorded_at "
+                "FROM approved_game_goal_confirmations WHERE run_id=?",
+                (run_id,)).fetchone()
+        return GameGoalConfirmation(str(row[0]), bool(row[1]), str(row[2]))
