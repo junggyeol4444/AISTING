@@ -7,6 +7,7 @@ This is NOT a CHZZK/YouTube connector or evidence of audience delivery.
 from __future__ import annotations
 
 import math
+import itertools
 import re
 import secrets
 import threading
@@ -114,7 +115,7 @@ class TwitchReadOnlySession:
         accepted = 0
         while self._pending_chats and not self._stop.is_set():
             if getattr(self, "_batch_ingress", False):
-                batch = tuple(list(self._pending_chats)[:256])
+                batch = tuple(itertools.islice(self._pending_chats, 256))
                 if self.emit("chat_batch", batch) is False:
                     raise TwitchReadError(
                         "트위치 채팅 프레임 SQLite 일괄 수용 실패 · 메시지 보존")
