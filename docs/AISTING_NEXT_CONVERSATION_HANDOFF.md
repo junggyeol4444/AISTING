@@ -5034,3 +5034,14 @@ F) 원본 100단계 roadmap.json status는 completed=9, pending=91이며 **코�
 - **테스트 NOT_RUN / 통합 회귀 NOT_RUN / CI 미조회·미확인 / Windows 10·11 네이티브 EXE·GUI NOT_RUN / 실제 GPT-SoVITS·공식 Live2D·OBS·4플랫폼 실계정·24시간·수백 명·시청자 1~3초 NOT_RUN**. 전체 개발 미완료.
 - 이전 실모델 CI `39720448468` 500/500 3초 초과·FIFO p95 2973.875초·전체 p95 2979.984초 실패, Windows CI `39722213656` 취소 그대로 유지.
 - 다음 매시간 실행: 최신 `main` HEAD 다시 조회, 기존 원본·전체 인수인계·206절 부록 확인, 4플랫폼 SQLite 내구 채팅/재연결, 로컬 AI 추론 병목, 한국어 WAV·Cubism·OBS 장시간 동기화/24시간 복구, 자율 게임·콘텐츠 등 **남은 원래 핵심 제품 개발부터** 계속. 전체 기능 개발 완료 후에만 전체 Windows/실계정/OBS/Live2D 통합 검증 → 오류 일괄 수정 → 전체 재검증. 기존 캐릭터·모델·설정·96토큰·keep_alive 10m·사용자 SQLite/기획·인수인계 원문 절대 훼손 금지.
+
+
+## 207절 (2026-10-26 09시대) — 기존 AISTING 대화·main 누적 인계
+- 기존 매시간 예약이 연결된 **바로 이 AISTING 대화에서 계속 개발·보고** 우선. 새 대화로 이동하라고 요구하지 않음. 플랫폼이 같은 대화 게시를 기술적으로 보장한다고 속이지 않음. 예약 중복 생성/임의 해제, 다른 프로젝트·예약·Drive·브랜치 조작 금지.
+- 시작 main HEAD `96c5a96d33628a85f236ff3692f04cfb542b0948`. 기존 원본 기획·로드맵·전체 인수인계 원문(blob)·일부 과거 부록 및 관련 제품 소스 조회. 읽지 않은 모든 파일을 읽었다고 주장하지 않음.
+- **실제 소스 개발 3커밋을 기존 main에 먼저 정상 반영**: `fc56b608aa4a080a29dc160fec183a817699fca8` (신규 `platform_reconnect_journal.py` SQLite 영구 재연결 상태 장부), `4916adc115bfe623ee080926baaf2458a126d278` (기존 `multi_platform_session.py`의 실제 수신/연결/재연결 시도·공백·중지 기록), `accd665c68432db0d293e1d213fb92752c542553` (기존 `desktop_chat_tab.py` Windows GUI에서 승인된 채널별 과거 사건 조회·연결). 신규 Python 1개, 기존 2개 수정.
+- 장부는 채팅 본문·닉네임·서버 이벤트 ID·OAuth/API 키·URL 미저장, 원본 채팅 SQLite·기억·설정·캐릭터·말투·96토큰·keep_alive 10m 보존. 관측된 상태 전환은 서버 무누락·24시간 방송 성공 증명이 아니다.
+- 상세 원문 부록: `docs/hourly-handoff-appendices/AISTING_20261026_207_FOUR_PLATFORM_RECONNECT_SQLITE_DEVELOPMENT.md`.
+- **테스트 NOT_RUN / 전체 통합 회귀 NOT_RUN / CI 미조회·미확인 / Windows 10·11 EXE GUI NOT_RUN / 실제 OBS·공식 Cubism·권리 GPT-SoVITS·4플랫폼 실계정·수백 명·24시간·시청자 1~3초 NOT_RUN**. 전체 개발 미완료.
+- 과거 실모델 CI `39720448468`: 500/500 3초 초과, FIFO p95 2973.875초 / 전체 p95 2979.984초 실패. Windows CI `39722213656` 취소 그대로 유지.
+- 다음 시간: **최신 main HEAD를 새로 조회**하고 본 207절/이후 추가분과 원본을 보존하면서 4플랫폼 채팅 SQLite 전량 보존·서버별 재연결, 로컬 AI 1~3초 처리량, 실제 동일 WAV/Cubism/OBS 장시간 동기화·24시간 복구, 자율 게임·콘텐츠 등 **남은 핵심 기능 소스 개발부터** 이어간다. 개발 전체 완료 후에만 통합 검증 → 오류 일괄 수정 → 재검증.
