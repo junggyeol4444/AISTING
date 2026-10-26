@@ -4996,3 +4996,12 @@ F) 원본 100단계 roadmap.json status는 completed=9, pending=91이며 **코�
 - **테스트 NOT_RUN / 전체 통합 회귀 NOT_RUN / CI 미조회·미확인 / Windows 10·11 네이티브 EXE GUI NOT_RUN / 실제 권리 GPT-SoVITS·공식 Cubism·OBS·4플랫폼 실계정·수백 명·24시간·최종 시청자 1~3초 NOT_RUN.** 전체 개발 미완료, 서버 측 놓친 채팅의 무누락·복원 및 1~3초 달성 미실증.
 - 기존 실모델 CI `39720448468` 500/500 모두 3초 초과·FIFO p95 2973.875초·전체 p95 2979.984초 실패 및 Windows CI `39722213656` 취소 기록 그대로 유지.
 - 다음 실행: 최신 `main` HEAD와 본 207절 확인 후, 기존 원본 소스·인수인계 원문 append-only 보존. **4플랫폼 채팅 전량 내구/서버별 재연결 커서·실제 AI 1~3초 처리량·동일 WAV→공식 Cubism 입→OBS 장시간 인과·24시간 복구·자율 게임/콘텐츠** 등 원래 미완 핵심 제품 개발부터 계속. 모든 개발 완료 후 전체 Windows/실방송 검증 → 오류 일괄 수정 → 전체 재검증.
+
+## 208절 — 2026-10-26, 4플랫폼 채팅 프레임 SQLite 원자적 배치 수신 실제 제품 개발
+- 작업 시작 시 GitHub 기존 `main` HEAD `8c57aaaa15f0c9074d8144d226043ba0d4fd4162` 확인. 이후 다른 회차의 HEAD로 단정하지 않음. 이번 절 실제 제품 코드를 먼저 작성·기존 main에 비강제 반영함.
+- 원본 100단계/기획/캐릭터·말투/설정/기존 사용자 SQLite/96토큰/`keep_alive=10m` 그대로 보존. 기존 1~207절 인수인계 전체는 원래 Git blob을 읽어 내용 삭제 없이 끝에 본 절만 추가.
+- 실제 제품 소스 커밋 7개: `ccf35bd5f0ab9df670d021fd15fab396cfe9ad3a`(`durable_public_chat_queue.py` 배치 SQLite 원자 접수); `bacbdb93c566a8ef2bd51dd2126f7a4fa2b6e85f`(`multiplatform_readonly.py` 치지직/SOOP 수신 프레임); `255b5a65799b4bc038a04707b81588540277dc72`(`twitch_readonly.py` Twitch IRC 프레임); `1bd84617eb01f89daa160da0fdeea821ea18dacd`(`multi_platform_session.py` 플랫폼별 콜백/재연결 배치 등록); `c653f2626e24dfb173dfdeb11d1d5cdf4da76015`(`desktop_chat_tab.py` 원본 SQLite 일괄 영구 확정 후 AI FIFO 인계); `380177d6ce5a0814fe9e4ff8f52187ed32a36c5f`·`65efaa9814675e30d3d9b42b4c6228a51ef9940f`(대기 프레임 전체 목록 복사 없이 256건만 추출).
+- 원본 SQLite 데이터 삭제 없이 같은 프레임 1~256건 단일 트랜잭션·실패 전체 롤백. 실제 서버 ID가 같은 재수신만 중복 차단, 다른 채팅은 전부 개별 보존. 전역 sequence는 기존 SQLite 복구 작업자가 FIFO 처리. 기존 YouTube 페이지 커서/수신 경로 유지.
+- 별도 부록 `docs/hourly-handoff-appendices/AISTING_20261026_208_ATOMIC_CHAT_FRAME_SQLITE_BATCH.md` (`a4ca539f055c7a28acfe1a22c676708d7e2af394`). 20만 건 SQLite 보호한도와 네트워크에서 실제 수신하지 못한 채팅의 복구 한계는 여전함. 전체 제품 개발 미완료·대량 실사용 성능 미실증.
+- **테스트 NOT_RUN / 통합 회귀 NOT_RUN / CI 미조회·미확인 / Windows 10·11 EXE/GUI NOT_RUN / 실제 GPT-SoVITS/공식 Live2D/OBS/4플랫폼 실계정·수백 명·24시간·시청자 최종 1~3초 NOT_RUN**. 과거 실모델 CI `39720448468` 500/500건 3초 초과, FIFO p95 2973.875초·전체 p95 2979.984초 실패, Windows CI `39722213656` 취소 기록 불변.
+- 다음 회차 실제 최신 `main` 확인 후 208절 이후의 남은 핵심 소스 개발을 계속. 4플랫폼 채팅 대규모 내구/재연결, AI FIFO/선행 추론 1~3초 실효 개선, 한국어 WAV→공식 Cubism 입→OBS 장시간 인과·24시간 복구, 자율 게임/콘텐츠. 전체 개발 완료 후에만 Windows/실방송 통합 검증→일괄 오류 수정→전체 재검증. 새 브랜치/예약/다른 프로젝트/Drive/승인 없는 방송·공지·OAuth·모델 학습 금지. 기존 AISTING 대화 우선.
