@@ -884,6 +884,34 @@ class LocalChatTab(ttk.Frame):
                         f"({seconds:.2f}초) · {state} · 입→OBS {delay}")
         except Exception as exc:
             message += "\n\n동일 WAV 인과 기록 조회 불가 (" + type(exc).__name__ + ")"
+        try:
+            from .approved_live_voice_sync_receipts import ApprovedLiveVoiceSyncReceipts
+            from .offline_settings import data_dir
+            receipt_path = data_dir() / "approved_live_wav_sync_receipts.sqlite3"
+            if receipt_path.exists() and not receipt_path.is_symlink():
+                observations = ApprovedLiveVoiceSyncReceipts(
+                    receipt_path).recent(limit=12)
+                if observations:
+                    message += "\n\n[같은 WAV의 OBS 요청·공식 Cubism 실제 입 매개변수 관측]"
+                    for observed in observations:
+                        gap = (
+                            "요청 시각 미확인"
+                            if observed.obs_request_gap_seconds is None
+                            else f"입 구동→OBS 재생요청 {observed.obs_request_gap_seconds:.3f}초")
+                        mouth = (
+                            "첫 입 변화 미확인"
+                            if observed.first_lip_relative_ms is None
+                            else "첫 입 변화-OBS 요청 근삿값 "
+                                 + f"{observed.first_lip_relative_ms:.0f}ms")
+                        message += (
+                            f"\n구간 {observed.part_id} · {observed.state} "
+                            f"· 실제 입 호출 {observed.actual_lip_calls}회"
+                            f" / 변화 {observed.actual_lip_changes}회"
+                            f" · {gap} · {mouth}")
+        except Exception as exc:
+            message += (
+                "\n\n실제 Cubism 입 변화 장부 조회 불가 ("
+                + type(exc).__name__ + ")")
         messagebox.showinfo(
             "한국어 GPT-SoVITS·Cubism·OBS 발화 기록",
             message + "\n\n※ 재생요청완료는 실제 시청자 수신 증명이 아닙니다. "
@@ -2565,6 +2593,16 @@ class LocalChatTab(ttk.Frame):
                         elif event == "발화중단":
                             self._approved_live_voice_status.set(
                                 "실제 방송 음성 일부 미완료 · 이중 발화 재시도하지 않음")
+                        elif event == "실제입OBS관측":
+                            gap = (
+                                "OBS 요청 시각 미확인"
+                                if value.obs_request_gap_seconds is None
+                                else f"입→OBS 요청 {value.obs_request_gap_seconds:.3f}초")
+                            self._approved_live_voice_status.set(
+                                f"동일 WAV 구간 {value.part_id} · {value.state}"
+                                f" · 공식 입 호출 {value.actual_lip_calls}회"
+                                f" / 실제 변화 {value.actual_lip_changes}회"
+                                f" · {gap} · 시청자 최종 A/V 동기화 미확인")
                     continue
                 if kind == "twitch_ai_worker_exited":
                     # Always consume the lifecycle marker, even from a
