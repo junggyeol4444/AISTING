@@ -264,6 +264,7 @@ class ApprovedLocalGameAutoplay:
         operator_approved: bool = False,
         on_event: Callable[[str, object], None] | None = None,
         resume_run_id: str | None = None,
+        progress_check_every: int = 3,
     ) -> None:
         if operator_approved is not True:
             raise PermissionError("게임 자동 조작 별도 승인이 필요합니다.")
@@ -274,12 +275,15 @@ class ApprovedLocalGameAutoplay:
             raise ValueError("한 번에 게임 행동 1~100회만 승인할 수 있습니다.")
         if on_event is not None and not callable(on_event):
             raise ValueError("게임 진행 결과 전달 함수가 올바르지 않습니다.")
+        if type(progress_check_every) is not int or not 1 <= progress_check_every <= 10:
+            raise ValueError("게임 목표 진행 판정은 1~10회 입력마다 가능합니다.")
         self._obs_password = obs_password
         self._obs_port = obs_port
         self._model = model_name
         self._title = game_window_title
         self._goal = goal.strip()
         self._max_steps = max_steps
+        self._progress_check_every = progress_check_every
         self._events = on_event
         self._resume_run_id = resume_run_id
         self._stop = threading.Event()
@@ -326,6 +330,8 @@ class ApprovedLocalGameAutoplay:
         reason = "횟수종료"
         previous_observation = None
         last_observation = None
+        approved_scene = None  # 이번 실행 첫 실제 OBS 게임 화면만 허용
+        progress_result_seen = False
         # 이전 실행의 기록은 새 승인에서 문맥으로만 읽는다.
         # 과거의 입력시도 기록은 실행 성공 여부가 불명확하므로 재생 금지.
         prior = (
@@ -347,6 +353,18 @@ class ApprovedLocalGameAutoplay:
                 )
                 if self._stop.is_set():
                     reason = "운영자중지"
+                    break
+                if approved_scene is None:
+                    approved_scene = observed.scene
+                elif observed.scene != approved_scene:
+                    # 승인받은 게임을 보고 있지 않은 다른 OBS 장면은
+                    # 사용자 개인정보와 전혀 다른 게임/앱일 수 있다.
+                    # 잘못된 창에 키를 보내기 전에 반드시 중단.
+                    journal.record(
+                        run.run_id, index, "중단",
+                        "승인 시작 당시 OBS 게임 장면이 변경되어 입력 중단")
+                    self._notify("게임장면변경", approved_scene)
+                    reason = "실행실패"
                     break
                 if last_observation is not None:
                     journal.record(
@@ -393,18 +411,67 @@ class ApprovedLocalGameAutoplay:
                 if self._stop.is_set():
                     reason = "운영자중지"
                     break
+                if (action.action != "stop"
+                        and completed % self._progress_check_every == 0):
+                    # max_steps가 길어도 마지막에 한 번만 판단하지 않는다.
+                    # 매 확인 때 실제 후속 OBS 화면을 새로 읽고, 기존
+                    # 2시점 목표 판정 AI가 명확한 달성 후보라고 본
+                    # 경우에만 추가 키/마우스 입력을 중지한다.
+                    window._ensure_focus()
+                    after_step = observe_game_scene_with_local_vision(
+                        self._obs_password, self._obs_port, self._model,
+                        operator_approved=True,
+                        question="직전 게임 행동 뒤 화면에 나타난 상태와 운영자 목표 관련 표시만 사실대로 설명해.")
+                    if after_step.scene != approved_scene:
+                        journal.record(
+                            run.run_id, index, "중단",
+                            "실제 게임 행동 이후 OBS 장면 변경 관찰 · 추가 입력 차단")
+                        self._notify("게임장면변경", approved_scene)
+                        reason = "실행실패"
+                        break
+                    journal.record(
+                        run.run_id, index, "후속관찰",
+                        after_step.description[:1200])
+                    try:
+                        evidence = assess_game_goal_from_two_observations(
+                            goal=self._goal,
+                            before=observed.description,
+                            after=after_step.description, model=self._model)
+                        journal.record(
+                            run.run_id, index, "목표판정",
+                            json.dumps(asdict(evidence), ensure_ascii=False)[:2000])
+                        self._notify("목표판정", evidence)
+                        if evidence.status == "달성후보":
+                            progress_result_seen = True
+                            reason = "목표후보"
+                            # 확정 성공/보상 수령으로 기록하지 않고, 실제
+                            # 사용자가 다음 목표/재시작을 다시 승인해야 함.
+                            break
+                    except (ValueError, RuntimeError, OSError) as exc:
+                        journal.record(
+                            run.run_id, index, "목표판정",
+                            "불확실 · 실행 중 화면 목표 판정 실패 (" +
+                            type(exc).__name__ + ")")
+                        self._notify("목표판정불가", type(exc).__name__)
 
             # 마지막 입력도 후속 화면을 읽어 결과 근거를 남긴다.
             # AI stop은 입력이 아닌 종료 요청이므로 현재 프레임이 마지막 근거.
-            if completed and not self._stop.is_set():
+            if completed and not self._stop.is_set() and not progress_result_seen and reason != "실행실패":
                 window._ensure_focus()
                 after = observe_game_scene_with_local_vision(
                     self._obs_password, self._obs_port, self._model,
                     operator_approved=True,
                     question="마지막 게임 행동 이후 화면에 실제로 표시된 결과만 한국어로 설명해.")
-                journal.record(
-                    run.run_id, completed, "후속관찰",
-                    after.description[:1200])
+                if approved_scene is not None and after.scene != approved_scene:
+                    journal.record(
+                        run.run_id, completed, "중단",
+                        "최종 관찰에서 OBS 게임 장면 변경 · 목표 달성 확인 불가")
+                    self._notify("게임장면변경", approved_scene)
+                    reason = "실행실패"
+                else:
+                    journal.record(
+                        run.run_id, completed, "후속관찰",
+                        after.description[:1200])
                 if last_observation is not None:
                     try:
                         evidence = assess_game_goal_from_two_observations(
