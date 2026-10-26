@@ -113,6 +113,15 @@ class TwitchReadOnlySession:
         """
         accepted = 0
         while self._pending_chats and not self._stop.is_set():
+            if getattr(self, "_batch_ingress", False):
+                batch = tuple(list(self._pending_chats)[:256])
+                if self.emit("chat_batch", batch) is False:
+                    raise TwitchReadError(
+                        "트위치 채팅 프레임 SQLite 일괄 수용 실패 · 메시지 보존")
+                for _ in batch:
+                    self._pending_chats.popleft()
+                accepted += len(batch)
+                continue
             if self.emit("chat", self._pending_chats[0]) is False:
                 raise TwitchReadError("트위치 채팅이 AI 수신 큐에 수용되지 않았습니다.")
             self._pending_chats.popleft()
